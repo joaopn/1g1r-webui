@@ -1,6 +1,16 @@
 # 1g1r-webui image: the bundled external tools plus the web app.
 # Every tool version is pinned here and reported by docker/tool-versions.sh.
 
+# --- Stage 1: the React front end. Lint, type-check and test before building, so an image
+# never ships a front end that fails its own checks. Only dist/ leaves this stage.
+FROM node:24-trixie-slim AS web-build
+WORKDIR /web
+COPY web/package.json web/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY web/ ./
+RUN npx biome ci . && npx tsc --noEmit && npx vitest run && npm run build
+
+# --- Stage 2: tools and the Python app.
 FROM node:24-trixie-slim
 
 ARG IGIR_VERSION=5.7.2
@@ -45,6 +55,7 @@ COPY src /opt/app/src
 RUN python3 -m venv /opt/app/venv \
  && /opt/app/venv/bin/pip install --no-cache-dir /opt/app \
  && rm -rf /opt/app/src
+COPY --from=web-build /web/dist /opt/app/web/dist
 
 ENV G1R_DATA_DIR=/data
 # The port is set in config (server.port); EXPOSE only documents the default.

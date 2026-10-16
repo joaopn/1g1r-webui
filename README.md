@@ -38,10 +38,22 @@ Configuration lives in `data/config.yaml` (mounted at `/data`). It is deep-merge
 
 ## Development
 
+Backend (Python, FastAPI):
+
 ```sh
 python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'
 .venv/bin/ruff check . && .venv/bin/ruff format --check .
 .venv/bin/pytest
 ```
+
+Frontend (`web/`: React, Vite, TypeScript, Tailwind):
+
+```sh
+cd web && npm ci
+npm run check        # biome, tsc, vitest
+npm run dev          # dev server on :5173, proxying /api to a backend on :8080
+```
+
+The Docker build runs the frontend checks and fails on any of them.
 
 Project rule: application code contains no magic numbers. Every tunable value goes in `defaults.yaml`; `tests/test_no_magic_numbers.py` and ruff's `PLR2004` enforce it.
