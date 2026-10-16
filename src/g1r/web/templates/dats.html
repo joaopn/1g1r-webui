@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}DATs · Settings · {{ settings.app.name }}{% endblock %}
+{% block content %}
+<h1>Settings</h1>
+{% set tab = 'dats' %}{% include 'settings_nav.html' %}
+{% if msg %}<p class="ok" role="status">{{ msg }}</p>{% endif %}
+{% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+
+<section>
+  <h2>DATs</h2>
+  <p class="muted">Each platform matches against exactly one active DAT, recorded in <code>{{ settings.paths.library_path }}</code>. Downloads and uploads are kept as versions; a new version is used only when you choose it.</p>
+  <form class="pack" method="post" action="/dats/pack" enctype="multipart/form-data">
+    <strong>No-Intro daily pack</strong>
+    <span class="muted">— download it from <a href="{{ sources.nointro.website }}" target="_blank" rel="noopener">DAT-o-MATIC</a> (Standard DAT), then upload the zip; it is split by platform.</span>
+    <input type="file" name="file" accept=".zip" required aria-label="No-Intro daily pack zip">
+    <button type="submit">Upload pack</button>
+  </form>
+</section>
+
+<table class="grid dats">
+  <thead><tr><th>Platform</th><th>Active DAT</th><th>Versions</th><th>Get a DAT</th></tr></thead>
+  <tbody>
+  {% for row in rows %}
+  <tr id="{{ row.id }}">
+    <td><strong>{{ row.profile.name }}</strong><br><span class="muted small">{{ row.id }}{% if row.folders %} · folders: {{ row.folders | join(', ') }}{% endif %}</span></td>
+    <td>
+      {% if row.active %}
+        {{ row.active.header_name }}<br>
+        <span class="muted small">{{ sources[row.active.source].label }} · version {{ row.active.version or '?' }} · {{ "{:,}".format(row.active.game_count) }} games · sha1 <code title="{{ row.active.sha1 }}">{{ row.active.sha1[:settings.ui.hash_display_length] }}</code></span><br>
+        {% if sources[row.active.source].identification_only %}<span class="badge warn" title="No parent/clone data: files are identified, but versions of a game are not grouped from this DAT">identification only</span>{% endif %}
+        {% if not row.active.has_parent_clone and not sources[row.active.source].identification_only %}<span class="badge" title="This DAT carries no parent/clone links">no parent/clone</span>{% endif %}
+        {% if not row.active.matches_platform %}<span class="badge warn" title="The DAT's header name is not {{ row.profile.nointro_dat }}">name differs</span>{% endif %}
+        <form method="post" action="/dats/{{ row.id }}/pin" class="inline">
+          <label class="inline"><input type="checkbox" name="pinned" {{ 'checked' if row.pinned }} onchange="this.form.submit()"> pinned</label>
+        </form>
+      {% else %}
+        <span class="muted">none</span>
+      {% endif %}
+    </td>
+    <td>
+      {% if row.versions %}
+      <ul class="versions">
+        {% for v in row.versions %}
+        <li>
+          {% if row.active and v.id == row.active.id %}<strong>● {{ sources[v.source].label }} {{ v.version or '' }}</strong>
+          {% else %}
+          <form method="post" action="/dats/{{ row.id }}/activate" class="inline">
+            <input type="hidden" name="version_id" value="{{ v.id }}">
+            {{ sources[v.source].label }} {{ v.version or '' }}
+            <button type="submit" class="link" {{ 'disabled' if row.pinned }}>use</button>
+          </form>
+          {% endif %}
+          <span class="muted small">{{ v.added_at }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}<span class="muted">—</span>{% endif %}
+    </td>
+    <td class="get">
+      <form method="post" action="/dats/{{ row.id }}/download" class="inline"><button type="submit" title="{{ sources.libretro.label }}: identification only">Download (libretro)</button></form>
+      <form method="post" action="/dats/{{ row.id }}/upload" enctype="multipart/form-data" class="upload">
+        <input type="file" name="file" accept=".dat,.xml,.zip" required aria-label="DAT file for {{ row.profile.name }}">
+        <button type="submit">Upload</button>
+      </form>
+    </td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

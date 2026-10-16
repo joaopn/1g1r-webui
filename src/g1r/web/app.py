@@ -2,6 +2,7 @@
 
 import re
 import sqlite3
+import urllib.parse
 from collections.abc import Iterator
 from contextlib import asynccontextmanager
 from http import HTTPStatus
@@ -9,13 +10,14 @@ from importlib import resources
 from typing import Annotated
 
 import yaml
-from fastapi import Depends, FastAPI, Form, HTTPException, Request
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from g1r import db, mounts
 from g1r.config import Settings, load_settings
+from g1r.dat_registry import DatRegistry, Fetch, RegistryError
 from g1r.library import FolderEntry, Library, LibraryStore
 
 _WEB = resources.files("g1r").joinpath("web")
@@ -36,9 +38,10 @@ def suggest_label(path: str) -> str:
     return _LABEL_UNSAFE.sub("-", name).strip("-._")
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(settings: Settings | None = None, fetch: Fetch | None = None) -> FastAPI:
     settings = settings or load_settings()
     store = LibraryStore(settings)
+    registry = DatRegistry(settings, store, fetch)
     label_pattern = re.compile(settings.folders.label_pattern)
     platforms = settings.platforms.enabled_profiles()
 
@@ -263,6 +266,107 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         store.update(change)
         return RedirectResponse("/settings?saved=ignored#ignored", HTTPStatus.SEE_OTHER)
+
+    # DATs ------------------------------------------------------------------------
+
+    async def read_upload(upload: UploadFile) -> bytes:
+        limit = settings.dats.max_upload_bytes
+        data = await upload.read(limit + 1)
+        if len(data) > limit:
+            raise RegistryError("the file is larger than dats.max_upload_bytes")
+        return data
+
+    def dats_redirect(message: str, error: bool = False, anchor: str = "") -> RedirectResponse:
+        query = urllib.parse.urlencode({"error" if error else "msg": message})
+        return RedirectResponse(f"/settings/dats?{query}#{anchor}", HTTPStatus.SEE_OTHER)
+
+    @app.get("/settings/dats", response_class=HTMLResponse)
+    def dats_page(
+        request: Request,
+        conn: Annotated[sqlite3.Connection, Depends(get_db)],
+        msg: str = "",
+        error: str = "",
+    ):
+        library = store.load()
+        rows = []
+        for pid, profile in platforms.items():
+            active = registry.active_version(conn, library, pid)
+            rows.append(
+                {
+                    "id": pid,
+                    "profile": profile,
+                    "active": active,
+                    "pinned": bool(library.dats.get(pid) and library.dats[pid].pinned),
+                    "versions": registry.versions(conn, pid),
+                    "folders": [f.label for f in library.folders if f.platform == pid],
+                }
+            )
+        return render(
+            request,
+            "dats.html",
+            "settings",
+            rows=rows,
+            sources=settings.dats.sources,
+            msg=msg,
+            error=error,
+        )
+
+    @app.post("/dats/{platform}/download")
+    def dat_download(platform: str, conn: Annotated[sqlite3.Connection, Depends(get_db)]):
+        try:
+            registry.download_libretro(conn, platform)
+        except RegistryError as exc:
+            return dats_redirect(f"{platform}: {exc}", error=True, anchor=platform)
+        return dats_redirect(f"{platform}: libretro DAT downloaded", anchor=platform)
+
+    @app.post("/dats/{platform}/upload")
+    async def dat_upload(
+        platform: str,
+        conn: Annotated[sqlite3.Connection, Depends(get_db)],
+        file: Annotated[UploadFile, File()],
+    ):
+        try:
+            data = await read_upload(file)
+            registry.add_upload(conn, platform, data, file.filename or "upload.dat")
+        except RegistryError as exc:
+            return dats_redirect(f"{platform}: {exc}", error=True, anchor=platform)
+        return dats_redirect(f"{platform}: DAT uploaded", anchor=platform)
+
+    @app.post("/dats/pack")
+    async def dat_pack(
+        conn: Annotated[sqlite3.Connection, Depends(get_db)],
+        file: Annotated[UploadFile, File()],
+    ):
+        try:
+            results = registry.add_pack(conn, await read_upload(file))
+        except RegistryError as exc:
+            return dats_redirect(f"pack: {exc}", error=True)
+        added = [r for r in results if r.version_id]
+        names = ", ".join(sorted({r.platform for r in added})) or "none"
+        skipped = len(results) - len(added)
+        return dats_redirect(f"pack: {len(added)} DATs added ({names}); {skipped} skipped")
+
+    @app.post("/dats/{platform}/activate")
+    def dat_activate(
+        platform: str,
+        conn: Annotated[sqlite3.Connection, Depends(get_db)],
+        version_id: Annotated[int, Form()],
+    ):
+        try:
+            registry.activate(conn, platform, version_id)
+        except RegistryError as exc:
+            return dats_redirect(f"{platform}: {exc}", error=True, anchor=platform)
+        return dats_redirect(f"{platform}: active DAT changed", anchor=platform)
+
+    @app.post("/dats/{platform}/pin")
+    def dat_pin(platform: str, pinned: Annotated[str, Form()] = ""):
+        try:
+            registry.set_pinned(platform, pinned == "on")
+        except RegistryError as exc:
+            return dats_redirect(f"{platform}: {exc}", error=True, anchor=platform)
+        return dats_redirect(
+            f"{platform}: {'pinned' if pinned == 'on' else 'unpinned'}", anchor=platform
+        )
 
     @app.get("/healthz")
     def healthz(conn: Annotated[sqlite3.Connection, Depends(get_db)]):

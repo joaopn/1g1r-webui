@@ -2,6 +2,7 @@
 {% block title %}Settings · {{ settings.app.name }}{% endblock %}
 {% block content %}
 <h1>Settings</h1>
+{% set tab = 'general' %}{% include 'settings_nav.html' %}
 
 <section id="platforms">
   <h2>Platforms</h2>
@@ -41,7 +42,7 @@
   </form>
 </section>
 
-<section>
+<section id="advanced">
   <h2>Advanced</h2>
   <p class="muted">The effective configuration: the shipped defaults merged with
   <code>{{ settings.paths.data_dir }}/{{ settings.paths.user_config_file }}</code>.
