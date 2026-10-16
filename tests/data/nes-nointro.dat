@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<datafile>
+	<header>
+		<name>Nintendo - Nintendo Entertainment System (Headered)</name>
+		<description>Nintendo - Nintendo Entertainment System (Headered) (Parent-Clone)</description>
+		<version>20261015-000000</version>
+		<homepage>No-Intro</homepage>
+	</header>
+	<game name="Tetris (USA)" id="0002">
+		<category>Games</category>
+		<rom name="Tetris (USA).nes" size="49168" crc="1394f57e" md5="aa" sha1="bb"/>
+	</game>
+	<game name="Tetris (Japan)" id="0003" cloneofid="0002">
+		<category>Games</category>
+		<rom name="Tetris (Japan).nes" size="49168" crc="2394f57e" md5="cc" sha1="dd"/>
+	</game>
+</datafile>
