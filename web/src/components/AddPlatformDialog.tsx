@@ -3,7 +3,7 @@ import { ChevronRight, Folder, TriangleAlert } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { PlatformIcon } from "@/components/PlatformIcon";
+import { PlatformCombobox } from "@/components/PlatformCombobox";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -19,7 +19,6 @@ import { ApiError, api, json } from "@/lib/api";
 import { platformsByName } from "@/lib/platforms";
 import { keys, queryClient, useMeta } from "@/lib/queries";
 import type { Browse, FolderInfo } from "@/lib/types";
-import { cn } from "@/lib/utils";
 
 const FIELD =
   "h-9 w-full rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
@@ -97,34 +96,20 @@ export function AddPlatformDialog({
             </p>
           ) : null}
 
-          <fieldset className="space-y-2">
-            <legend className="font-medium text-sm">Platform</legend>
-            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3" role="radiogroup">
-              {platforms.map(([id, p]) => (
-                // biome-ignore lint/a11y/useSemanticElements: a styled radio card; aria-checked carries the state.
-                <button
-                  key={id}
-                  type="button"
-                  role="radio"
-                  aria-checked={platform === id}
-                  onClick={() => setPlatform(id)}
-                  className={cn(
-                    "flex items-center gap-2 rounded-md border px-2 py-1.5 text-left text-sm transition-colors",
-                    platform === id
-                      ? "border-primary bg-primary/10"
-                      : "border-border hover:bg-accent/60",
-                  )}
-                >
-                  <PlatformIcon platform={p} widthRem={meta.data?.ui.platform_icon_width_rem} />
-                  <span className="truncate">{p.name}</span>
-                </button>
-              ))}
-            </div>
+          <div className="space-y-2">
+            <Label htmlFor="platform">Platform</Label>
+            <PlatformCombobox
+              id="platform"
+              platforms={platforms}
+              value={platform}
+              onChange={setPlatform}
+              iconWidthRem={meta.data?.ui.platform_icon_width_rem}
+            />
             <p className="text-muted-foreground text-xs">
               Only supported platforms are listed. The target format is set per platform in Settings
               → Platforms &amp; files.
             </p>
-          </fieldset>
+          </div>
 
           <div className="space-y-2">
             <Label htmlFor="mount">Mount</Label>
@@ -146,9 +131,9 @@ export function AddPlatformDialog({
           </div>
 
           <div className="space-y-2">
-            <span className="font-medium text-sm">Folder</span>
+            <p className="font-medium text-sm">Folder</p>
             <div className="rounded-md border border-border">
-              <div className="flex flex-wrap items-center gap-1 border-border border-b px-2 py-1.5 text-sm">
+              <div className="flex flex-wrap items-center gap-1 border-border border-b px-3 py-1.5 text-sm">
                 <button type="button" className="hover:underline" onClick={() => setPath("")}>
                   {mount}
                 </button>
@@ -185,7 +170,7 @@ export function AddPlatformDialog({
                   <li className="px-3 py-1 text-muted-foreground text-sm">No subfolders</li>
                 ) : null}
               </ul>
-              <p className="border-border border-t px-2 py-1.5 text-sm">
+              <p className="border-border border-t px-3 py-1.5 text-sm">
                 Selected: <code className="text-xs">{browse.data?.location ?? "…"}</code>
               </p>
             </div>

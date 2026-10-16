@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { PlatformIcon } from "@/components/PlatformIcon";
 import { formatBytes, formatCount, formatWhen } from "@/lib/format";
+import { foldersByName } from "@/lib/platforms";
 import { useFolders, useMeta } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 
@@ -27,7 +28,7 @@ export function HomePage() {
         </div>
       ) : (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(20rem,1fr))] gap-4">
-          {folders.data.map((folder) => {
+          {foldersByName(folders.data, meta.data.platforms).map((folder) => {
             const platform = meta.data.platforms[folder.platform];
             const stats = [
               {
@@ -60,12 +61,15 @@ export function HomePage() {
                 to={`/folders/${folder.label}/matching`}
                 className="group rounded-lg border border-border bg-card p-4 transition-colors hover:border-primary/50 hover:bg-accent/30"
               >
-                <div className="flex items-center gap-2">
+                <div className="flex min-w-0 items-center gap-2">
                   <PlatformIcon platform={platform} />
-                  <h2 className="font-medium group-hover:text-primary">
+                  <h2
+                    className="min-w-0 truncate font-medium group-hover:text-primary"
+                    title={platform?.name ?? folder.platform}
+                  >
                     {platform?.name ?? folder.platform}
                   </h2>
-                  <span className="text-muted-foreground text-sm">{folder.label}</span>
+                  <span className="shrink-0 text-muted-foreground text-sm">{folder.label}</span>
                 </div>
                 <p className="mt-1 truncate text-muted-foreground text-xs">
                   {folder.location ?? `mount ${folder.mount} unavailable`}

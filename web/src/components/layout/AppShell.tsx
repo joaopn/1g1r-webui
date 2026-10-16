@@ -16,6 +16,7 @@ import { PlatformIcon } from "@/components/PlatformIcon";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { foldersByName } from "@/lib/platforms";
 import { useFolders, useMeta } from "@/lib/queries";
 import { isNumber, isStringArray, readJson, removeKey, writeJson } from "@/lib/storage";
 import type { FolderCard, Meta } from "@/lib/types";
@@ -34,11 +35,7 @@ function folderChildren(
   meta: Meta | undefined,
   section: string,
 ): NavChild[] {
-  const name = (folder: FolderCard) => meta?.platforms[folder.platform]?.name ?? folder.platform;
-  const ordered = [...folders].sort(
-    (a, b) => name(a).localeCompare(name(b)) || a.label.localeCompare(b.label),
-  );
-  return ordered.map((folder) => {
+  return foldersByName(folders, meta?.platforms).map((folder) => {
     const platform = meta?.platforms[folder.platform];
     return {
       to: `/folders/${folder.label}/${section}`,
