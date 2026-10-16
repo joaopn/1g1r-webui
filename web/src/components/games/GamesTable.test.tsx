@@ -1,0 +1,91 @@
+import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
+import { GAMES, META } from "@/test/fixtures";
+import { COLUMNS_KEY } from "./columns";
+import { GamesTable } from "./GamesTable";
+
+function renderTable(onKeep = vi.fn(), onLeave = vi.fn()) {
+  render(
+    <MemoryRouter>
+      <GamesTable label="nes" games={GAMES} meta={META} onKeep={onKeep} onLeave={onLeave} />
+    </MemoryRouter>,
+  );
+  return { onKeep, onLeave };
+}
+
+const gameNames = () =>
+  screen
+    .getAllByRole("button", { name: /: (collapse|show)/ })
+    .map((el) => el.getAttribute("aria-label")?.split(":")[0]);
+
+beforeEach(() => window.localStorage.clear());
+
+test("multi-version games start expanded and collapse on click", async () => {
+  renderTable();
+  expect(screen.getByTestId("version-Contra (Japan).zip")).toBeInTheDocument();
+  await userEvent.click(
+    screen.getByRole("button", { name: "Contra: collapse to the kept version" }),
+  );
+  expect(screen.queryByTestId("version-Contra (Japan).zip")).not.toBeInTheDocument();
+  // Collapsed, the game's row shows the kept version.
+  expect(screen.getByTitle("Contra (USA).zip")).toBeInTheDocument();
+});
+
+test("clicking a version keeps it; clicking the kept one does nothing unless it is your pick", async () => {
+  const { onKeep } = renderTable();
+  await userEvent.click(screen.getByTestId("version-Gradius (USA) (Rev 1).zip"));
+  expect(onKeep).toHaveBeenCalledWith(GAMES[1], "Gradius (USA) (Rev 1).zip");
+  onKeep.mockClear();
+  await userEvent.click(screen.getByTestId("version-Contra (USA).zip"));
+  expect(onKeep).not.toHaveBeenCalled();
+});
+
+test("leave alone is a button on the game row", async () => {
+  const { onLeave } = renderTable();
+  const contra = screen.getByRole("button", {
+    name: "Contra: collapse to the kept version",
+  }).parentElement;
+  await userEvent.click(within(contra as HTMLElement).getByRole("button", { name: /leave alone/ }));
+  expect(onLeave).toHaveBeenCalledWith(GAMES[0], true);
+});
+
+test("sorting by status puts undecided games first, and reverses", async () => {
+  renderTable();
+  await userEvent.click(screen.getByTestId("sort-status"));
+  expect(gameNames()[0]).toBe("Gradius");
+  await userEvent.click(screen.getByTestId("sort-status"));
+  expect(gameNames().at(-1)).toBe("Gradius");
+});
+
+test("the column chooser hides a column and remembers it", async () => {
+  renderTable();
+  expect(screen.getByTestId("header-region")).toBeInTheDocument();
+  await userEvent.click(screen.getByTestId("columns-button"));
+  await userEvent.click(screen.getByTestId("column-region"));
+  expect(screen.queryByTestId("header-region")).not.toBeInTheDocument();
+  expect(JSON.parse(window.localStorage.getItem(COLUMNS_KEY) ?? "[]")).not.toContain("region");
+});
+
+test("a column is resized with the keyboard and reset by double-click", async () => {
+  renderTable();
+  const handle = screen.getByTestId("resize-file");
+  const start = Number(handle.getAttribute("aria-valuenow"));
+  handle.focus();
+  await userEvent.keyboard("{ArrowRight}");
+  expect(Number(screen.getByTestId("resize-file").getAttribute("aria-valuenow"))).toBeCloseTo(
+    start + META.ui.resize_step_rem,
+  );
+  await userEvent.dblClick(screen.getByTestId("resize-file"));
+  expect(Number(screen.getByTestId("resize-file").getAttribute("aria-valuenow"))).toBe(start);
+});
+
+test("search and the status filter narrow the list", async () => {
+  renderTable();
+  await userEvent.type(screen.getByLabelText("Search games"), "contra");
+  expect(gameNames()).toEqual(["Contra"]);
+  await userEvent.clear(screen.getByLabelText("Search games"));
+  await userEvent.click(screen.getByTestId("filters-button"));
+  await userEvent.click(screen.getByRole("checkbox", { name: /undecided/ }));
+  expect(gameNames()).toEqual(["Gradius"]);
+});
