@@ -1,0 +1,23 @@
+<div id="games">
+  <form class="game-filters" hx-get="/folders/{{ label }}/games" hx-target="#games" hx-swap="outerHTML" hx-trigger="change, keyup changed delay:400ms from:input[name=q], submit">
+    <div class="chips" role="radiogroup" aria-label="Show">
+      {% for key, name in filters.items() %}
+      <label class="filter {{ 'active' if view == key }}"><input type="radio" name="view" value="{{ key }}" {{ 'checked' if view == key }}> {{ name }} <span class="count">{{ "{:,}".format(table.counts[key]) }}</span></label>
+      {% endfor %}
+    </div>
+    <input type="search" name="q" value="{{ q }}" placeholder="Search games" aria-label="Search games">
+  </form>
+  <p class="muted small">{{ "{:,}".format(table.total) }} games · page {{ table.page }} of {{ table.pages }}{% if table.counts.proposals %} · proposed moves would free {{ table.reclaim_bytes | bytes }}{% endif %} · nothing is moved in this build</p>
+  {% for game in table.games %}
+    {% set open = true %}{% include "game_group.html" %}
+  {% else %}
+    <p class="muted">No games match.</p>
+  {% endfor %}
+  {% if table.pages > 1 %}
+  <nav class="pager" aria-label="Pages">
+    {% if table.page > 1 %}<a href="#" hx-get="/folders/{{ label }}/games?view={{ view }}&q={{ q | urlencode }}&page={{ table.page - 1 }}" hx-target="#games" hx-swap="outerHTML">← previous</a>{% endif %}
+    <span>page {{ table.page }} / {{ table.pages }}</span>
+    {% if table.page < table.pages %}<a href="#" hx-get="/folders/{{ label }}/games?view={{ view }}&q={{ q | urlencode }}&page={{ table.page + 1 }}" hx-target="#games" hx-swap="outerHTML">next →</a>{% endif %}
+  </nav>
+  {% endif %}
+</div>

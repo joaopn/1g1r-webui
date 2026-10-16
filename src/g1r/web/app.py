@@ -15,11 +15,12 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from g1r import db, mounts, scanner
-from g1r.config import Settings, load_settings
+from g1r import db, matching, mounts, scanner
+from g1r.config import RANKING_CRITERIA, RankingConfig, Settings, load_settings
 from g1r.dat_registry import DatRegistry, Fetch, RegistryError
 from g1r.jobs import Jobs
 from g1r.library import FolderEntry, Library, LibraryStore
+from g1r.ranking import LABELS as ranking_labels
 
 _WEB = resources.files("g1r").joinpath("web")
 templates = Jinja2Templates(directory=str(_WEB.joinpath("templates")))
@@ -34,6 +35,25 @@ SECTIONS = [
 _LABEL_UNSAFE = re.compile(r"[^a-z0-9._-]+")
 
 
+def human_bytes(value: int | None, base: int, units: list[str]) -> str:
+    if value is None:
+        return ""
+    amount, unit = float(value), units[0]
+    for unit in units:
+        if amount < base or unit == units[-1]:
+            break
+        amount /= base
+    return f"{int(amount)} {unit}" if unit == units[0] else f"{amount:.1f} {unit}"
+
+
+def human_time(value: str | None) -> str:
+    """'2026-10-16T19:59:08Z' -> '2026-10-16 19:59 UTC'."""
+    if not value:
+        return ""
+    date, _, clock = value.rstrip("Z").partition("T")
+    return f"{date} {clock.rsplit(':', 1)[0]} UTC" if clock else date
+
+
 def suggest_label(path: str) -> str:
     name = path.rstrip("/").rsplit("/", 1)[-1].lower()
     return _LABEL_UNSAFE.sub("-", name).strip("-._")
@@ -45,6 +65,10 @@ def create_app(
     report_runner: scanner.ReportRunner | None = None,
 ) -> FastAPI:
     settings = settings or load_settings()
+    templates.env.filters["bytes"] = lambda v: human_bytes(
+        v, settings.ui.byte_unit_base, settings.ui.byte_units
+    )
+    templates.env.filters["when"] = human_time
     store = LibraryStore(settings)
     registry = DatRegistry(settings, store, fetch)
     folder_scanner = scanner.Scanner(settings, store, registry, report_runner)
@@ -106,8 +130,23 @@ def create_app(
     # Pages ---------------------------------------------------------------------
 
     @app.get("/", response_class=HTMLResponse)
-    def home(request: Request):
-        return render(request, "home.html", "home")
+    def home(request: Request, conn: Annotated[sqlite3.Connection, Depends(get_db)]):
+        library = store.load()
+        cards = []
+        for folder in library.folders:
+            summary = scanner.folder_summary(conn, folder.label)
+            result = matching.table(settings, conn, folder.label, store.ranking_for(folder))
+            cards.append(
+                {
+                    "folder": folder_view(library, folder),
+                    "scan": scanner.latest_scan(conn, folder.label),
+                    "dat": registry.active_version(conn, library, folder.platform),
+                    "summary": summary,
+                    "counts": result.counts,
+                    "reclaim": result.reclaim_bytes,
+                }
+            )
+        return render(request, "home.html", "home", cards=cards)
 
     @app.get("/section/{section}", response_class=HTMLResponse)
     def section(request: Request, section: str):
@@ -122,29 +161,129 @@ def create_app(
         section: str,
         label: str,
         conn: Annotated[sqlite3.Connection, Depends(get_db)],
+        ranking_error: str = "",
+        view: str = "all",
+        q: str = "",
+        page: int = 1,
     ):
         titles = dict(SECTIONS)
         library = store.load()
         folder = library.folder(label)
         if section not in titles or folder is None:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND)
-        view = folder_view(library, folder)
+        info = folder_view(library, folder)
         context = {
             "title": titles[section],
-            "folder": view,
+            "folder": info,
             "active_folder": label,
-            "target": settings.platforms.targets[view["target"]],
+            "target": settings.platforms.targets[info["target"]],
             "dat": registry.active_version(conn, library, folder.platform),
             "dat_sources": settings.dats.sources,
             "scan": scanner.latest_scan(conn, label),
         }
         if section == "matching":
+            ranking = store.ranking_for(folder)
             context |= {
                 "summary": scanner.folder_summary(conn, label),
                 "unmatched": scanner.unmatched_files(conn, label),
                 "others": scanner.other_files(conn, label),
+                "ranking": ranking,
+                "ranking_is_default": folder.ranking is None,
+                "criteria": RANKING_CRITERIA,
+                "ranking_labels": ranking_labels,
+                "ranking_error": ranking_error,
+                **games_context(conn, label, ranking, view, q, page),
             }
         return render(request, "folder.html", section, **context)
+
+    # Matching & 1G1R table ---------------------------------------------------------
+
+    def games_context(conn, label, ranking, view, q, page) -> dict:
+        result = matching.table(settings, conn, label, ranking, view=view, query=q, page=page)
+        return {"table": result, "view": view, "q": q, "filters": matching.FILTERS, "label": label}
+
+    def folder_or_404(label: str):
+        folder = store.load().folder(label)
+        if folder is None:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND)
+        return folder
+
+    @app.get("/folders/{label}/games", response_class=HTMLResponse)
+    def games(
+        request: Request,
+        label: str,
+        conn: Annotated[sqlite3.Connection, Depends(get_db)],
+        view: str = "all",
+        q: str = "",
+        page: int = 1,
+    ):
+        folder = folder_or_404(label)
+        ctx = games_context(conn, label, store.ranking_for(folder), view, q, page)
+        return partial(request, "games_table.html", **ctx)
+
+    def game_fragment(request, conn, folder, group_key):
+        game = matching.find_game(
+            settings, conn, folder.label, store.ranking_for(folder), group_key
+        )
+        if game is None:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND)
+        return partial(request, "game_group.html", game=game, label=folder.label, open=True)
+
+    @app.post("/folders/{label}/keep", response_class=HTMLResponse)
+    def keep(
+        request: Request,
+        label: str,
+        conn: Annotated[sqlite3.Connection, Depends(get_db)],
+        group_key: Annotated[str, Form()],
+        rel_path: Annotated[str, Form()] = "",
+    ):
+        folder = folder_or_404(label)
+        matching.set_keep(conn, label, group_key, rel_path or None)
+        return game_fragment(request, conn, folder, group_key)
+
+    @app.post("/folders/{label}/leave", response_class=HTMLResponse)
+    def leave(
+        request: Request,
+        label: str,
+        conn: Annotated[sqlite3.Connection, Depends(get_db)],
+        group_key: Annotated[str, Form()],
+        left: Annotated[str, Form()] = "",
+    ):
+        folder = folder_or_404(label)
+        matching.set_left_alone(conn, label, group_key, left == "on")
+        return game_fragment(request, conn, folder, group_key)
+
+    @app.post("/folders/{label}/ranking")
+    async def save_ranking(request: Request, label: str):
+        folder_or_404(label)
+        form = await request.form()
+        if form.get("reset"):
+            new = None
+        else:
+            positions = []
+            for name in RANKING_CRITERIA:
+                value = form.get(f"pos-{name}", "")
+                if value.isdigit():
+                    positions.append((int(value), name))
+            split = lambda text: [p.strip() for p in str(text).split(",") if p.strip()]  # noqa: E731
+            try:
+                new = RankingConfig(
+                    criteria=[name for _, name in sorted(positions)],
+                    regions=split(form.get("regions", "")),
+                    languages=split(form.get("languages", "")),
+                    multi_region=str(form.get("multi_region", "best")),
+                )
+            except ValueError as exc:
+                query = urllib.parse.urlencode({"ranking_error": str(exc)})
+                return RedirectResponse(
+                    f"/section/matching/{label}?{query}#ranking", HTTPStatus.SEE_OTHER
+                )
+
+        def change(library: Library) -> None:
+            library.folder(label).ranking = new
+
+        store.update(change)
+        return RedirectResponse(f"/section/matching/{label}#games", HTTPStatus.SEE_OTHER)
 
     # Scans -------------------------------------------------------------------------
 

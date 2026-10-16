@@ -59,6 +59,8 @@ class UiConfig(_Strict):
     page_size: int = Field(gt=0)
     poll_interval_ms: int = Field(gt=0)
     hash_display_length: int = Field(gt=0)
+    byte_unit_base: int = Field(gt=1)
+    byte_units: list[str] = Field(min_length=1)
 
 
 class FoldersConfig(_Strict):
@@ -152,6 +154,39 @@ class HeaderRule(_Strict):
         return self
 
 
+class NamesConfig(_Strict):
+    regions: list[str]
+    prerelease_tags: list[str]
+    rerelease_tags: list[str]
+    neutral_tags: list[str]
+
+
+class GroupingConfig(_Strict):
+    infer_from_dat_names: bool
+    retool_clonelists_dir: Path
+
+
+RANKING_CRITERIA = ("prerelease", "region", "language", "revision", "original")
+
+
+class RankingConfig(_Strict):
+    criteria: list[str]
+    regions: list[str]
+    languages: list[str]
+    multi_region: str
+
+    @model_validator(mode="after")
+    def _valid(self) -> "RankingConfig":
+        unknown = [c for c in self.criteria if c not in RANKING_CRITERIA]
+        if unknown:
+            raise ValueError(f"unknown ranking criteria {unknown}; use {list(RANKING_CRITERIA)}")
+        if len(set(self.criteria)) != len(self.criteria):
+            raise ValueError("a ranking criterion is listed twice")
+        if self.multi_region not in ("best", "first"):
+            raise ValueError("ranking.multi_region must be 'best' or 'first'")
+        return self
+
+
 class Settings(_Strict):
     app: AppConfig
     server: ServerConfig
@@ -165,6 +200,9 @@ class Settings(_Strict):
     igir: IgirConfig
     jobs: JobsConfig
     headers: dict[str, list[HeaderRule]]
+    names: NamesConfig
+    grouping: GroupingConfig
+    ranking: RankingConfig
 
     @property
     def dats_root(self) -> Path:

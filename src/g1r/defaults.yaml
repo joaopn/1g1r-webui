@@ -33,6 +33,9 @@ ui:
   poll_interval_ms: 1000
   # Characters of a hash shown in tables (the full value is in the tooltip).
   hash_display_length: 12
+  # Sizes are shown in these units, each this many times the previous.
+  byte_unit_base: 1024
+  byte_units: [B, KiB, MiB, GiB, TiB]
 
 folders:
   # Folder labels name the folder in the UI and its discarded/<label>/ directory.
@@ -274,3 +277,38 @@ headers:
     - {magic_hex: "4c594e58", magic_offset: 0, header_size: 64}
   snes:
     - {size_modulus: 1024, header_size: 512}
+
+# Reading No-Intro / Redump names: "Title (Region) (Languages) (Rev 1) (Beta) ...".
+names:
+  regions: [World, USA, Europe, Japan, Asia, Australia, Brazil, Canada, China, France,
+            Germany, Hong Kong, Italy, Korea, Netherlands, Spain, Sweden, Taiwan,
+            United Kingdom, UK, Russia, Scandinavia, Latin America, Mexico, Argentina,
+            Austria, Belgium, Denmark, Finland, Greece, India, Ireland, Israel, Norway,
+            Poland, Portugal, Switzerland, Unknown]
+  # A tag starting with one of these words marks a pre-release (e.g. "Beta 2", "Proto 1").
+  prerelease_tags: [Demo, Beta, Proto, Sample, Kiosk, Preview, Pre-production]
+  # A tag containing one of these marks a re-release (a rip from a later collection).
+  rerelease_tags: [Virtual Console, Switch Online, Namco Museum Archives, Rockman 123,
+                   Retro-Bit, Evercade, Collection, Classic Mini, Disney Classic Games,
+                   QUByte Classics, Capcom Town, Limited Run]
+  # Tags that never separate two versions into different games when grouping by name
+  # (a tag matches when it equals one of these or starts with it plus a space: "Alt 2").
+  neutral_tags: [Alt, SGB Enhanced, GB Compatible, Rumble Version, NP]
+
+grouping:
+  # When a DAT has no parent/clone data and Retool has no entry, versions are grouped by
+  # their DAT name with region, language, revision, pre-release, re-release and neutral
+  # tags removed. Every other tag (e.g. a publisher) keeps games apart.
+  infer_from_dat_names: true
+  # Retool's clone lists ("<DAT name> (No-Intro).json"), bundled in the image.
+  retool_clonelists_dir: /opt/retool/clonelists
+
+# How the version to keep is picked. This is the template a new folder starts from;
+# each folder then has its own copy, edited on its Matching page.
+ranking:
+  # Applied in this order; a criterion not listed is off.
+  criteria: [prerelease, region]
+  regions: [World, USA, Europe, Japan]
+  languages: [En]
+  # A release listing several regions counts as its best one ("best") or its first ("first").
+  multi_region: best

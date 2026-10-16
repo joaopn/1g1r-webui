@@ -13,7 +13,7 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
-from g1r.config import Settings
+from g1r.config import RankingConfig, Settings
 
 LIBRARY_HEADER = (
     "# Written by 1g1r-webui from what you set in the UI. Human-readable on purpose;\n"
@@ -28,6 +28,8 @@ class FolderEntry(BaseModel):
     platform: str
     mount: str
     path: str = Field(description="Relative to the mount root, POSIX separators; '' = root")
+    # This folder's own ranking; None = the default ranking from the configuration.
+    ranking: RankingConfig | None = None
 
 
 class ActiveDat(BaseModel):
@@ -106,6 +108,9 @@ class LibraryStore:
         profile = self.settings.platforms.profiles[platform]
         chosen = library.platform_targets.get(platform)
         return chosen if chosen in profile.targets else profile.default_target
+
+    def ranking_for(self, folder: FolderEntry) -> RankingConfig:
+        return folder.ranking or self.settings.ranking
 
     def ignored_filenames(self, library: Library) -> list[str]:
         if library.ignored_filenames is None:

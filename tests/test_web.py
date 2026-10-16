@@ -56,3 +56,14 @@ def test_healthz_reports_schema_version(client):
 def test_static_assets_served(client):
     assert client.get("/static/app.css").status_code == HTTPStatus.OK
     assert client.get("/static/vendor/htmx.min.js").status_code == HTTPStatus.OK
+
+
+def test_human_formatters():
+    from g1r.web.app import human_bytes, human_time
+
+    units = ["B", "KiB", "MiB"]
+    assert human_bytes(512, 1024, units) == "512 B"
+    assert human_bytes(1536, 1024, units) == "1.5 KiB"
+    assert human_bytes(5 * 1024**3, 1024, units) == "5120.0 MiB"
+    assert human_bytes(None, 1024, units) == ""
+    assert human_time("2026-10-16T19:59:08Z") == "2026-10-16 19:59 UTC"

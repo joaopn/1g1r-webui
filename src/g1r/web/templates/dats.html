@@ -50,7 +50,7 @@
             <button type="submit" class="link" {{ 'disabled' if row.pinned }}>use</button>
           </form>
           {% endif %}
-          <span class="muted small">{{ v.added_at }}</span>
+          <span class="muted small">{{ v.added_at | when }}</span>
         </li>
         {% endfor %}
       </ul>

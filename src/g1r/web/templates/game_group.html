@@ -1,0 +1,56 @@
+{% set single = game.rows | length == 1 %}
+{% if single %}
+{% set row = game.rows[0] %}
+<div class="game single-game">
+  <span class="game-name">{{ game.group.name }}</span>
+  <span class="file">{{ row.version.rel_path }}</span>
+  <span class="tags">{{ row.version.parsed.tags_label }}</span>
+  <span class="match" title="{{ 'checksum match in the DAT' if row.version.method == 'dat-checksum' else 'checksum match after removing a copier header' }}"><span class="bar" style="--p: 1"><span></span></span><span class="small">{{ 'checksum' if row.version.method == 'dat-checksum' else 'headerless' }}</span></span>
+  <span class="keep-label">keep</span>
+</div>
+{% else %}
+<details class="game status-{{ game.status | replace(' ', '-') }}" {{ 'open' if open }}>
+  <summary>
+    <span class="game-name">{{ game.group.name }}</span>
+    <span class="chip chip-{{ game.status | replace(' ', '-') }}">{{ game.status }}</span>
+    <span class="muted small">{{ game.rows | length }} versions</span>
+    <span class="muted small source" title="How these versions were grouped">{{ {'dat-parent-clone': 'DAT parent/clone', 'retool-clone-list': 'Retool clone list', 'dat-name': 'same DAT name', 'single': ''}[game.group.source] }}</span>
+    <span class="kept-when-closed">{% if game.kept %}keeps <strong>{{ game.kept.version.rel_path }}</strong>{% elif game.status == 'undecided' %}<em>choose a version</em>{% else %}nothing proposed{% endif %}</span>
+  </summary>
+  <table class="versions-table">
+    <colgroup><col class="c-keep"><col class="c-file"><col class="c-tags"><col class="c-match"><col class="c-op"></colgroup>
+    <thead><tr><th>Keep</th><th>File · DAT game</th><th>Tags</th><th>Match</th><th>Proposed</th></tr></thead>
+    <tbody>
+    {% for row in game.rows %}
+    <tr class="{{ 'kept' if row.keep }} {{ 'candidate' if game.status == 'undecided' and row.version.rel_path in game.candidates }}">
+      <td class="keep-col">
+        {% if game.status != 'left alone' %}
+        <input type="checkbox" aria-label="Keep {{ row.version.rel_path }}" {{ 'checked' if row.keep }}
+          hx-post="/folders/{{ label }}/keep" hx-target="closest details" hx-swap="outerHTML"
+          hx-vals='{{ {"group_key": game.group.key, "rel_path": "" if row.keep else row.version.rel_path} | tojson }}'>
+        {% else %}<input type="checkbox" disabled checked aria-label="Left alone">{% endif %}
+      </td>
+      <td>{{ row.version.rel_path }} <span class="muted small">{{ row.size | bytes }}</span>
+        {% if row.version.game_name ~ '.zip' != row.version.rel_path %}<br><span class="muted small">DAT: {{ row.version.game_name }}</span>{% endif %}</td>
+      <td class="tags">{{ row.version.parsed.tags_label }}{% if row.version.parsed.prerelease %} <span class="badge">pre-release</span>{% endif %}{% if row.version.parsed.rerelease %} <span class="badge">re-release</span>{% endif %}</td>
+      <td class="match" title="{{ 'checksum match in the DAT' if row.version.method == 'dat-checksum' else 'checksum match after removing a copier header' }}">
+        <span class="bar" style="--p: 1"><span></span></span><span class="small">{{ 'checksum' if row.version.method == 'dat-checksum' else 'headerless' }}</span>
+      </td>
+      <td class="op">{% if row.operation %}<span class="move" title="{{ row.operation }}">→ discarded/{{ label }}/1g1r/</span>{% elif row.keep %}<span class="keep-label">keep</span>{% else %}<span class="muted">stays</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <footer class="game-foot">
+    <span class="muted small">{{ game.reason }}</span>
+    <span class="game-actions">
+      {% if game.status == 'your pick' %}
+      <button type="button" class="link" hx-post="/folders/{{ label }}/keep" hx-target="closest details" hx-swap="outerHTML" hx-vals='{{ {"group_key": game.group.key, "rel_path": ""} | tojson }}'>reset to the ranking's choice</button>
+      {% endif %}
+      <label class="inline small"><input type="checkbox" {{ 'checked' if game.status == 'left alone' }}
+        hx-post="/folders/{{ label }}/leave" hx-target="closest details" hx-swap="outerHTML"
+        hx-vals='{{ {"group_key": game.group.key, "left": "" if game.status == "left alone" else "on"} | tojson }}'> leave this game alone</label>
+    </span>
+  </footer>
+</details>
+{% endif %}

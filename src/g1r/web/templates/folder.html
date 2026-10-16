@@ -29,13 +29,20 @@
 {% if summary.counts.get('other', 0) %}
 <p class="notice warn-notice">{{ summary.counts.other }} file(s) here are not {{ folder.platform_name }} ROMs or archives. A folder must contain one platform only; they are listed below and never touched.</p>
 {% endif %}
-<p class="muted">Identified by checksum in the DAT: {{ summary.methods.get('dat-checksum', 0) }}{% if summary.methods.get('dat-headerless') %} · after stripping a copier header: {{ summary.methods['dat-headerless'] }}{% endif %}. The game table with versions and the 1G1R choice comes next.</p>
+<p class="muted">Identified by checksum in the DAT: {{ summary.methods.get('dat-checksum', 0) }}{% if summary.methods.get('dat-headerless') %} · after stripping a copier header: {{ summary.methods['dat-headerless'] }}{% endif %}.</p>
+
+{% include "ranking_form.html" %}
+
+<section id="games-section">
+  <h2>Games</h2>
+  {% include "games_table.html" %}
+</section>
 
 <section>
   <h2>Unmatched content <span class="muted">({{ unmatched | length }})</span></h2>
   {% if unmatched %}
   <table class="grid"><thead><tr><th>File</th><th class="num">Size</th></tr></thead><tbody>
-  {% for f in unmatched %}<tr><td>{{ f.rel_path }}</td><td class="num">{{ "{:,}".format(f.size) }}</td></tr>{% endfor %}
+  {% for f in unmatched %}<tr><td>{{ f.rel_path }}</td><td class="num">{{ f.size | bytes }}</td></tr>{% endfor %}
   </tbody></table>
   <p class="muted small">Online lookups (Hasheous, ScreenScraper) and manual assignment come in a later build. These files are kept as they are.</p>
   {% else %}<p class="muted">Every ROM file was identified.</p>{% endif %}

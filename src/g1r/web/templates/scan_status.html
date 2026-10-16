@@ -4,11 +4,11 @@
   {% if not scan %}
     <span class="muted">Not scanned yet.</span>
   {% elif scan.status == 'running' %}
-    <span class="spinner" aria-hidden="true"></span> Scanning since {{ scan.started_at }}…
+    <span class="spinner" aria-hidden="true"></span> Scanning since {{ scan.started_at | when }}…
   {% elif scan.status == 'done' %}
-    Last scan {{ scan.finished_at }}: {{ scan.message }}.
+    Last scan {{ scan.finished_at | when }}: {{ scan.message }}.
   {% else %}
-    <span class="error">Last scan failed ({{ scan.finished_at }}): {{ scan.message }}</span>
+    <span class="error">Last scan failed ({{ scan.finished_at | when }}): {{ scan.message }}</span>
   {% endif %}
   {% if not scan or scan.status != 'running' %}
   <button type="button" class="primary" hx-post="/folders/{{ label }}/scan" hx-target="#scan-status" hx-swap="outerHTML">{{ 'Scan again' if scan else 'Scan folder' }}</button>
