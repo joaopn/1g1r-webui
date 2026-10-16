@@ -51,6 +51,16 @@ export function HomePage() {
               },
               { label: "proposed moves", value: formatCount(folder.counts.proposals ?? 0) },
               {
+                label: "to convert",
+                value: formatCount(folder.conversion.to_convert),
+                attention: folder.conversion.to_convert > 0,
+              },
+              {
+                label: "conversions flagged",
+                value: formatCount(folder.conversion.flagged),
+                attention: folder.conversion.flagged > 0,
+              },
+              {
                 label: "would free",
                 value: formatBytes(folder.reclaim_bytes, ui.byte_unit_base, ui.byte_units),
               },

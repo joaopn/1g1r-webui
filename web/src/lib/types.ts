@@ -34,7 +34,7 @@ export type Meta = {
     game_columns_default: string[];
   };
   platforms: Record<string, Platform>;
-  targets: Record<string, { label: string; description: string }>;
+  targets: Record<string, Target>;
   dat_sources: Record<string, { label: string; identification_only: boolean; website?: string }>;
   ranking: { criteria: string[]; labels: Record<string, string>; default: Ranking };
   label_pattern: string;
@@ -79,6 +79,7 @@ export type FolderInfo = {
   on_main_mount: boolean;
   target: string;
   discarded_to: string;
+  delete_originals: boolean;
 };
 
 export type FolderCard = FolderInfo & {
@@ -87,6 +88,7 @@ export type FolderCard = FolderInfo & {
   summary: Summary;
   counts: Record<string, number>;
   reclaim_bytes: number;
+  conversion: ConversionCounts;
 };
 
 export type FileRow = { rel_path: string; size: number; kind: string };
@@ -153,3 +155,26 @@ export type Browse = {
   children: string[];
   suggested_label: string;
 };
+
+export type Target = { label: string; description: string; produces: string; accepts: string[] };
+
+export type ConversionStatus = "wrap" | "unwrap" | "flagged" | "accepted" | "done";
+
+export type ArchiveMember = { name: string; size: number; crc32: string | null };
+
+export type ConversionRow = {
+  rel_path: string;
+  size: number;
+  container: string;
+  members: ArchiveMember[];
+  status: ConversionStatus;
+  output: string | null;
+  originals_to: string | null;
+  reversible: boolean;
+  verify: string | null;
+  note: string;
+};
+
+export type ConversionCounts = Record<ConversionStatus | "to_convert" | "all", number>;
+
+export type Conversion = { counts: ConversionCounts; rows: ConversionRow[] };

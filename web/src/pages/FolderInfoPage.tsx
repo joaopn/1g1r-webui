@@ -6,8 +6,8 @@ import { api } from "@/lib/api";
 import { keys, queryClient, useFolder, useMeta } from "@/lib/queries";
 import { FolderHeader } from "@/pages/FolderHeader";
 
-/** Conversion and Discarded: the folder's facts until those parts are built. */
-export function FolderInfoPage({ section }: { section: "Conversion" | "Discarded" }) {
+/** Discarded: the folder's facts until that part is built. */
+export function FolderInfoPage({ section }: { section: "Discarded" }) {
   const { label = "" } = useParams();
   const meta = useMeta();
   const folder = useFolder(label, false);

@@ -20,6 +20,8 @@ const FOLDERS = [
     summary: { counts: {}, roms: 0, identified: 0, unmatched: 0, methods: {} },
     counts: {},
     reclaim_bytes: 0,
+    delete_originals: false,
+    conversion: { wrap: 0, unwrap: 0, flagged: 0, accepted: 0, done: 0, to_convert: 0, all: 0 },
   },
 ];
 

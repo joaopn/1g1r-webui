@@ -88,7 +88,7 @@ def rows(
         row = ConversionRow(rel, f["size"], container_of(rel, f["kind"]), members.get(rel, []))
         roms = [m for m in row.members if is_rom(m["name"])]
         if rel in problems:
-            row.status, row.note = FLAGGED, f"unreadable archive: {problems[rel]}"
+            row.status, row.note = FLAGGED, problems[rel]
         elif row.container != PLAIN and len(roms) != 1:
             row.status = FLAGGED
             row.note = (

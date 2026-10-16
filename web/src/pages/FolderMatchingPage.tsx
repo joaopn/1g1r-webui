@@ -1,14 +1,14 @@
 import { useMutation } from "@tanstack/react-query";
-import { RefreshCw, TriangleAlert } from "lucide-react";
+import { TriangleAlert } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { GamesTable } from "@/components/games/GamesTable";
 import { RankingEditor } from "@/components/RankingEditor";
+import { ScanPanel } from "@/components/ScanPanel";
 import { StatCard } from "@/components/StatCard";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { ApiError, api, json } from "@/lib/api";
-import { formatBytes, formatCount, formatWhen } from "@/lib/format";
+import { formatBytes, formatCount } from "@/lib/format";
 import { invalidateFolder, keys, queryClient, useFolder, useGames, useMeta } from "@/lib/queries";
 import type { Game, Ranking } from "@/lib/types";
 import { FolderHeader } from "@/pages/FolderHeader";
@@ -21,11 +21,6 @@ export function FolderMatchingPage() {
   const folder = useFolder(label, meta.data?.ui.poll_interval_ms ?? false);
   const games = useGames(label);
 
-  const scan = useMutation({
-    mutationFn: () => api(`/folders/${label}/scan`, { method: "POST" }),
-    onSuccess: () => invalidateFolder(label),
-    onError: (err) => toast.error(errorText(err)),
-  });
   const updateGame = (game: Game) =>
     queryClient.setQueryData<Game[]>(keys.games(label), (current) =>
       current?.map((g) => (g.key === game.key ? game : g)),
@@ -62,7 +57,6 @@ export function FolderMatchingPage() {
   if (!meta.data || !folder.data) return <p className="text-muted-foreground">Loading…</p>;
   const f = folder.data;
   const ui = meta.data.ui;
-  const running = f.scan?.status === "running";
   const source = f.dat ? meta.data.dat_sources[f.dat.source] : null;
   const other = (f.summary.counts.other ?? 0) + (f.summary.counts.ignored ?? 0);
 
@@ -70,49 +64,28 @@ export function FolderMatchingPage() {
     <div className="space-y-6">
       <FolderHeader folder={f} meta={meta.data} section="Matching & 1G1R" />
 
-      <section className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3">
-        <div className="space-y-1 text-sm">
-          <div>
-            <span className="font-medium">DAT</span>{" "}
-            {f.dat ? (
-              <>
-                {f.dat.header_name}{" "}
-                <span className="text-muted-foreground">
-                  · {source?.label} · {f.dat.version ?? "?"}
-                </span>{" "}
-                {source?.identification_only ? (
-                  <Badge
-                    variant="outline"
-                    className="border-status-warn text-status-warn"
-                    title="No parent/clone data: versions are grouped from Retool's clone lists and DAT names"
-                  >
-                    identification only
-                  </Badge>
-                ) : null}
-              </>
-            ) : (
-              <span className="text-status-warn">none — add one in Settings → DATs</span>
-            )}
-          </div>
-          <div className="text-muted-foreground">
-            {!f.scan ? (
-              "Not scanned yet."
-            ) : running ? (
-              `Scanning since ${formatWhen(f.scan.started_at)}…`
-            ) : f.scan.status === "done" ? (
-              `Last scan ${formatWhen(f.scan.finished_at)}: ${f.scan.message}.`
-            ) : (
-              <span className="text-status-bad">
-                Last scan failed ({formatWhen(f.scan.finished_at)}): {f.scan.message}
-              </span>
-            )}
-          </div>
-        </div>
-        <Button onClick={() => scan.mutate()} disabled={running || scan.isPending}>
-          <RefreshCw className={running ? "size-4 animate-spin" : "size-4"} aria-hidden="true" />
-          {f.scan ? "Scan again" : "Scan folder"}
-        </Button>
-      </section>
+      <ScanPanel label={label} scan={f.scan}>
+        <span className="font-medium">DAT</span>{" "}
+        {f.dat ? (
+          <>
+            {f.dat.header_name}{" "}
+            <span className="text-muted-foreground">
+              · {source?.label} · {f.dat.version ?? "?"}
+            </span>{" "}
+            {source?.identification_only ? (
+              <Badge
+                variant="outline"
+                className="border-status-warn text-status-warn"
+                title="No parent/clone data: versions are grouped from Retool's clone lists and DAT names"
+              >
+                identification only
+              </Badge>
+            ) : null}
+          </>
+        ) : (
+          <span className="text-status-warn">none — add one in Settings → DATs</span>
+        )}
+      </ScanPanel>
 
       {f.summary.roms > 0 ? (
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">

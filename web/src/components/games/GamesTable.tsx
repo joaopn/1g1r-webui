@@ -1,7 +1,6 @@
 import {
   ArrowDown,
   ArrowUp,
-  ChevronLeft,
   ChevronRight,
   Circle,
   CircleCheck,
@@ -15,6 +14,8 @@ import {
 } from "lucide-react";
 import { type CSSProperties, type KeyboardEvent, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { Pager } from "@/components/Pager";
+import { QuickViewBar } from "@/components/QuickViewBar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -169,8 +170,13 @@ export function GamesTable({
   return (
     <div className="space-y-3">
       <QuickViewBar
+        name="game-view"
+        views={QUICK_VIEWS.map((v) => ({
+          id: v.id,
+          label: v.label,
+          count: unviewed.filter(v.test).length,
+        }))}
         value={filter.view}
-        games={unviewed}
         onChange={(view) => setFilter({ ...filter, view })}
       />
       <div className="flex flex-wrap items-center gap-2">
@@ -245,29 +251,7 @@ export function GamesTable({
         </section>
       </div>
 
-      {pages > 1 ? (
-        <nav className="flex items-center justify-center gap-2 text-sm" aria-label="Pages">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={page <= 1}
-            onClick={() => setPage(page - 1)}
-          >
-            <ChevronLeft className="size-4" aria-hidden="true" /> Previous
-          </Button>
-          <span className="text-muted-foreground">
-            Page {page} of {pages}
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={page >= pages}
-            onClick={() => setPage(page + 1)}
-          >
-            Next <ChevronRight className="size-4" aria-hidden="true" />
-          </Button>
-        </nav>
-      ) : null}
+      <Pager page={page} pages={pages} onPage={setPage} />
     </div>
   );
 }
@@ -692,56 +676,6 @@ function VersionRow({
       <div className={GRID}>{columns.map((c) => cell(c.id))}</div>
       <span className="w-16 shrink-0" aria-hidden="true" />
     </div>
-  );
-}
-
-/** The horizontal bar of quick views, each with how many games it would show. */
-function QuickViewBar({
-  value,
-  games,
-  onChange,
-}: {
-  value: string;
-  games: Game[];
-  onChange: (view: string) => void;
-}) {
-  return (
-    <fieldset className="flex flex-wrap gap-1.5" data-testid="quick-views">
-      <legend className="sr-only">Show</legend>
-      {QUICK_VIEWS.map((view) => {
-        const active = view.id === value;
-        return (
-          <label
-            key={view.id}
-            className={cn(
-              "inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1 text-sm transition-colors",
-              "has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring",
-              active
-                ? "border-primary bg-primary text-primary-foreground"
-                : "border-border bg-card hover:bg-accent hover:text-accent-foreground",
-            )}
-          >
-            <input
-              type="radio"
-              name="quick-view"
-              className="sr-only"
-              value={view.id}
-              checked={active}
-              onChange={() => onChange(view.id)}
-            />
-            {view.label}
-            <span
-              className={cn(
-                "text-xs tabular-nums",
-                active ? "text-primary-foreground/80" : "text-muted-foreground",
-              )}
-            >
-              {formatCount(games.filter(view.test).length)}
-            </span>
-          </label>
-        );
-      })}
-    </fieldset>
   );
 }
 

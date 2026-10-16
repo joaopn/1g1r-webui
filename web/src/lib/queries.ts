@@ -1,6 +1,14 @@
 import { QueryClient, useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import type { DatRow, FolderCard, FolderDetail, Game, Meta, SettingsData } from "@/lib/types";
+import type {
+  Conversion,
+  DatRow,
+  FolderCard,
+  FolderDetail,
+  Game,
+  Meta,
+  SettingsData,
+} from "@/lib/types";
 
 export const queryClient = new QueryClient({
   defaultOptions: { queries: { refetchOnWindowFocus: false, retry: false } },
@@ -11,6 +19,7 @@ export const keys = {
   folders: ["folders"] as const,
   folder: (label: string) => ["folder", label] as const,
   games: (label: string) => ["games", label] as const,
+  conversion: (label: string) => ["conversion", label] as const,
   settings: ["settings"] as const,
   dats: ["dats"] as const,
 };
@@ -26,6 +35,12 @@ export const useDats = () =>
 export const useGames = (label: string) =>
   useQuery({ queryKey: keys.games(label), queryFn: () => api<Game[]>(`/folders/${label}/games`) });
 
+export const useConversion = (label: string) =>
+  useQuery({
+    queryKey: keys.conversion(label),
+    queryFn: () => api<Conversion>(`/folders/${label}/conversion`),
+  });
+
 export function useFolder(label: string, pollMs: number | false) {
   return useQuery({
     queryKey: keys.folder(label),
@@ -39,6 +54,7 @@ export function invalidateFolder(label: string) {
   return Promise.all([
     queryClient.invalidateQueries({ queryKey: keys.folder(label) }),
     queryClient.invalidateQueries({ queryKey: keys.games(label) }),
+    queryClient.invalidateQueries({ queryKey: keys.conversion(label) }),
     queryClient.invalidateQueries({ queryKey: keys.folders }),
   ]);
 }

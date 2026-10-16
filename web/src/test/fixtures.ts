@@ -1,4 +1,4 @@
-import type { Game, Meta } from "@/lib/types";
+import type { ConversionRow, Game, Meta } from "@/lib/types";
 
 const size = (rem: number) => ({ rem, min: rem / 2, max: rem * 3 });
 
@@ -56,8 +56,8 @@ export const META: Meta = {
     },
   },
   targets: {
-    zip: { label: "Zip (TorrentZip)", description: "" },
-    plain: { label: "Unpacked", description: "" },
+    zip: { label: "Zip (TorrentZip)", description: "", produces: "zip", accepts: ["zip", "7z"] },
+    plain: { label: "Unpacked", description: "", produces: "plain", accepts: ["plain"] },
   },
   dat_sources: { libretro: { label: "libretro-database mirror", identification_only: true } },
   ranking: {
@@ -140,4 +140,31 @@ export const GAMES: Game[] = [
     candidates: ["Arkanoid (Japan).zip"],
     versions: [version("Arkanoid (Japan).zip", ["Japan"], { keep: true })],
   },
+];
+
+const conversionRow = (row: Partial<ConversionRow> & { rel_path: string }): ConversionRow => ({
+  size: 1024,
+  container: "zip",
+  members: [{ name: row.rel_path.replace(/\.zip$/, ".nes"), size: 1024, crc32: "00000000" }],
+  status: "done",
+  output: null,
+  originals_to: null,
+  reversible: true,
+  verify: null,
+  note: "",
+  ...row,
+});
+
+export const CONVERSION_ROWS: ConversionRow[] = [
+  conversionRow({ rel_path: "Contra (USA).zip" }),
+  conversionRow({
+    rel_path: "Bare (Europe).nes",
+    container: "plain",
+    members: [],
+    status: "wrap",
+    output: "Bare (Europe).zip",
+    originals_to: "/roms/discarded/nes/originals/Bare (Europe).nes",
+  }),
+  conversionRow({ rel_path: "Two.zip", status: "flagged", note: "2 ROM files in one archive" }),
+  conversionRow({ rel_path: "Seven.7z", container: "7z", status: "accepted" }),
 ];

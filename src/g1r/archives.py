@@ -75,5 +75,5 @@ def list_members(
                     if not info.is_dir()
                 ]
         except (zipfile.BadZipFile, OSError) as exc:
-            raise ArchiveError(f"not a readable zip: {exc}") from exc
+            raise ArchiveError(f"unreadable zip: {exc}") from exc
     return parse_slt(seven_zip(settings, path))

@@ -45,7 +45,7 @@ def test_parse_slt_without_members_is_an_error():
 def test_unreadable_zip_is_an_error(tmp_path, make_settings):
     bad = tmp_path / "bad.zip"
     bad.write_bytes(b"not a zip")
-    with pytest.raises(archives.ArchiveError, match="not a readable zip"):
+    with pytest.raises(archives.ArchiveError, match="unreadable zip"):
         archives.list_members(make_settings(), bad)
 
 
