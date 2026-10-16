@@ -1,4 +1,4 @@
-# 1g1r-webui image. P0: the external tools only; the web app is added in P1.
+# 1g1r-webui image: the bundled external tools plus the web app.
 # Every tool version is pinned here and reported by docker/tool-versions.sh.
 
 FROM node:24-trixie-slim
@@ -28,4 +28,14 @@ RUN git clone --depth 1 --branch "${RETOOL_VERSION}" "${RETOOL_REPO}" /opt/retoo
 COPY docker/tool-versions.sh /usr/local/bin/tool-versions
 RUN chmod +x /usr/local/bin/tool-versions && tool-versions
 
-CMD ["tool-versions"]
+# The web app, in its own venv.
+COPY pyproject.toml README.md LICENSE /opt/app/
+COPY src /opt/app/src
+RUN python3 -m venv /opt/app/venv \
+ && /opt/app/venv/bin/pip install --no-cache-dir /opt/app \
+ && rm -rf /opt/app/src
+
+ENV G1R_DATA_DIR=/data
+# The port is set in config (server.port); EXPOSE only documents the default.
+EXPOSE 8080
+CMD ["/opt/app/venv/bin/python", "-m", "g1r"]

@@ -2,7 +2,7 @@
 
 A web UI for tidying ROM folders, one platform per folder: lossless conversion to the format your emulator plays, then checksum matching against DATs and one-game-one-ROM selection, reviewed in a table before anything is applied. Discarded files are moved, never deleted, and every reversible operation can be undone.
 
-Status: early development. This branch contains the tool image only (P0); the web app comes next.
+Status: early development, read-only. The app skeleton runs; platforms, DATs and matching arrive in the next builds.
 
 ## Tool image
 
@@ -26,3 +26,22 @@ They run as separate programs; their licences and sources are those of their ups
 ## Licence
 
 AGPL-3.0-or-later. See [LICENSE](LICENSE). Because this is a network application, the running web UI links to its source.
+
+## Running
+
+```sh
+cp compose.example.yaml compose.yaml   # adjust the host paths
+docker compose up -d --build           # then open http://localhost:8080
+```
+
+Configuration lives in `data/config.yaml` (mounted at `/data`). It is deep-merged over the shipped defaults in [`src/g1r/defaults.yaml`](src/g1r/defaults.yaml), which list and document every setting; unknown keys are rejected at start-up. Settings → Advanced shows the effective configuration.
+
+## Development
+
+```sh
+python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'
+.venv/bin/ruff check . && .venv/bin/ruff format --check .
+.venv/bin/pytest
+```
+
+Project rule: application code contains no magic numbers. Every tunable value goes in `defaults.yaml`; `tests/test_no_magic_numbers.py` and ruff's `PLR2004` enforce it.
