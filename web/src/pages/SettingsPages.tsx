@@ -79,7 +79,8 @@ export function PlatformsSettingsPage() {
               <tr key={id} className="border-border border-b last:border-b-0 hover:bg-accent/30">
                 <td className="px-3 py-2">
                   <span className="flex items-center gap-2">
-                    <PlatformIcon platform={p} /> {p.name}
+                    <PlatformIcon platform={p} widthRem={meta.data.ui.platform_icon_width_rem} />{" "}
+                    {p.name}
                   </span>
                 </td>
                 <td className="px-3 py-2 text-muted-foreground">{p.nointro_dat}</td>

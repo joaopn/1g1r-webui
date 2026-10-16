@@ -3,7 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { META } from "@/test/fixtures";
-import { AppShell } from "./AppShell";
+import { AppShell, navGroups } from "./AppShell";
 
 const FOLDERS = [
   {
@@ -78,4 +78,19 @@ test("the sidebar is resized with the keyboard and remembers its width", async (
   expect(window.localStorage.getItem("g1r.sidebar.width.v1")).toBe(
     String(META.ui.sidebar.width_rem + META.ui.resize_step_rem),
   );
+});
+
+test("folders are listed by platform name, then label", () => {
+  const folder = FOLDERS[0];
+  const folders = [
+    folder,
+    { ...folder, label: "gb-2", platform: "gb" },
+    { ...folder, label: "gb", platform: "gb" },
+  ];
+  const matching = navGroups(folders, META).find((g) => g.id === "matching");
+  expect(matching?.children.map((c) => c.title)).toEqual([
+    "Game Boy · gb",
+    "Game Boy · gb-2",
+    "Nintendo Entertainment System · nes",
+  ]);
 });

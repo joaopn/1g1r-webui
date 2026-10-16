@@ -114,7 +114,7 @@ export function AddPlatformDialog({
                       : "border-border hover:bg-accent/60",
                   )}
                 >
-                  <PlatformIcon platform={p} />
+                  <PlatformIcon platform={p} widthRem={meta.data?.ui.platform_icon_width_rem} />
                   <span className="truncate">{p.name}</span>
                 </button>
               ))}

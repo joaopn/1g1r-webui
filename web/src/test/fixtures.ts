@@ -11,6 +11,7 @@ export const META: Meta = {
     byte_unit_base: 1024,
     byte_units: ["B", "KiB", "MiB"],
     sidebar: { width_rem: 15, min_rem: 11, max_rem: 30 },
+    platform_icon_width_rem: 3.25,
     resize_step_rem: 0.25,
     resize_shift_multiplier: 4,
     rem_fallback_px: 16,

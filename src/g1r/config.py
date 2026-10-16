@@ -82,6 +82,7 @@ class UiConfig(_Strict):
     byte_unit_base: int = Field(gt=1)
     byte_units: list[str] = Field(min_length=1)
     sidebar: SidebarConfig
+    platform_icon_width_rem: float = Field(gt=0)
     resize_step_rem: float = Field(gt=0)
     resize_shift_multiplier: float = Field(gt=0)
     rem_fallback_px: float = Field(gt=0)

@@ -34,14 +34,18 @@ function folderChildren(
   meta: Meta | undefined,
   section: string,
 ): NavChild[] {
-  return folders.map((folder) => {
+  const name = (folder: FolderCard) => meta?.platforms[folder.platform]?.name ?? folder.platform;
+  const ordered = [...folders].sort(
+    (a, b) => name(a).localeCompare(name(b)) || a.label.localeCompare(b.label),
+  );
+  return ordered.map((folder) => {
     const platform = meta?.platforms[folder.platform];
     return {
       to: `/folders/${folder.label}/${section}`,
       title: `${platform?.name ?? folder.platform} · ${folder.label}`,
       label: (
         <span className="flex min-w-0 items-center gap-2">
-          <PlatformIcon platform={platform} />
+          <PlatformIcon platform={platform} widthRem={meta?.ui.platform_icon_width_rem} />
           <span className="truncate">{platform?.name ?? folder.platform}</span>
           <span className="shrink-0 text-muted-foreground text-xs">{folder.label}</span>
         </span>

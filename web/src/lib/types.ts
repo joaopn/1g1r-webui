@@ -26,6 +26,7 @@ export type Meta = {
     byte_unit_base: number;
     byte_units: string[];
     sidebar: { width_rem: number; min_rem: number; max_rem: number };
+    platform_icon_width_rem: number;
     resize_step_rem: number;
     resize_shift_multiplier: number;
     rem_fallback_px: number;

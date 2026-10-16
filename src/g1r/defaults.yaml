@@ -44,6 +44,9 @@ ui:
     width_rem: 17
     min_rem: 11
     max_rem: 30
+  # Width of a platform badge in lists (sidebar, settings), in rem, so the names beside it
+  # line up; wide enough for the longest short label plus its glyph.
+  platform_icon_width_rem: 3.25
   # One keyboard step when resizing a column or the sidebar, in rem; Shift multiplies it.
   resize_step_rem: 0.25
   resize_shift_multiplier: 4
