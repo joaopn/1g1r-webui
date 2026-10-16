@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Home</h1>
+{% if folders %}
+<div class="cards">{# one card per folder, P1g #}</div>
+{% else %}
+<section class="empty-state">
+  <h2>No platforms yet</h2>
+  <p>Add a platform folder with <strong>+ Add platform</strong>. Each folder holds exactly one platform; it then appears under Conversion, Matching &amp; 1G1R and Discarded.</p>
+  <p class="muted">This build is read-only: nothing in your ROM folders is changed.</p>
+</section>
+{% endif %}
+{% endblock %}

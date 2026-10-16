@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Settings · {{ settings.app.name }}{% endblock %}
+{% block content %}
+<h1>Settings</h1>
+<section>
+  <h2>Advanced</h2>
+  <p class="muted">The effective configuration: the shipped defaults merged with
+  <code>{{ settings.paths.data_dir }}/{{ settings.paths.user_config_file }}</code>.
+  Edit that file to change any value; it is read at start-up.</p>
+  <pre class="config">{{ effective }}</pre>
+</section>
+{% endblock %}

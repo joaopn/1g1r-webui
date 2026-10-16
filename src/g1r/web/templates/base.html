@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ settings.app.name }}{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='app.css') }}">
+  <script src="{{ url_for('static', path='vendor/htmx.min.js') }}" defer></script>
+</head>
+<body>
+  <div class="layout">
+    <nav class="sidebar" aria-label="Main">
+      <a class="brand" href="/">{{ settings.app.name }}</a>
+      <ul class="menu">
+        <li><a href="/" class="{{ 'active' if active == 'home' }}">Home</a></li>
+        {% for key, label in sections %}
+        <li>
+          <details open>
+            <summary class="{{ 'active' if active == key }}"><a href="/section/{{ key }}">{{ label }}</a></summary>
+            <ul class="submenu">
+              {% for folder in folders %}
+              <li><a href="/section/{{ key }}/{{ folder.label }}">{{ folder.platform }} · {{ folder.label }}</a></li>
+              {% else %}
+              <li class="empty">No platforms yet</li>
+              {% endfor %}
+            </ul>
+          </details>
+        </li>
+        {% endfor %}
+        <li><a href="/settings" class="{{ 'active' if active == 'settings' }}">Settings</a></li>
+      </ul>
+      <button class="add-platform" type="button" disabled title="Adding platforms arrives in the next build">+ Add platform</button>
+    </nav>
+    <main class="content">
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+  <footer class="footer">
+    {{ settings.app.name }} · AGPL-3.0-or-later ·
+    {% if settings.app.source_url %}<a href="{{ settings.app.source_url }}">Source code</a>
+    {% else %}<span class="warn">Source URL not configured (set <code>app.source_url</code>)</span>{% endif %}
+  </footer>
+</body>
+</html>
