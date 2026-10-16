@@ -35,7 +35,9 @@ def migrations() -> list[tuple[int, str, str]]:
 
 def connect(path: Path, busy_timeout_ms: int) -> sqlite3.Connection:
     path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(path, isolation_level=None)
+    # One connection serves one request, but FastAPI may hand it between threads
+    # (sync dependency, async endpoint), so the same-thread check is off.
+    conn = sqlite3.connect(path, isolation_level=None, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute(f"PRAGMA busy_timeout = {int(busy_timeout_ms)}")
     conn.execute("PRAGMA journal_mode = WAL")

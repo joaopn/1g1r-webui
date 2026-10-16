@@ -57,6 +57,7 @@ class DatabaseConfig(_Strict):
 
 class UiConfig(_Strict):
     page_size: int = Field(gt=0)
+    hash_display_length: int = Field(gt=0)
 
 
 class FoldersConfig(_Strict):
@@ -99,6 +100,31 @@ class PlatformsConfig(_Strict):
         return {p: self.profiles[p] for p in self.enabled}
 
 
+class DatSourceConfig(_Strict):
+    label: str
+    identification_only: bool
+    url_template: str | None = None
+    website: str | None = None
+
+
+class DatsConfig(_Strict):
+    directory: str
+    sources: dict[str, DatSourceConfig]
+    download_timeout_seconds: float = Field(gt=0)
+    max_upload_bytes: int = Field(gt=0)
+    user_agent: str
+    auto_activate_new: bool
+
+    @model_validator(mode="after")
+    def _known_sources(self) -> "DatsConfig":
+        required = {"libretro", "nointro", "upload"}
+        if not required <= set(self.sources):
+            raise ValueError(f"dats.sources must define {sorted(required)}")
+        if not self.sources["libretro"].url_template:
+            raise ValueError("dats.sources.libretro.url_template is required")
+        return self
+
+
 class Settings(_Strict):
     app: AppConfig
     server: ServerConfig
@@ -108,6 +134,11 @@ class Settings(_Strict):
     folders: FoldersConfig
     ignored_filenames: list[str]
     platforms: PlatformsConfig
+    dats: DatsConfig
+
+    @property
+    def dats_root(self) -> Path:
+        return self.paths.data_dir / self.dats.directory
 
 
 class ConfigError(ValueError):

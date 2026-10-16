@@ -30,10 +30,24 @@ class FolderEntry(BaseModel):
     path: str = Field(description="Relative to the mount root, POSIX separators; '' = root")
 
 
+class ActiveDat(BaseModel):
+    """The DAT a platform matches against, recorded explicitly."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    source: str
+    file: str = Field(description="Relative to the data directory")
+    header_name: str
+    version: str | None = None
+    sha1: str
+    pinned: bool = False
+
+
 class Library(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     platform_targets: dict[str, str] = Field(default_factory=dict)
+    dats: dict[str, ActiveDat] = Field(default_factory=dict)
     ignored_filenames: list[str] | None = None
     folders: list[FolderEntry] = Field(default_factory=list)
 

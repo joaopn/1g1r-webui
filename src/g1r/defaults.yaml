@@ -29,6 +29,8 @@ database:
 
 ui:
   page_size: 100
+  # Characters of a hash shown in tables (the full value is in the tooltip).
+  hash_display_length: 12
 
 folders:
   # Folder labels name the folder in the UI and its discarded/<label>/ directory.
@@ -219,3 +221,28 @@ platforms:
       rom_extensions: [wsc]
       targets: [zip, plain]
       default_target: zip
+
+dats:
+  # DAT files are stored under <data_dir>/<directory>/<platform>/<sha1>.dat.
+  directory: dats
+  sources:
+    libretro:
+      label: libretro-database mirror
+      # {name} is the platform's No-Intro DAT name.
+      url_template: "https://raw.githubusercontent.com/libretro/libretro-database/master/metadat/no-intro/{name}.dat"
+      # The mirror has no parent/clone data and lists headered and headerless NES
+      # entries separately: good for identifying files, not for grouping versions.
+      identification_only: true
+    nointro:
+      label: No-Intro (DAT-o-MATIC)
+      website: "https://datomatic.no-intro.org/index.php?page=download&s=64&op=daily"
+      identification_only: false
+    upload:
+      label: Uploaded file
+      identification_only: false
+  download_timeout_seconds: 60
+  max_upload_bytes: 536870912
+  user_agent: "1g1r-webui"
+  # A newly downloaded or uploaded version becomes active only when you choose it,
+  # except the very first DAT of a platform.
+  auto_activate_new: false
