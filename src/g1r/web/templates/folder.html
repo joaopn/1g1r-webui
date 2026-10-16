@@ -1,18 +1,66 @@
 {% extends "base.html" %}
 {% block title %}{{ folder.platform_name }} · {{ title }} · {{ settings.app.name }}{% endblock %}
 {% block content %}
-<h1>{{ folder.platform_name }} <span class="muted">· {{ folder.label }}</span></h1>
-<p class="muted">{{ title }}</p>
+<header class="page-head">
+  <h1>{{ folder.platform_name }} <span class="muted">· {{ folder.label }}</span></h1>
+  <p class="muted">{{ title }} · {% if folder.location %}<code>{{ folder.location }}</code>{% else %}<span class="warn">mount {{ folder.mount }} is not available</span>{% endif %}</p>
+</header>
+
+{% if active == 'matching' %}
+<section class="panel">
+  <div class="panel-row">
+    <div>
+      <strong>DAT:</strong>
+      {% if dat %}{{ dat.header_name }} <span class="muted">· {{ dat_sources[dat.source].label }} · {{ dat.version or '?' }}</span>
+        {% if dat_sources[dat.source].identification_only %}<span class="badge warn" title="Versions are not grouped from this DAT">identification only</span>{% endif %}
+      {% else %}<span class="warn">none — add one in <a href="/settings/dats#{{ folder.platform }}">Settings → DATs</a></span>{% endif %}
+    </div>
+    {% include "scan_status.html" with context %}
+  </div>
+</section>
+
+{% if summary.roms or summary.counts %}
+<section class="stats" aria-label="Scan results">
+  <div class="stat"><span class="value">{{ "{:,}".format(summary.roms) }}</span><span class="label">ROM files</span></div>
+  <div class="stat"><span class="value">{{ "{:,}".format(summary.identified) }}</span><span class="label">identified</span></div>
+  <div class="stat {{ 'attention' if summary.unmatched }}"><span class="value">{{ "{:,}".format(summary.unmatched) }}</span><span class="label">unmatched</span></div>
+  <div class="stat"><span class="value">{{ "{:,}".format(summary.counts.get('ignored', 0) + summary.counts.get('other', 0)) }}</span><span class="label">other files</span></div>
+</section>
+{% if summary.counts.get('other', 0) %}
+<p class="notice warn-notice">{{ summary.counts.other }} file(s) here are not {{ folder.platform_name }} ROMs or archives. A folder must contain one platform only; they are listed below and never touched.</p>
+{% endif %}
+<p class="muted">Identified by checksum in the DAT: {{ summary.methods.get('dat-checksum', 0) }}{% if summary.methods.get('dat-headerless') %} · after stripping a copier header: {{ summary.methods['dat-headerless'] }}{% endif %}. The game table with versions and the 1G1R choice comes next.</p>
+
+<section>
+  <h2>Unmatched content <span class="muted">({{ unmatched | length }})</span></h2>
+  {% if unmatched %}
+  <table class="grid"><thead><tr><th>File</th><th class="num">Size</th></tr></thead><tbody>
+  {% for f in unmatched %}<tr><td>{{ f.rel_path }}</td><td class="num">{{ "{:,}".format(f.size) }}</td></tr>{% endfor %}
+  </tbody></table>
+  <p class="muted small">Online lookups (Hasheous, ScreenScraper) and manual assignment come in a later build. These files are kept as they are.</p>
+  {% else %}<p class="muted">Every ROM file was identified.</p>{% endif %}
+</section>
+
+{% if others %}
+<section>
+  <h2>Other files <span class="muted">({{ others | length }})</span></h2>
+  <table class="grid"><thead><tr><th>File</th><th>Why</th></tr></thead><tbody>
+  {% for f in others %}<tr><td>{{ f.rel_path }}</td><td class="muted">{{ 'ignored filename' if f.kind == 'ignored' else 'not a ' ~ folder.platform_name ~ ' ROM' }}</td></tr>{% endfor %}
+  </tbody></table>
+</section>
+{% endif %}
+{% endif %}
+
+{% else %}
 <dl class="facts">
-  <dt>Folder</dt><dd>{% if folder.location %}<code>{{ folder.location }}</code>{% else %}<span class="warn">mount {{ folder.mount }} is not available</span>{% endif %}</dd>
   <dt>Platform</dt><dd>{{ folder.platform_name }} (<code>{{ folder.platform }}</code>)</dd>
   <dt>Target format</dt><dd>{{ target.label }} · <a href="/settings#platforms">change for all {{ folder.platform_name }} folders</a></dd>
   <dt>Discarded files go to</dt><dd><code>{{ settings.paths.discarded_root }}/{{ folder.label }}/</code>{% if not folder.on_main_mount %} <span class="warn">(another disk: moves will be copy, verify, then remove)</span>{% endif %}</dd>
 </dl>
-<section class="empty-state">
-  <p>Scanning, matching and the tables arrive in the next builds. Nothing in this folder is changed.</p>
-</section>
-<form method="post" action="/folders/{{ folder.label }}/remove" onsubmit="return confirm('Remove {{ folder.label }} from the app? Files on disk are not touched.')">
+<section class="empty-state"><p>{{ title }} for this folder arrives in a later build. Nothing in this folder is changed.</p></section>
+{% endif %}
+
+<form method="post" action="/folders/{{ folder.label }}/remove" class="remove" onsubmit="return confirm('Remove {{ folder.label }} from the app? Files on disk are not touched.')">
   <button type="submit" class="subtle">Remove from the app (files are not touched)</button>
 </form>
 {% endblock %}

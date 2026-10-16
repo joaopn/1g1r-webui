@@ -46,7 +46,8 @@ def test_add_platform_saves_and_redirects(setup):
     assert response.headers["HX-Redirect"] == "/section/matching/nes-set-no-intro"
     folder = store.load().folder("nes-set-no-intro")
     assert (folder.platform, folder.mount, folder.path) == ("nes", "roms", "NES Set (No-Intro)")
-    page = client.get("/section/matching/nes-set-no-intro").text
+    assert "Scan folder" in client.get("/section/matching/nes-set-no-intro").text
+    page = client.get("/section/conversion/nes-set-no-intro").text
     assert "Nintendo Entertainment System" in page
     assert "discarded/nes-set-no-intro/" in page
     for section in ("conversion", "matching", "discarded"):

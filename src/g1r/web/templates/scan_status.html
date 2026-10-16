@@ -1,0 +1,16 @@
+<div id="scan-status" class="scan-status"
+  {% if scan and scan.status == 'running' %}hx-get="/folders/{{ label }}/scan-status?polling=true" hx-trigger="every {{ settings.ui.poll_interval_ms }}ms" hx-swap="outerHTML"{% endif %}>
+  {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+  {% if not scan %}
+    <span class="muted">Not scanned yet.</span>
+  {% elif scan.status == 'running' %}
+    <span class="spinner" aria-hidden="true"></span> Scanning since {{ scan.started_at }}…
+  {% elif scan.status == 'done' %}
+    Last scan {{ scan.finished_at }}: {{ scan.message }}.
+  {% else %}
+    <span class="error">Last scan failed ({{ scan.finished_at }}): {{ scan.message }}</span>
+  {% endif %}
+  {% if not scan or scan.status != 'running' %}
+  <button type="button" class="primary" hx-post="/folders/{{ label }}/scan" hx-target="#scan-status" hx-swap="outerHTML">{{ 'Scan again' if scan else 'Scan folder' }}</button>
+  {% endif %}
+</div>

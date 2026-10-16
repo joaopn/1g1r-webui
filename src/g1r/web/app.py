@@ -15,9 +15,10 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from g1r import db, mounts
+from g1r import db, mounts, scanner
 from g1r.config import Settings, load_settings
 from g1r.dat_registry import DatRegistry, Fetch, RegistryError
+from g1r.jobs import Jobs
 from g1r.library import FolderEntry, Library, LibraryStore
 
 _WEB = resources.files("g1r").joinpath("web")
@@ -38,19 +39,28 @@ def suggest_label(path: str) -> str:
     return _LABEL_UNSAFE.sub("-", name).strip("-._")
 
 
-def create_app(settings: Settings | None = None, fetch: Fetch | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    fetch: Fetch | None = None,
+    report_runner: scanner.ReportRunner | None = None,
+) -> FastAPI:
     settings = settings or load_settings()
     store = LibraryStore(settings)
     registry = DatRegistry(settings, store, fetch)
+    folder_scanner = scanner.Scanner(settings, store, registry, report_runner)
     label_pattern = re.compile(settings.folders.label_pattern)
     platforms = settings.platforms.enabled_profiles()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         # Migrate once at start-up; requests then open their own connections.
-        db.open_database(settings).close()
+        conn = db.open_database(settings)
+        scanner.fail_interrupted(conn)
+        conn.close()
         store.load()  # fail fast on an invalid library.yaml
+        app.state.jobs = Jobs(settings, folder_scanner)
         yield
+        app.state.jobs.shutdown()
 
     def get_db() -> Iterator[sqlite3.Connection]:
         conn = db.connect(settings.paths.database_path, settings.database.busy_timeout_ms)
@@ -107,22 +117,65 @@ def create_app(settings: Settings | None = None, fetch: Fetch | None = None) -> 
         return render(request, "section.html", section, title=titles[section])
 
     @app.get("/section/{section}/{label}", response_class=HTMLResponse)
-    def folder_page(request: Request, section: str, label: str):
+    def folder_page(
+        request: Request,
+        section: str,
+        label: str,
+        conn: Annotated[sqlite3.Connection, Depends(get_db)],
+    ):
         titles = dict(SECTIONS)
         library = store.load()
         folder = library.folder(label)
         if section not in titles or folder is None:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND)
         view = folder_view(library, folder)
-        return render(
-            request,
-            "folder.html",
-            section,
-            title=titles[section],
-            folder=view,
-            active_folder=label,
-            target=settings.platforms.targets[view["target"]],
-        )
+        context = {
+            "title": titles[section],
+            "folder": view,
+            "active_folder": label,
+            "target": settings.platforms.targets[view["target"]],
+            "dat": registry.active_version(conn, library, folder.platform),
+            "dat_sources": settings.dats.sources,
+            "scan": scanner.latest_scan(conn, label),
+        }
+        if section == "matching":
+            context |= {
+                "summary": scanner.folder_summary(conn, label),
+                "unmatched": scanner.unmatched_files(conn, label),
+                "others": scanner.other_files(conn, label),
+            }
+        return render(request, "folder.html", section, **context)
+
+    # Scans -------------------------------------------------------------------------
+
+    def scan_status(request: Request, conn, label: str, polling: bool) -> HTMLResponse:
+        scan = scanner.latest_scan(conn, label)
+        if polling and (scan is None or scan["status"] != "running"):
+            return HTMLResponse("", headers={"HX-Refresh": "true"})
+        return partial(request, "scan_status.html", scan=scan, label=label)
+
+    @app.post("/folders/{label}/scan", response_class=HTMLResponse)
+    def start_scan(
+        request: Request, label: str, conn: Annotated[sqlite3.Connection, Depends(get_db)]
+    ):
+        if store.load().folder(label) is None:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND)
+        error = None
+        try:
+            request.app.state.jobs.scan(conn, label)
+        except scanner.ScanError as exc:
+            error = str(exc)
+        scan = scanner.latest_scan(conn, label)
+        return partial(request, "scan_status.html", scan=scan, label=label, error=error)
+
+    @app.get("/folders/{label}/scan-status", response_class=HTMLResponse)
+    def get_scan_status(
+        request: Request,
+        label: str,
+        conn: Annotated[sqlite3.Connection, Depends(get_db)],
+        polling: bool = False,
+    ):
+        return scan_status(request, conn, label, polling)
 
     # Add platform ----------------------------------------------------------------
 
