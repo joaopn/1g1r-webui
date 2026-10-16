@@ -28,12 +28,16 @@ import {
   COLUMNS,
   type Column,
   type ColumnId,
+  DEFAULT_VIEW,
   filterGames,
+  filterGamesExceptView,
   flagsOf,
   type GameFilter,
   loadColumns,
   loadWidths,
   NO_FILTER,
+  QUICK_VIEWS,
+  quickView,
   representative,
   SOURCE_LABELS,
   STATUS_ORDER,
@@ -61,8 +65,8 @@ function readFilter(params: URLSearchParams): GameFilter {
     .filter((s): s is GameStatus => (STATUS_ORDER as string[]).includes(s));
   return {
     q: params.get("q") ?? "",
+    view: quickView(params.get("view") ?? DEFAULT_VIEW).id,
     statuses,
-    several: params.get("several") === "1",
     moves: params.get("moves") === "1",
     source: params.get("source") ?? "",
   };
@@ -72,8 +76,8 @@ function writeFilter(params: URLSearchParams, filter: GameFilter): URLSearchPara
   const next = new URLSearchParams(params);
   const set = (key: string, value: string) => (value ? next.set(key, value) : next.delete(key));
   set("q", filter.q);
+  set("view", filter.view === DEFAULT_VIEW ? "" : filter.view);
   set("status", filter.statuses.join(","));
-  set("several", filter.several ? "1" : "");
   set("moves", filter.moves ? "1" : "");
   set("source", filter.source);
   next.delete("page");
@@ -108,6 +112,7 @@ export function GamesTable({
   );
   const sizes = meta.ui.game_columns;
 
+  const unviewed = useMemo(() => filterGamesExceptView(games, filter), [games, filter]);
   const filtered = useMemo(() => filterGames(games, filter), [games, filter]);
   const sorted = useMemo(() => sortGames(filtered, sort, order), [filtered, sort, order]);
   const pageSize = meta.ui.page_size;
@@ -163,6 +168,11 @@ export function GamesTable({
 
   return (
     <div className="space-y-3">
+      <QuickViewBar
+        value={filter.view}
+        games={unviewed}
+        onChange={(view) => setFilter({ ...filter, view })}
+      />
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative min-w-56 flex-1">
           <Search
@@ -685,6 +695,56 @@ function VersionRow({
   );
 }
 
+/** The horizontal bar of quick views, each with how many games it would show. */
+function QuickViewBar({
+  value,
+  games,
+  onChange,
+}: {
+  value: string;
+  games: Game[];
+  onChange: (view: string) => void;
+}) {
+  return (
+    <fieldset className="flex flex-wrap gap-1.5" data-testid="quick-views">
+      <legend className="sr-only">Show</legend>
+      {QUICK_VIEWS.map((view) => {
+        const active = view.id === value;
+        return (
+          <label
+            key={view.id}
+            className={cn(
+              "inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1 text-sm transition-colors",
+              "has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring",
+              active
+                ? "border-primary bg-primary text-primary-foreground"
+                : "border-border bg-card hover:bg-accent hover:text-accent-foreground",
+            )}
+          >
+            <input
+              type="radio"
+              name="quick-view"
+              className="sr-only"
+              value={view.id}
+              checked={active}
+              onChange={() => onChange(view.id)}
+            />
+            {view.label}
+            <span
+              className={cn(
+                "text-xs tabular-nums",
+                active ? "text-primary-foreground/80" : "text-muted-foreground",
+              )}
+            >
+              {formatCount(games.filter(view.test).length)}
+            </span>
+          </label>
+        );
+      })}
+    </fieldset>
+  );
+}
+
 function FilterButton({
   filter,
   onChange,
@@ -739,15 +799,6 @@ function FilterButton({
             <input
               type="checkbox"
               className="size-3.5 accent-primary"
-              checked={filter.several}
-              onChange={() => onChange({ ...filter, several: !filter.several })}
-            />
-            Several versions only
-          </label>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              className="size-3.5 accent-primary"
               checked={filter.moves}
               onChange={() => onChange({ ...filter, moves: !filter.moves })}
             />
@@ -774,7 +825,7 @@ function FilterButton({
           size="sm"
           className="mt-3 w-full"
           disabled={active === 0}
-          onClick={() => onChange({ ...NO_FILTER, q: filter.q })}
+          onClick={() => onChange({ ...NO_FILTER, q: filter.q, view: filter.view })}
         >
           Clear filters
         </Button>

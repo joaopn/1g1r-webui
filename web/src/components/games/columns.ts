@@ -167,33 +167,56 @@ export function sortGames(games: Game[], id: ColumnId | null, order: "asc" | "de
   });
 }
 
+/**
+ * The quick-filter bar above the table: one view at a time, for the common cuts. Add a view
+ * here and it appears in the bar, with its count.
+ */
+export type QuickView = { id: string; label: string; test: (game: Game) => boolean };
+
+export const QUICK_VIEWS: QuickView[] = [
+  { id: "all", label: "All", test: () => true },
+  { id: "one", label: "One version", test: (g) => g.versions.length === 1 },
+  { id: "several", label: "Several versions", test: (g) => g.versions.length > 1 },
+];
+
+export const DEFAULT_VIEW = QUICK_VIEWS[0].id;
+
+export function quickView(id: string): QuickView {
+  return QUICK_VIEWS.find((v) => v.id === id) ?? QUICK_VIEWS[0];
+}
+
 export type GameFilter = {
   q: string;
+  view: string;
   statuses: GameStatus[];
-  several: boolean;
   moves: boolean;
   source: string;
 };
 
 export const NO_FILTER: GameFilter = {
   q: "",
+  view: DEFAULT_VIEW,
   statuses: [],
-  several: false,
   moves: false,
   source: "",
 };
 
+/** Filters set in the popover; the quick view and the search show on their own. */
 export function activeFilterCount(filter: GameFilter): number {
-  return [filter.statuses.length > 0, filter.several, filter.moves, filter.source !== ""].filter(
-    Boolean,
-  ).length;
+  return [filter.statuses.length > 0, filter.moves, filter.source !== ""].filter(Boolean).length;
+}
+
+/** Every filter but the quick view, so the bar can count what each view would show. */
+export function filterGamesExceptView(games: Game[], filter: GameFilter): Game[] {
+  return filterGames(games, { ...filter, view: DEFAULT_VIEW });
 }
 
 export function filterGames(games: Game[], filter: GameFilter): Game[] {
   const needle = filter.q.trim().toLowerCase();
+  const view = quickView(filter.view);
   return games.filter((game) => {
+    if (!view.test(game)) return false;
     if (filter.statuses.length > 0 && !filter.statuses.includes(game.status)) return false;
-    if (filter.several && game.versions.length <= 1) return false;
     if (filter.moves && !game.versions.some((v) => v.operation)) return false;
     if (filter.source && game.source !== filter.source) return false;
     if (!needle) return true;

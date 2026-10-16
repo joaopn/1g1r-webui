@@ -89,3 +89,16 @@ test("search and the status filter narrow the list", async () => {
   await userEvent.click(screen.getByRole("checkbox", { name: /undecided/ }));
   expect(gameNames()).toEqual(["Gradius"]);
 });
+
+test("the quick-view bar shows one-version or several-version games, with counts", async () => {
+  renderTable();
+  const bar = screen.getByTestId("quick-views");
+  expect(within(bar).getByRole("radio", { name: /All/ })).toBeChecked();
+  expect(within(bar).getByText("Several versions").parentElement).toHaveTextContent("2");
+  await userEvent.click(within(bar).getByRole("radio", { name: /Several versions/ }));
+  expect(gameNames()).toEqual(["Contra", "Gradius"]);
+  expect(screen.queryByText("Arkanoid")).not.toBeInTheDocument();
+  await userEvent.click(within(bar).getByRole("radio", { name: /One version/ }));
+  expect(screen.getByText("Arkanoid")).toBeInTheDocument();
+  expect(screen.queryByText("Contra")).not.toBeInTheDocument();
+});
