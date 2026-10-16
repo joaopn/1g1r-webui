@@ -1,0 +1,29 @@
+# Shipped defaults. Every tunable value of the application lives here; code never
+# hardcodes one. Override any key in <data_dir>/config.yaml (deep-merged over this file).
+
+app:
+  name: 1g1r-webui
+  # AGPL-3.0 §13: the running web UI links to its source. Set this to the public
+  # repository of the version you run.
+  source_url: ""
+
+server:
+  host: 0.0.0.0
+  port: 8080
+
+paths:
+  # Where config.yaml, the database, DATs and caches live (a bind mount).
+  data_dir: /data
+  database_file: state.db
+  user_config_file: config.yaml
+  # The main ROM bind mount; discarded files go to <roms_root>/<discarded_dirname>/.
+  roms_root: /roms
+  discarded_dirname: discarded
+  # Additional bind mounts are declared in compose under this directory.
+  extra_mounts_root: /mnt
+
+database:
+  busy_timeout_ms: 5000
+
+ui:
+  page_size: 100
