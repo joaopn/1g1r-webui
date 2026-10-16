@@ -34,6 +34,8 @@ class PathsConfig(_Strict):
     database_file: str
     user_config_file: str
     library_file: str
+    # The built web app (index.html + assets/); nothing is served when it is missing.
+    web_dist: Path
     roms_root: Path
     discarded_dirname: str
     extra_mounts_root: Path
@@ -55,12 +57,43 @@ class DatabaseConfig(_Strict):
     busy_timeout_ms: int = Field(ge=0)
 
 
+class ColumnSize(_Strict):
+    rem: float = Field(gt=0)
+    min: float = Field(gt=0)
+    max: float = Field(gt=0)
+
+    @model_validator(mode="after")
+    def _ordered(self) -> "ColumnSize":
+        if not self.min <= self.rem <= self.max:
+            raise ValueError("a column size needs min <= rem <= max")
+        return self
+
+
+class SidebarConfig(_Strict):
+    width_rem: float = Field(gt=0)
+    min_rem: float = Field(gt=0)
+    max_rem: float = Field(gt=0)
+
+
 class UiConfig(_Strict):
     page_size: int = Field(gt=0)
     poll_interval_ms: int = Field(gt=0)
     hash_display_length: int = Field(gt=0)
     byte_unit_base: int = Field(gt=1)
     byte_units: list[str] = Field(min_length=1)
+    sidebar: SidebarConfig
+    resize_step_rem: float = Field(gt=0)
+    resize_shift_multiplier: float = Field(gt=0)
+    rem_fallback_px: float = Field(gt=0)
+    game_columns: dict[str, ColumnSize]
+    game_columns_default: list[str] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _known_defaults(self) -> "UiConfig":
+        unknown = [c for c in self.game_columns_default if c not in self.game_columns]
+        if unknown:
+            raise ValueError(f"ui.game_columns_default names unknown columns {unknown}")
+        return self
 
 
 class FoldersConfig(_Strict):
@@ -72,8 +105,14 @@ class TargetConfig(_Strict):
     description: str
 
 
+PLATFORM_KINDS = ("console", "handheld")
+
+
 class PlatformProfile(_Strict):
     name: str
+    # The platform's icon: a short label in a chip, and the kind of device it is.
+    short: str = Field(min_length=1)
+    kind: str
     nointro_dat: str
     rom_extensions: list[str] = Field(min_length=1)
     targets: list[str] = Field(min_length=1)
@@ -97,6 +136,8 @@ class PlatformsConfig(_Strict):
                 raise ValueError(f"platform {platform_id}: unknown targets {unknown}")
             if profile.default_target not in profile.targets:
                 raise ValueError(f"platform {platform_id}: default_target not in its targets")
+            if profile.kind not in PLATFORM_KINDS:
+                raise ValueError(f"platform {platform_id}: kind must be one of {PLATFORM_KINDS}")
         return self
 
     def enabled_profiles(self) -> dict[str, PlatformProfile]:

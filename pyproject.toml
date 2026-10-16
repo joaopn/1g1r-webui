@@ -11,7 +11,6 @@ requires-python = ">=3.13"
 dependencies = [
     "fastapi~=0.143.3",
     "uvicorn~=0.54.0",
-    "jinja2~=3.1.6",
     "pydantic~=2.14.1",
     "pyyaml~=6.0.3",
     "python-multipart~=0.0.32",
@@ -24,7 +23,7 @@ dev = ["pytest~=9.1.1", "httpx2~=2.13.1", "ruff~=0.17.1"]
 where = ["src"]
 
 [tool.setuptools.package-data]
-g1r = ["defaults.yaml", "migrations/*.sql", "web/templates/*.html", "web/static/*.css", "web/static/*.js", "web/static/vendor/*"]
+g1r = ["defaults.yaml", "migrations/*.sql"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
