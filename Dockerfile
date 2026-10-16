@@ -7,6 +7,8 @@ ARG IGIR_VERSION=5.7.2
 ARG DOLPHIN_TOOL_VERSION=0.2606.2
 ARG RETOOL_VERSION=v2.4.9
 ARG RETOOL_REPO=https://github.com/unexpectedpanda/retool.git
+ARG CLONELISTS_REPO=https://github.com/unexpectedpanda/retool-clonelists-metadata.git
+ARG CLONELISTS_COMMIT=0b3ca8be34308e64f136a4c58086fe76a5fd6b2a
 
 # chdman (MAME 0.276) and 7-Zip (binary `7z`, 7-Zip 25.01) from Debian trixie; Python for the app and Retool.
 RUN apt-get update \
@@ -24,6 +26,15 @@ RUN git clone --depth 1 --branch "${RETOOL_VERSION}" "${RETOOL_REPO}" /opt/retoo
  && python3 -m venv /opt/retool/venv \
  && /opt/retool/venv/bin/pip install --no-cache-dir \
       "alive-progress>=3.3.0" "lxml>=6.0.2" "psutil>=7.1.3" "strictyaml>=1.7.3" "validators>=0.35.0"
+
+# Retool's clone lists (BSD-3) are not part of its release; pin them by commit.
+RUN git init -q /tmp/cl && cd /tmp/cl \
+ && git fetch -q --depth 1 "${CLONELISTS_REPO}" "${CLONELISTS_COMMIT}" \
+ && git checkout -q FETCH_HEAD \
+ && mkdir -p /opt/retool \
+ && mv clonelists /opt/retool/clonelists && cp LICENSE /opt/retool/clonelists/LICENSE \
+ && echo "${CLONELISTS_COMMIT}" > /opt/retool/clonelists/COMMIT \
+ && rm -rf /tmp/cl
 
 COPY docker/tool-versions.sh /usr/local/bin/tool-versions
 RUN chmod +x /usr/local/bin/tool-versions && tool-versions

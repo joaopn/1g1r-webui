@@ -18,4 +18,5 @@ check dolphin-tool sh -c 'dolphin-tool 2>&1 | grep -q -i usage && npm ls -g --de
 check node        node --version
 check python3     python3 --version
 check retool      sh -c 'cd /opt/retool && /opt/retool/venv/bin/python retool.py --help 2>&1 | grep -m1 -i retool'
+check clonelists sh -c 'printf "%s files @ %s" "$(ls /opt/retool/clonelists/*.json | wc -l)" "$(cut -c1-12 /opt/retool/clonelists/COMMIT)"'
 exit $status

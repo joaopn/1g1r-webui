@@ -1,0 +1,7 @@
+{"description": {"name": "Nintendo - Nintendo Entertainment System (No-Intro)"},
+ "variants": [
+  {"group": "Mother", "titles": [{"searchTerm": "Mother"}, {"searchTerm": "EarthBound Beginnings"}]},
+  {"group": "Tetris", "titles": [{"searchTerm": "Tetris"}]},
+  {"group": "Tetris - Tengen", "titles": [{"searchTerm": "Tetris (Tengen)"}, {"searchTerm": "Super Tetris II"}]},
+  {"group": "Exact", "titles": [{"searchTerm": "Odd Name (Japan) (Special)", "nameType": "full"}, {"searchTerm": "Odd Name"}]}
+ ]}
