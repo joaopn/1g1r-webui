@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ApiError, api, json, upload } from "@/lib/api";
 import { formatCount, formatWhen } from "@/lib/format";
+import { platformsByName } from "@/lib/platforms";
 import { keys, queryClient, useDats, useMeta, useSettingsData } from "@/lib/queries";
 import type { DatRow, Meta } from "@/lib/types";
 
@@ -75,7 +76,7 @@ export function PlatformsSettingsPage() {
             </tr>
           </thead>
           <tbody>
-            {Object.entries(meta.data.platforms).map(([id, p]) => (
+            {platformsByName(meta.data.platforms).map(([id, p]) => (
               <tr key={id} className="border-border border-b last:border-b-0 hover:bg-accent/30">
                 <td className="px-3 py-2">
                   <span className="flex items-center gap-2">
@@ -167,7 +168,8 @@ function DatRowView({ row, meta }: { row: DatRow; meta: Meta }) {
     >
       <td className="px-3 py-2.5">
         <span className="flex items-center gap-2 font-medium">
-          <PlatformIcon platform={platform} /> {platform?.name}
+          <PlatformIcon platform={platform} widthRem={meta.ui.platform_icon_width_rem} />{" "}
+          {platform?.name}
         </span>
         {row.folders.length > 0 ? (
           <span className="text-muted-foreground text-xs">folders: {row.folders.join(", ")}</span>
@@ -361,9 +363,15 @@ export function DatsSettingsPage() {
             </tr>
           </thead>
           <tbody>
-            {dats.data.map((row) => (
-              <DatRowView key={row.platform} row={row} meta={meta.data} />
-            ))}
+            {[...dats.data]
+              .sort((a, b) =>
+                (meta.data.platforms[a.platform]?.name ?? a.platform).localeCompare(
+                  meta.data.platforms[b.platform]?.name ?? b.platform,
+                ),
+              )
+              .map((row) => (
+                <DatRowView key={row.platform} row={row} meta={meta.data} />
+              ))}
           </tbody>
         </table>
       </div>

@@ -16,6 +16,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ApiError, api, json } from "@/lib/api";
+import { platformsByName } from "@/lib/platforms";
 import { keys, queryClient, useMeta } from "@/lib/queries";
 import type { Browse, FolderInfo } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -68,7 +69,7 @@ export function AddPlatformDialog({
     onError: (err) => setError(err instanceof ApiError ? err.message : String(err)),
   });
 
-  const platforms = Object.entries(meta.data?.platforms ?? {});
+  const platforms = platformsByName(meta.data?.platforms ?? {});
   const crumbs = path ? path.split("/") : [];
 
   return (
