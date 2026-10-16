@@ -67,3 +67,12 @@ def test_human_formatters():
     assert human_bytes(5 * 1024**3, 1024, units) == "5120.0 MiB"
     assert human_bytes(None, 1024, units) == ""
     assert human_time("2026-10-16T19:59:08Z") == "2026-10-16 19:59 UTC"
+
+
+def test_assets_use_relative_urls_behind_a_proxy(client):
+    # Regression: absolute http:// asset URLs were blocked behind an HTTPS port-forward,
+    # leaving the UI unstyled.
+    page = client.get("/", headers={"Host": "proxy.example", "X-Forwarded-Proto": "https"}).text
+    assert 'href="/static/app.css"' in page
+    assert 'src="/static/vendor/htmx.min.js"' in page
+    assert "http://" not in page.split("<body>")[0]
