@@ -1,0 +1,32 @@
+<form class="add-platform-form" hx-post="/platforms" hx-target="#modal-body">
+  <h2 id="modal-title">Add platform</h2>
+  <p class="notice">A folder must contain games of <strong>one platform only</strong>. Every folder is handled on its own, even when two folders have the same platform.</p>
+  {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+
+  <label for="platform">Platform</label>
+  <select id="platform" name="platform" required>
+    <option value="">Choose…</option>
+    {% for pid, profile in platforms.items() %}
+    <option value="{{ pid }}" {{ 'selected' if values.platform == pid }} data-target="{{ target_labels[targets[pid]].label }}">{{ profile.name }}</option>
+    {% endfor %}
+  </select>
+  <p class="muted small">Only supported platforms are listed. The conversion target is set per platform in <a href="/settings#platforms">Settings → Platforms</a>.</p>
+
+  <label for="mount">Mount</label>
+  <select id="mount" name="mount" hx-get="/browse" hx-target="#browser" hx-include="[name=mount]" hx-vals='{"path": ""}'>
+    {% for m in mounts %}
+    <option value="{{ m.id }}" {{ 'selected' if browser.mount == m.id }}>{{ m.root }}</option>
+    {% endfor %}
+  </select>
+
+  <div id="browser">{% include "folder_browser.html" %}</div>
+
+  <label for="label">Label</label>
+  <input id="label" name="label" value="{{ values.label or '' }}" placeholder="{{ browser.suggested_label or 'e.g. nes' }}" pattern="{{ settings.folders.label_pattern }}">
+  <p class="muted small">Names the folder in the sidebar and its <code>discarded/&lt;label&gt;/</code> directory. Leave empty to use the folder name.</p>
+
+  <div class="actions">
+    <button type="button" data-close>Cancel</button>
+    <button type="submit" class="primary">Add platform</button>
+  </div>
+</form>

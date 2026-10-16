@@ -2,11 +2,17 @@
 {% block content %}
 <h1>Home</h1>
 {% if folders %}
-<div class="cards">{# one card per folder, P1g #}</div>
+<ul class="folder-list">
+  {% for folder in folders %}
+  <li><a href="/section/matching/{{ folder.label }}">{{ folder.platform_name }} · {{ folder.label }}</a>
+    <span class="muted">{{ folder.location or ('mount ' ~ folder.mount ~ ' unavailable') }}</span></li>
+  {% endfor %}
+</ul>
+<p class="muted">The dashboard (matched, unmatched, pending operations per folder) arrives with matching.</p>
 {% else %}
 <section class="empty-state">
   <h2>No platforms yet</h2>
-  <p>Add a platform folder with <strong>+ Add platform</strong>. Each folder holds exactly one platform; it then appears under Conversion, Matching &amp; 1G1R and Discarded.</p>
+  <p>Add a platform folder with <strong>+ Add platform</strong> at the bottom of the sidebar. Each folder holds exactly one platform; it then appears under Conversion, Matching &amp; 1G1R and Discarded.</p>
   <p class="muted">This build is read-only: nothing in your ROM folders is changed.</p>
 </section>
 {% endif %}

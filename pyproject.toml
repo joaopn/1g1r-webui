@@ -24,7 +24,7 @@ dev = ["pytest~=9.1.1", "httpx2~=2.13.1", "ruff~=0.17.1"]
 where = ["src"]
 
 [tool.setuptools.package-data]
-g1r = ["defaults.yaml", "migrations/*.sql", "web/templates/*.html", "web/static/*.css", "web/static/vendor/*"]
+g1r = ["defaults.yaml", "migrations/*.sql", "web/templates/*.html", "web/static/*.css", "web/static/*.js", "web/static/vendor/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -48,3 +48,27 @@ pre.config { background: var(--surface); border: 1px solid var(--border); border
   .sidebar { width: auto; border-right: none; border-bottom: 1px solid var(--border); }
   .content { padding: var(--gap); }
 }
+dialog { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--text); width: min(40rem, calc(100vw - 2rem)); padding: calc(var(--gap) * 1.25); }
+dialog::backdrop { background: rgb(0 0 0 / 0.45); }
+label { display: block; font-weight: 600; margin-top: var(--gap); }
+select, input, textarea { font: inherit; width: 100%; padding: 0.4rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); color: var(--text); }
+textarea { font-family: ui-monospace, monospace; }
+button { font: inherit; padding: 0.45rem 0.9rem; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+button.subtle { background: none; color: var(--muted); }
+.actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: calc(var(--gap) * 1.25); }
+.notice { background: var(--accent-soft); padding: 0.6rem; border-radius: var(--radius); }
+.error { color: var(--warn); font-weight: 600; }
+.ok { color: var(--accent); }
+.small { font-size: 0.85rem; margin: 0.25rem 0 0; }
+.browser { border: 1px solid var(--border); border-radius: var(--radius); padding: 0.6rem; margin-top: 0.5rem; }
+.dirs { list-style: none; padding: 0; margin: 0.4rem 0; max-height: 14rem; overflow-y: auto; }
+.dirs li { padding: 0.15rem 0; }
+.selected { margin: 0.4rem 0 0; }
+.grid { border-collapse: collapse; width: 100%; margin: 0.5rem 0 var(--gap); }
+.grid th, .grid td { border-bottom: 1px solid var(--border); padding: 0.4rem; text-align: left; vertical-align: middle; }
+.grid select { width: auto; }
+.facts { display: grid; grid-template-columns: max-content 1fr; gap: 0.3rem var(--gap); }
+.facts dt { color: var(--muted); }
+.facts dd { margin: 0; }
+section { margin-bottom: calc(var(--gap) * 2); }

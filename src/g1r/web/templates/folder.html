@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}{{ folder.platform_name }} · {{ title }} · {{ settings.app.name }}{% endblock %}
+{% block content %}
+<h1>{{ folder.platform_name }} <span class="muted">· {{ folder.label }}</span></h1>
+<p class="muted">{{ title }}</p>
+<dl class="facts">
+  <dt>Folder</dt><dd>{% if folder.location %}<code>{{ folder.location }}</code>{% else %}<span class="warn">mount {{ folder.mount }} is not available</span>{% endif %}</dd>
+  <dt>Platform</dt><dd>{{ folder.platform_name }} (<code>{{ folder.platform }}</code>)</dd>
+  <dt>Target format</dt><dd>{{ target.label }} · <a href="/settings#platforms">change for all {{ folder.platform_name }} folders</a></dd>
+  <dt>Discarded files go to</dt><dd><code>{{ settings.paths.discarded_root }}/{{ folder.label }}/</code>{% if not folder.on_main_mount %} <span class="warn">(another disk: moves will be copy, verify, then remove)</span>{% endif %}</dd>
+</dl>
+<section class="empty-state">
+  <p>Scanning, matching and the tables arrive in the next builds. Nothing in this folder is changed.</p>
+</section>
+<form method="post" action="/folders/{{ folder.label }}/remove" onsubmit="return confirm('Remove {{ folder.label }} from the app? Files on disk are not touched.')">
+  <button type="submit" class="subtle">Remove from the app (files are not touched)</button>
+</form>
+{% endblock %}
