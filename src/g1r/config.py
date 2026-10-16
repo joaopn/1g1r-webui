@@ -57,6 +57,7 @@ class DatabaseConfig(_Strict):
 
 class UiConfig(_Strict):
     page_size: int = Field(gt=0)
+    poll_interval_ms: int = Field(gt=0)
     hash_display_length: int = Field(gt=0)
 
 
@@ -125,6 +126,32 @@ class DatsConfig(_Strict):
         return self
 
 
+class IgirConfig(_Strict):
+    binary: str
+    cache_file: str
+    work_dir: str
+    timeout_seconds: float = Field(gt=0)
+
+
+class JobsConfig(_Strict):
+    workers: int = Field(gt=0)
+
+
+class HeaderRule(_Strict):
+    header_size: int = Field(gt=0)
+    magic_hex: str | None = None
+    magic_offset: int = Field(default=0, ge=0)
+    size_modulus: int | None = Field(default=None, gt=0)
+
+    @model_validator(mode="after")
+    def _has_a_test(self) -> "HeaderRule":
+        if self.magic_hex is None and self.size_modulus is None:
+            raise ValueError("a header rule needs magic_hex or size_modulus")
+        if self.magic_hex is not None:
+            bytes.fromhex(self.magic_hex)
+        return self
+
+
 class Settings(_Strict):
     app: AppConfig
     server: ServerConfig
@@ -135,6 +162,9 @@ class Settings(_Strict):
     ignored_filenames: list[str]
     platforms: PlatformsConfig
     dats: DatsConfig
+    igir: IgirConfig
+    jobs: JobsConfig
+    headers: dict[str, list[HeaderRule]]
 
     @property
     def dats_root(self) -> Path:

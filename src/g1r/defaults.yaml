@@ -29,6 +29,8 @@ database:
 
 ui:
   page_size: 100
+  # How often a running scan's status is refreshed in the browser.
+  poll_interval_ms: 1000
   # Characters of a hash shown in tables (the full value is in the tooltip).
   hash_display_length: 12
 
@@ -246,3 +248,29 @@ dats:
   # A newly downloaded or uploaded version becomes active only when you choose it,
   # except the very first DAT of a platform.
   auto_activate_new: false
+
+igir:
+  binary: igir
+  # igir's checksum cache, relative to the data directory.
+  cache_file: cache/igir.cache
+  # Scratch space for igir's report files, relative to the data directory.
+  work_dir: cache/igir-work
+  timeout_seconds: 3600
+
+jobs:
+  # Folder scans run in the background, this many at a time.
+  workers: 1
+
+# Copier/emulator headers some ROM files carry in front of the data. When igir finds no
+# match, the header is stripped and the remaining data looked up in the DAT by CRC and size.
+# A rule applies when the magic bytes are found at magic_offset, or (when no magic is
+# given) when the file size modulo size_modulus equals header_size.
+headers:
+  nes:
+    - {magic_hex: "4e45531a", magic_offset: 0, header_size: 16}
+  atari7800:
+    - {magic_hex: "415441524937383030", magic_offset: 1, header_size: 128}
+  lynx:
+    - {magic_hex: "4c594e58", magic_offset: 0, header_size: 64}
+  snes:
+    - {size_modulus: 1024, header_size: 512}
