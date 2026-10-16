@@ -117,13 +117,19 @@ platforms:
   archive_extensions: [zip, 7z]
 
   # Target formats (the format the conversion part produces). Chosen once per platform.
+  # `produces` is the container a conversion writes ("plain" = the bare ROM file);
+  # `accepts` lists the containers left alone as they are (accepted, if not preferred).
   targets:
     zip:
       label: Zip (TorrentZip)
       description: One zip per game, deterministic TorrentZip format. Opened directly by the RetroArch cores.
+      produces: zip
+      accepts: [zip, 7z]
     plain:
       label: Unpacked ROM file
       description: The bare ROM file, no archive.
+      produces: plain
+      accepts: [plain]
 
   # Per platform: display name, its icon (a short label and the kind of device), the
   # No-Intro DAT name, the ROM file extensions, the allowed targets and the default target.
@@ -337,6 +343,11 @@ igir:
   # Scratch space for igir's report files, relative to the data directory.
   work_dir: cache/igir-work
   timeout_seconds: 3600
+
+archives:
+  # Zip members are read directly; 7z archives are listed with 7-Zip.
+  seven_zip_binary: 7z
+  list_timeout_seconds: 300
 
 jobs:
   # Folder scans run in the background, this many at a time.

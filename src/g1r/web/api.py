@@ -3,6 +3,7 @@
 import re
 import sqlite3
 from collections.abc import Callable
+from dataclasses import asdict
 from http import HTTPStatus
 from typing import Annotated
 
@@ -10,7 +11,7 @@ import yaml
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel
 
-from g1r import matching, mounts, scanner
+from g1r import conversion, matching, mounts, scanner
 from g1r.config import RANKING_CRITERIA, RankingConfig, Settings
 from g1r.dat_registry import DatRegistry, RegistryError
 from g1r.library import FolderEntry, Library, LibraryStore
@@ -50,6 +51,10 @@ class KeepChoice(BaseModel):
 class LeaveAlone(BaseModel):
     group_key: str
     left: bool
+
+
+class ConversionOptions(BaseModel):
+    delete_originals: bool
 
 
 class Targets(BaseModel):
@@ -140,7 +145,19 @@ def build_router(
             "on_main_mount": folder.mount == mounts.MAIN_MOUNT,
             "target": store.target_for(library, folder.platform),
             "discarded_to": f"{settings.paths.discarded_root}/{folder.label}/",
+            "delete_originals": folder.delete_originals,
         }
+
+    def conversion_rows(library: Library, folder: FolderEntry, conn) -> list:
+        target = settings.platforms.targets[store.target_for(library, folder.platform)]
+        return conversion.rows(
+            settings,
+            conn,
+            folder.label,
+            folder.platform,
+            target,
+            delete_originals=folder.delete_originals,
+        )
 
     # Meta ------------------------------------------------------------------------
 
@@ -188,6 +205,7 @@ def build_router(
                     "summary": scanner.folder_summary(conn, folder.label),
                     "counts": table.counts,
                     "reclaim_bytes": table.reclaim_bytes,
+                    "conversion": conversion.counts(conversion_rows(library, folder, conn)),
                 }
             )
         return result
@@ -270,6 +288,22 @@ def build_router(
         folder_or_404(label)
         store.update(lambda lib: setattr(lib.folder(label), "ranking", body.ranking))
         return store.ranking_for(store.load().folder(label)).model_dump()
+
+    # Conversion --------------------------------------------------------------------
+
+    @router.get("/folders/{label}/conversion")
+    def folder_conversion(label: str, conn: Conn):
+        folder = folder_or_404(label)
+        found = conversion_rows(store.load(), folder, conn)
+        return {"counts": conversion.counts(found), "rows": [asdict(r) for r in found]}
+
+    @router.put("/folders/{label}/conversion")
+    def save_conversion(label: str, body: ConversionOptions):
+        folder_or_404(label)
+        store.update(
+            lambda lib: setattr(lib.folder(label), "delete_originals", body.delete_originals)
+        )
+        return folder_info(store.load(), store.load().folder(label))
 
     # Scans -------------------------------------------------------------------------
 

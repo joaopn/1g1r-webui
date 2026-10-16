@@ -30,6 +30,8 @@ class FolderEntry(BaseModel):
     path: str = Field(description="Relative to the mount root, POSIX separators; '' = root")
     # This folder's own ranking; None = the default ranking from the configuration.
     ranking: RankingConfig | None = None
+    # Conversion: delete replaced originals instead of moving them to discarded/ (irreversible).
+    delete_originals: bool = False
 
 
 class ActiveDat(BaseModel):

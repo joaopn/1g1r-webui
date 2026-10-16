@@ -132,12 +132,23 @@ def test_rescan_replaces_results(env, roms_root):
     assert conn.execute("SELECT COUNT(*) FROM folder_file").fetchone()[0] == 5
 
 
-def test_scan_without_dat_fails_cleanly(env, make_settings):
+def test_scan_without_dat_takes_the_inventory_only(env, make_settings):
     settings, store, registry, conn, folder_scanner = env
     store.update(lambda lib: lib.dats.clear())
     folder_scanner.run(conn, folder_scanner.start(conn, "nes"), "nes")
     scan = scanner.latest_scan(conn, "nes")
-    assert scan["status"] == "failed" and "no active DAT" in scan["message"]
+    assert scan["status"] == "done" and "no active DAT" in scan["message"]
+    assert conn.execute("SELECT COUNT(*) FROM folder_file").fetchone()[0] == 5
+    assert conn.execute("SELECT COUNT(*) FROM identity").fetchone()[0] == 0
+
+
+def test_scan_records_archive_members(env):
+    _, _, _, conn, folder_scanner = env
+    folder_scanner.run(conn, folder_scanner.start(conn, "nes"), "nes")
+    member = conn.execute(
+        "SELECT member, size, crc32 FROM archive_member WHERE rel_path = 'Known (USA).zip'"
+    ).fetchone()
+    assert tuple(member) == ("Known (USA).nes", len(NES_HEADER + BODY), crc(NES_HEADER + BODY))
 
 
 def test_one_scan_at_a_time_and_interrupted_scans(env):

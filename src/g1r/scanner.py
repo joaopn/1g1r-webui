@@ -1,7 +1,9 @@
-"""Scanning a platform folder: inventory its files, then identify them against the DAT.
+"""Scanning a platform folder: inventory its files and archive members, then identify
+them against the DAT.
 
 Identification is igir's checksum match first; for files igir leaves unmatched on
 platforms with copier headers, the header-stripped data is looked up by CRC and size.
+Without an active DAT the scan still takes the inventory, which is all conversion needs.
 """
 
 import fnmatch
@@ -13,7 +15,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-from g1r import igir, mounts
+from g1r import archives, igir, mounts
 from g1r.config import HeaderRule, Settings
 from g1r.dat_registry import DatRegistry
 from g1r.dats import Dat
@@ -129,11 +131,13 @@ class Scanner:
         store: LibraryStore,
         registry: DatRegistry,
         report_runner: ReportRunner | None = None,
+        seven_zip: archives.SevenZipRunner = archives.run_seven_zip,
     ):
         self.settings = settings
         self.store = store
         self.registry = registry
         self.report_runner = report_runner or igir.run_report
+        self.seven_zip = seven_zip
 
     def start(self, conn: sqlite3.Connection, label: str) -> int:
         running = conn.execute(
@@ -170,13 +174,18 @@ class Scanner:
         root = mounts.resolve(self.settings, folder.mount, folder.path)
         if not root.is_dir():
             raise ScanError(f"{root} is not available")
-        active = self.registry.active_version(conn, library, folder.platform)
-        if active is None:
-            raise ScanError("this platform has no active DAT; add one in Settings → DATs")
-        dat_file = self.settings.paths.data_dir / active["file"]
         files = inventory(
             self.settings, root, folder.platform, self.store.ignored_filenames(library)
         )
+        members, problems = self._members(root, files)
+        active = self.registry.active_version(conn, library, folder.platform)
+        if active is None:
+            self._store(conn, label, files, [], None, members, problems)
+            return (
+                f"inventory only, {len(files)} files: this platform has no active DAT, so "
+                "nothing was identified (add one in Settings → DATs)"
+            )
+        dat_file = self.settings.paths.data_dir / active["file"]
         rows = self.report_runner(self.settings, dat_file, root)
         by_path = igir.identified_files(rows)
         identities: list[tuple[str, str, str]] = []
@@ -196,7 +205,7 @@ class Scanner:
                     self.settings, folder.platform, root / f.rel_path, dat
                 ):
                     identities.append((f.rel_path, game, METHOD_HEADERLESS))
-        self._store(conn, label, files, identities, active["sha1"])
+        self._store(conn, label, files, identities, active["sha1"], members, problems)
         conn.execute(
             "UPDATE scan SET dat_sha1 = ? WHERE folder_label = ? AND status = 'running'",
             (active["sha1"], label),
@@ -205,7 +214,21 @@ class Scanner:
         candidates = sum(1 for f in files if f.kind in ("rom", "archive"))
         return f"{identified} of {candidates} ROM files identified"
 
-    def _store(self, conn, label, files, identities, dat_sha1) -> None:
+    def _members(self, root: Path, files: list[InventoryFile]):
+        members: list[tuple[str, archives.Member]] = []
+        problems: list[tuple[str, str]] = []
+        for f in files:
+            if f.kind != "archive":
+                continue
+            try:
+                found = archives.list_members(self.settings, root / f.rel_path, self.seven_zip)
+            except archives.ArchiveError as exc:
+                problems.append((f.rel_path, str(exc)))
+                continue
+            members += [(f.rel_path, m) for m in found]
+        return members, problems
+
+    def _store(self, conn, label, files, identities, dat_sha1, members, problems) -> None:
         conn.execute("BEGIN")
         try:
             conn.execute("DELETE FROM identity WHERE folder_label = ?", (label,))
@@ -217,6 +240,14 @@ class Scanner:
             conn.executemany(
                 "INSERT OR IGNORE INTO identity VALUES (?, ?, ?, ?, ?)",
                 [(label, rel, game, method, dat_sha1) for rel, game, method in identities],
+            )
+            conn.executemany(
+                "INSERT OR IGNORE INTO archive_member VALUES (?, ?, ?, ?, ?)",
+                [(label, rel, m.name, m.size, m.crc32) for rel, m in members],
+            )
+            conn.executemany(
+                "INSERT INTO archive_problem VALUES (?, ?, ?)",
+                [(label, rel, message) for rel, message in problems],
             )
             conn.execute("COMMIT")
         except sqlite3.Error:

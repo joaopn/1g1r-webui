@@ -224,3 +224,20 @@ def test_web_app_served_with_fallback(make_settings, tmp_path):
         assert client.get("/favicon.svg").text == "<svg/>"
         assert client.get("/api/nope").status_code == HTTPStatus.NOT_FOUND
         assert client.get("/api/meta").status_code == HTTPStatus.OK
+
+
+def test_conversion_proposals_and_delete_originals(setup):
+    client, _, _ = setup
+    scanned(client)
+    body = client.get("/api/folders/nes/conversion").json()
+    rows = {r["rel_path"]: r for r in body["rows"]}
+    assert rows["Contra (USA).zip"]["status"] == "done"
+    wrap = rows["odd.nes"]
+    assert (wrap["status"], wrap["output"], wrap["reversible"]) == ("wrap", "odd.zip", True)
+    assert body["counts"]["to_convert"] == 1
+    assert client.get("/api/folders").json()[0]["conversion"]["to_convert"] == 1
+
+    saved = client.put("/api/folders/nes/conversion", json={"delete_originals": True})
+    assert saved.json()["delete_originals"] is True
+    wrap = next(r for r in client.get("/api/folders/nes/conversion").json()["rows"] if r["output"])
+    assert wrap["originals_to"] is None and wrap["reversible"] is False

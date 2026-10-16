@@ -101,9 +101,21 @@ class FoldersConfig(_Strict):
     label_pattern: str
 
 
+# The container name for a bare, unarchived ROM file.
+PLAIN = "plain"
+
+
 class TargetConfig(_Strict):
     label: str
     description: str
+    produces: str
+    accepts: list[str]
+
+    @model_validator(mode="after")
+    def _produces_is_accepted(self) -> "TargetConfig":
+        if self.produces not in self.accepts:
+            raise ValueError(f"a target must accept what it produces ({self.produces})")
+        return self
 
 
 PLATFORM_KINDS = ("console", "handheld")
@@ -131,6 +143,11 @@ class PlatformsConfig(_Strict):
         missing = [p for p in self.enabled if p not in self.profiles]
         if missing:
             raise ValueError(f"platforms.enabled lists platforms without a profile: {missing}")
+        containers = {*self.archive_extensions, PLAIN}
+        for target_id, target in self.targets.items():
+            unknown = [c for c in target.accepts if c not in containers]
+            if unknown:
+                raise ValueError(f"target {target_id}: unknown containers {unknown}")
         for platform_id, profile in self.profiles.items():
             unknown = [t for t in profile.targets if t not in self.targets]
             if unknown:
@@ -175,6 +192,11 @@ class IgirConfig(_Strict):
     cache_file: str
     work_dir: str
     timeout_seconds: float = Field(gt=0)
+
+
+class ArchivesConfig(_Strict):
+    seven_zip_binary: str
+    list_timeout_seconds: float = Field(gt=0)
 
 
 class JobsConfig(_Strict):
@@ -240,6 +262,7 @@ class Settings(_Strict):
     platforms: PlatformsConfig
     dats: DatsConfig
     igir: IgirConfig
+    archives: ArchivesConfig
     jobs: JobsConfig
     headers: dict[str, list[HeaderRule]]
     names: NamesConfig
