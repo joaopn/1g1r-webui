@@ -16,6 +16,8 @@ paths:
   data_dir: /data
   database_file: state.db
   user_config_file: config.yaml
+  # Written by the app: folders, per-platform targets, ignored filenames (human-readable).
+  library_file: library.yaml
   # The main ROM bind mount; discarded files go to <roms_root>/<discarded_dirname>/.
   roms_root: /roms
   discarded_dirname: discarded
@@ -27,3 +29,193 @@ database:
 
 ui:
   page_size: 100
+
+folders:
+  # Folder labels name the folder in the UI and its discarded/<label>/ directory.
+  label_pattern: "^[a-z0-9][a-z0-9._-]*$"
+
+# Filenames that are never touched or counted as ROMs (glob patterns, case-insensitive).
+# This is the starting list; Settings edits the live copy in library.yaml.
+ignored_filenames:
+  - metadata.txt
+  - systeminfo.txt
+  - gamelist.xml
+  - "*.nfo"
+  - "*.txt"
+  - Thumbs.db
+  - .DS_Store
+  - desktop.ini
+
+platforms:
+  # The whitelist: only these platforms can be added. Wave 1 (cartridge systems).
+  enabled:
+    - atari2600
+    - atari5200
+    - atari7800
+    - colecovision
+    - gamegear
+    - gb
+    - gba
+    - gbc
+    - genesis
+    - jaguar
+    - lynx
+    - nds
+    - neo-geo-pocket
+    - neo-geo-pocket-color
+    - nes
+    - sega32
+    - sms
+    - snes
+    - tg16
+    - virtualboy
+    - wonderswan
+    - wonderswan-color
+
+  # Archive formats a ROM may be wrapped in.
+  archive_extensions: [zip, 7z]
+
+  # Target formats (the format the conversion part produces). Chosen once per platform.
+  targets:
+    zip:
+      label: Zip (TorrentZip)
+      description: One zip per game, deterministic TorrentZip format. Opened directly by the RetroArch cores.
+    plain:
+      label: Unpacked ROM file
+      description: The bare ROM file, no archive.
+
+  # Per platform: display name, the No-Intro DAT name, the ROM file extensions, the
+  # allowed targets and the default target.
+  profiles:
+    atari2600:
+      name: Atari 2600
+      nointro_dat: Atari - 2600
+      rom_extensions: [a26, bin]
+      targets: [zip, plain]
+      default_target: zip
+    atari5200:
+      name: Atari 5200
+      nointro_dat: Atari - 5200
+      rom_extensions: [a52, bin]
+      targets: [zip, plain]
+      default_target: zip
+    atari7800:
+      name: Atari 7800
+      nointro_dat: Atari - 7800
+      rom_extensions: [a78, bin]
+      targets: [zip, plain]
+      default_target: zip
+    colecovision:
+      name: ColecoVision
+      nointro_dat: Coleco - ColecoVision
+      rom_extensions: [col, rom, bin]
+      targets: [zip, plain]
+      default_target: zip
+    gamegear:
+      name: Game Gear
+      nointro_dat: Sega - Game Gear
+      rom_extensions: [gg]
+      targets: [zip, plain]
+      default_target: zip
+    gb:
+      name: Game Boy
+      nointro_dat: Nintendo - Game Boy
+      rom_extensions: [gb]
+      targets: [zip, plain]
+      default_target: zip
+    gba:
+      name: Game Boy Advance
+      nointro_dat: Nintendo - Game Boy Advance
+      rom_extensions: [gba]
+      targets: [zip, plain]
+      default_target: zip
+    gbc:
+      name: Game Boy Color
+      nointro_dat: Nintendo - Game Boy Color
+      rom_extensions: [gbc]
+      targets: [zip, plain]
+      default_target: zip
+    genesis:
+      name: Mega Drive / Genesis
+      nointro_dat: Sega - Mega Drive - Genesis
+      rom_extensions: [md, gen, bin, smd]
+      targets: [zip, plain]
+      default_target: zip
+    jaguar:
+      name: Atari Jaguar
+      nointro_dat: Atari - Jaguar
+      rom_extensions: [j64, jag, rom, abs, cof]
+      targets: [zip, plain]
+      default_target: zip
+    lynx:
+      name: Atari Lynx
+      nointro_dat: Atari - Lynx
+      rom_extensions: [lnx, lyx]
+      targets: [zip, plain]
+      default_target: zip
+    nds:
+      name: Nintendo DS
+      nointro_dat: Nintendo - Nintendo DS
+      rom_extensions: [nds]
+      targets: [zip, plain]
+      default_target: zip
+    neo-geo-pocket:
+      name: Neo Geo Pocket
+      nointro_dat: SNK - Neo Geo Pocket
+      rom_extensions: [ngp]
+      targets: [zip, plain]
+      default_target: zip
+    neo-geo-pocket-color:
+      name: Neo Geo Pocket Color
+      nointro_dat: SNK - Neo Geo Pocket Color
+      rom_extensions: [ngc, ngpc]
+      targets: [zip, plain]
+      default_target: zip
+    nes:
+      name: Nintendo Entertainment System
+      nointro_dat: Nintendo - Nintendo Entertainment System
+      rom_extensions: [nes]
+      targets: [zip, plain]
+      default_target: zip
+    sega32:
+      name: Sega 32X
+      nointro_dat: Sega - 32X
+      rom_extensions: [32x, bin]
+      targets: [zip, plain]
+      default_target: zip
+    sms:
+      name: Master System
+      nointro_dat: Sega - Master System - Mark III
+      rom_extensions: [sms]
+      targets: [zip, plain]
+      default_target: zip
+    snes:
+      name: Super Nintendo
+      nointro_dat: Nintendo - Super Nintendo Entertainment System
+      rom_extensions: [sfc, smc]
+      targets: [zip, plain]
+      default_target: zip
+    tg16:
+      name: PC Engine / TurboGrafx-16
+      nointro_dat: NEC - PC Engine - TurboGrafx 16
+      rom_extensions: [pce]
+      targets: [zip, plain]
+      default_target: zip
+    virtualboy:
+      name: Virtual Boy
+      nointro_dat: Nintendo - Virtual Boy
+      rom_extensions: [vb]
+      targets: [zip, plain]
+      default_target: zip
+    wonderswan:
+      name: WonderSwan
+      nointro_dat: Bandai - WonderSwan
+      rom_extensions: [ws]
+      targets: [zip, plain]
+      default_target: zip
+    wonderswan-color:
+      name: WonderSwan Color
+      nointro_dat: Bandai - WonderSwan Color
+      rom_extensions: [wsc]
+      targets: [zip, plain]
+      default_target: zip
