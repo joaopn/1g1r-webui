@@ -1,9 +1,10 @@
-import { ArrowDown, ArrowRight, ArrowUp, Search, TriangleAlert } from "lucide-react";
+import { ArrowDown, ArrowRight, ArrowUp, Play, Search, TriangleAlert } from "lucide-react";
 import { useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Pager } from "@/components/Pager";
 import { QuickViewBar } from "@/components/QuickViewBar";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatBytes, formatCount } from "@/lib/format";
 import type { ConversionRow, ConversionStatus, Meta } from "@/lib/types";
@@ -35,6 +36,7 @@ const HEADERS: { by: ConversionSort | null; label: string; className?: string }[
   { by: null, label: "Becomes" },
   { by: "size", label: "Size", className: "text-right" },
   { by: null, label: "Original / note" },
+  { by: null, label: "" },
 ];
 const DEFAULT_SORT: ConversionSort = "status";
 
@@ -44,7 +46,18 @@ function shortDiscarded(path: string, discardedRoot: string): string {
   return path.startsWith(parent) ? path.slice(parent.length) : path;
 }
 
-export function ConversionTable({ rows, meta }: { rows: ConversionRow[]; meta: Meta }) {
+export function ConversionTable({
+  rows,
+  meta,
+  onConvert,
+  busy = false,
+}: {
+  rows: ConversionRow[];
+  meta: Meta;
+  /** Review and convert one file; the table shows the button only when this is given. */
+  onConvert?: (row: ConversionRow) => void;
+  busy?: boolean;
+}) {
   const [params, setParams] = useSearchParams();
   const view = conversionView(params.get("view") ?? DEFAULT_CONVERSION_VIEW);
   const q = params.get("q") ?? "";
@@ -130,8 +143,7 @@ export function ConversionTable({ rows, meta }: { rows: ConversionRow[]; meta: M
         />
       </div>
       <p className="text-muted-foreground text-xs">
-        {formatCount(shown.length)} of {formatCount(rows.length)} files · nothing is changed in this
-        build
+        {formatCount(shown.length)} of {formatCount(rows.length)} files
       </p>
 
       <div className="overflow-x-auto rounded-md border border-border bg-card">
@@ -143,6 +155,7 @@ export function ConversionTable({ rows, meta }: { rows: ConversionRow[]; meta: M
             <col className="w-[22%]" />
             <col className="w-[6rem]" />
             <col />
+            <col className="w-10" />
           </colgroup>
           <thead className="border-border border-b text-left text-muted-foreground text-xs uppercase tracking-wide">
             <tr>{HEADERS.map((h) => header(h.by, h.label, h.className))}</tr>
@@ -208,6 +221,21 @@ export function ConversionTable({ rows, meta }: { rows: ConversionRow[]; meta: M
                       )
                     ) : null}
                     {row.note ? <span className="block text-xs">{row.note}</span> : null}
+                  </td>
+                  <td className="px-1 py-1.5 text-right">
+                    {onConvert && (row.status === "wrap" || row.status === "unwrap") ? (
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        disabled={busy}
+                        onClick={() => onConvert(row)}
+                        title="Convert this file: review it first"
+                        className="text-primary"
+                      >
+                        <Play className="size-3.5" aria-hidden="true" />
+                        <span className="sr-only">Convert {row.rel_path}</span>
+                      </Button>
+                    ) : null}
                   </td>
                 </tr>
               ))

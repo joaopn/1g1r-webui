@@ -75,7 +75,7 @@ export function ApplyDialog({
         ) : preview.error ? (
           <p className="text-sm text-status-bad">{String(preview.error)}</p>
         ) : plan ? (
-          <div className="space-y-3 text-sm">
+          <div className="min-w-0 space-y-3 text-sm">
             {plan.busy ? <p className="text-status-warn">Not now: {plan.busy}.</p> : null}
             {plan.problems.length > 0 ? (
               <div className="space-y-1 rounded-md border border-status-bad px-3 py-2">
@@ -109,7 +109,10 @@ export function ApplyDialog({
                         {m.rel_path}
                       </span>
                       <ArrowRight className="size-3 shrink-0 text-status-warn" aria-hidden="true" />
-                      <span className="shrink-0 text-muted-foreground" title={m.destination}>
+                      <span
+                        className="shrink-0 text-muted-foreground"
+                        title={m.destination ?? undefined}
+                      >
                         discarded
                       </span>
                       <span className="ml-auto shrink-0 text-muted-foreground tabular-nums">

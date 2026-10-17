@@ -15,7 +15,7 @@ export function RunPanel({ label, meta }: { label: string; meta: Meta }) {
     wasRunning.current = running;
   }, [running, label]);
   if (!run) return null;
-  const verb = run.kind === "apply" ? "Apply" : "Restore";
+  const verb = run.scope === "convert" ? "Conversion" : run.kind === "apply" ? "Apply" : "Restore";
   return (
     <section
       data-testid="run-panel"
@@ -26,7 +26,7 @@ export function RunPanel({ label, meta }: { label: string; meta: Meta }) {
     >
       {running ? (
         <p>
-          {verb} running: {formatCount(run.done)} of {formatCount(run.total)} files…
+          {verb} running: {formatCount(run.done)} of {formatCount(run.total)} steps…
         </p>
       ) : (
         <p className={run.status === "failed" ? "text-status-bad" : "text-muted-foreground"}>

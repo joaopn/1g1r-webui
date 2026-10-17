@@ -157,14 +157,33 @@ export type GameStatus =
 export type PlannedMove = {
   rel_path: string;
   group_key: string;
+  action: "move" | "convert" | "delete" | "remove";
   source: string;
-  destination: string;
+  destination: string | null;
   size: number;
 };
 
 export type ApplyPreview = {
   token: string;
   moves: PlannedMove[];
+  bytes: number;
+  problems: { rel_path: string; problem: string }[];
+  busy: string | null;
+};
+
+export type PlannedConversion = {
+  rel_path: string;
+  output: string;
+  size: number;
+  /** Where the original goes; null when it is deleted. */
+  original_to: string | null;
+};
+
+export type ConvertPreview = {
+  token: string;
+  conversions: PlannedConversion[];
+  /** Originals the plan deletes: needs the typed folder label. */
+  irreversible: number;
   bytes: number;
   problems: { rel_path: string; problem: string }[];
   busy: string | null;

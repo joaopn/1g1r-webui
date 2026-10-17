@@ -8,6 +8,7 @@ import { ApplyDialog } from "./ApplyDialog";
 const MOVE = {
   rel_path: "Contra (Japan).zip",
   group_key: "name:Contra",
+  action: "move" as const,
   source: "/roms/nes/Contra (Japan).zip",
   destination: "/roms/discarded/nes/1g1r/Contra (Japan).zip",
   size: 2048,
