@@ -20,6 +20,9 @@ UNWRAP = "unwrap"
 FLAGGED = "flagged"
 STATUSES = (WRAP, UNWRAP, FLAGGED, ACCEPTED, DONE)
 CONVERTING = (WRAP, UNWRAP)
+# The only archive the app writes; other targets are listed but never produced here.
+ZIP = "zip"
+ZIP_SUFFIX = f".{ZIP}"
 
 
 @dataclass
@@ -73,11 +76,10 @@ def rows(
             "SELECT rel_path, message FROM archive_problem WHERE folder_label = ?", (label,)
         ).fetchall()
     )
+    # Discarded rows count too: an output may not take the name of a file in discarded/.
     existing = {
         r[0].lower()
-        for r in conn.execute(
-            "SELECT rel_path FROM folder_file WHERE folder_label = ? AND place = 'folder'", (label,)
-        )
+        for r in conn.execute("SELECT rel_path FROM folder_file WHERE folder_label = ?", (label,))
     }
 
     def is_rom(name: str) -> bool:
@@ -120,6 +122,9 @@ def _propose(settings, label, target, row, roms, delete_originals, existing) -> 
         extras = len(row.members) - len(roms)
         if extras:
             row.note = f"{extras} other file(s) in the archive stay in the original"
+    elif target.produces != ZIP:
+        row.status, row.note = FLAGGED, f"the app cannot write {target.produces} archives"
+        return
     else:
         row.status = WRAP
         row.output = str(parent / f"{PurePosixPath(row.rel_path).stem}.{target.produces}")

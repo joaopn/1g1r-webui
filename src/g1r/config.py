@@ -241,6 +241,10 @@ class JobsConfig(_Strict):
 class ApplyConfig(_Strict):
     copy_chunk_bytes: int = Field(gt=0)
     temp_suffix: str = Field(min_length=1)
+    # Wrapping a ROM in a zip: deflate at this level (zlib checks the range).
+    zip_compress_level: int = Field(ge=0)
+    # Extracting one member from a 7z archive must finish within this many seconds.
+    extract_timeout_seconds: int = Field(gt=0)
 
 
 class HeaderRule(_Strict):

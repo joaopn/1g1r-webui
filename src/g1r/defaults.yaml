@@ -389,6 +389,10 @@ apply:
   # A copy is written under this suffix beside its destination and renamed once verified;
   # one left behind by a restart is removed at start-up.
   temp_suffix: .g1r-part
+  # Conversions: a ROM wrapped in a zip is deflated at this level (0 stores, 9 is smallest).
+  zip_compress_level: 9
+  # Taking one ROM out of a 7z archive must finish within this many seconds.
+  extract_timeout_seconds: 600
 
 # Copier/emulator headers some ROM files carry in front of the data. When igir finds no
 # match, the header is stripped and the remaining data looked up in the DAT by CRC and size.

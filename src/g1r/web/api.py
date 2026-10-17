@@ -49,6 +49,14 @@ class ApplyScope(BaseModel):
     token: str | None = None
 
 
+class ConvertScope(BaseModel):
+    # Some files, or every proposed conversion when None.
+    rel_paths: list[str] | None = None
+    token: str | None = None
+    # Typed folder label; needed when the plan deletes originals.
+    confirm: str | None = None
+
+
 class RestoreScope(BaseModel):
     operation_ids: list[int] | None = None
     group_key: str | None = None
@@ -340,10 +348,34 @@ def build_router(
         return {
             "rel_path": m.rel_path,
             "group_key": m.group_key,
+            "action": m.action,
             "source": str(m.source),
-            "destination": str(m.destination),
+            "destination": str(m.destination) if m.destination else None,
             "size": m.size,
         }
+
+    def convert_plan(conn, label: str, rel_paths: list[str] | None):
+        folder = folder_or_404(label)
+        rows = conversion_rows(store.load(), folder, conn)
+        if rel_paths is not None:
+            wanted = set(rel_paths)
+            rows = [r for r in rows if r.rel_path in wanted]
+            if len(rows) != len(wanted):
+                raise not_found("some of these files are not in the folder")
+        root = folder_root(folder)
+        plan = journal.plan_conversions(conn, label, root, rows)
+        problems = journal.preflight(plan, root, discarded.folder_root(settings, label))
+        return plan, problems
+
+    def conversion_dict(plan: list[journal.Move]) -> list[dict]:
+        """One entry per conversion: its output, and where its original goes."""
+        result = []
+        for m in plan:
+            if m.action == journal.CONVERT:
+                result.append({"rel_path": m.rel_path, "output": m.paired_rel, "size": m.size})
+            elif m.follows:
+                result[-1]["original_to"] = str(m.destination) if m.destination else None
+        return result
 
     @router.post("/folders/{label}/apply/preview")
     def apply_preview(label: str, body: ApplyScope, conn: Conn):
@@ -378,6 +410,44 @@ def build_router(
             raise conflict(str(exc), exc.problems) from exc
         return journal.progress(conn, run_id)
 
+    @router.post("/folders/{label}/convert/preview")
+    def convert_preview(label: str, body: ConvertScope, conn: Conn):
+        plan, problems = convert_plan(conn, label, body.rel_paths)
+        return {
+            "token": journal.token(plan),
+            "conversions": conversion_dict(plan),
+            "irreversible": len(journal.irreversible(plan)),
+            "bytes": sum(m.size for m in plan if m.action == journal.CONVERT),
+            "problems": [{"rel_path": r, "problem": p} for r, p in problems],
+            "busy": journal.busy(conn, label),
+        }
+
+    @router.post("/folders/{label}/convert", status_code=HTTPStatus.ACCEPTED)
+    def convert(label: str, body: ConvertScope, request: Request, conn: Conn):
+        def check():
+            plan, problems = convert_plan(conn, label, body.rel_paths)
+            if journal.token(plan) != body.token:
+                raise journal.PlanError("the plan changed since you reviewed it; look again")
+            if problems:
+                raise journal.PlanError(
+                    "nothing was converted: some files are not as scanned", problems
+                )
+            if not plan:
+                raise journal.PlanError("there is nothing to convert")
+            if journal.irreversible(plan) and body.confirm != label:
+                raise journal.PlanError(
+                    f"this deletes originals for good: type the folder label {label!r} to confirm"
+                )
+            return plan
+
+        try:
+            run_id = request.app.state.jobs.apply(
+                conn, label, journal.APPLY, journal.CONVERT, check
+            )
+        except journal.PlanError as exc:
+            raise conflict(str(exc), exc.problems) from exc
+        return journal.progress(conn, run_id)
+
     @router.post("/folders/{label}/restore", status_code=HTTPStatus.ACCEPTED)
     def restore(label: str, body: RestoreScope, request: Request, conn: Conn):
         folder = folder_or_404(label)
@@ -389,7 +459,7 @@ def build_router(
             if not plan:
                 raise journal.PlanError("there is nothing to restore")
             problems = journal.preflight(
-                plan, discarded.folder_root(settings, label), folder_root(folder)
+                plan, folder_root(folder), discarded.folder_root(settings, label), journal.RESTORE
             )
             if problems:
                 raise journal.PlanError("nothing was restored", problems)

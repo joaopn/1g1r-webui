@@ -1,19 +1,24 @@
 """Apply and restore, journalled (design §8).
 
-A plan is a list of moves built from the reviewed proposals. Its token fingerprints every
-move with the file's size and mtime as scanned, so applying refuses when the plan changed
-after review. Each move is written to the journal as 'started' and committed before the
-file is touched; start-up recovery settles any move a restart cut off.
+A plan is a list of steps built from the reviewed proposals: moves, and for conversions an
+output written, then its original moved to discarded/ or deleted. Its token fingerprints
+every step with the file's size and mtime as scanned, so applying refuses when the plan
+changed after review. Each step is written to the journal as 'started' and committed before
+the file is touched; start-up recovery settles any step a restart cut off.
 """
 
 import hashlib
 import os
+import shutil
 import sqlite3
+import zipfile
+from collections.abc import Callable
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
-from g1r import moves
+from g1r import conversion, moves
 from g1r.config import ApplyConfig
+from g1r.converter import CRC_FORMAT
 
 # The discarded/ subfolder of 1G1R moves (matching.REASON_DISCARDED names the same one).
 REASON_1G1R = "1g1r"
@@ -31,6 +36,17 @@ FAILED = "failed"
 STARTED = "started"
 RESTORED = "restored"
 
+# What a step does (operation.action).
+MOVE = "move"
+CONVERT = "convert"
+DELETE = "delete"
+REMOVE = "remove"
+# Steps that write a new name for the file and must find that name free.
+WRITES = (MOVE, CONVERT)
+
+# The per-file rows a conversion's output inherits from its original (same ROM data).
+CARRIED = ("identity", "content_hash", "lookup_result", "suggestion", "manual_identity")
+
 
 class PlanError(RuntimeError):
     """The plan cannot run; the message (and per-file problems) are shown to the user."""
@@ -42,21 +58,37 @@ class PlanError(RuntimeError):
 
 @dataclass(frozen=True)
 class Move:
+    """One step of a plan; most are moves, hence the name."""
+
     rel_path: str
     group_key: str
     reason: str
     source: Path
-    destination: Path
+    destination: Path | None
     size: int
     mtime_ns: int
-    # Restore only: the apply operation this move undoes.
+    # Restore only: the apply operation this step undoes.
     undoes: int | None = None
+    action: str = MOVE
+    # Convert: the output's path in the folder. Remove: the original's, which gets its rows back.
+    paired_rel: str | None = None
+    # Unwrap only: the archive member taken out, as the scan listed it.
+    member: str | None = None
+    member_size: int | None = None
+    member_crc32: str | None = None
+    # This step finishes the convert step just before it (moves or deletes its original).
+    follows: bool = False
+    # Remove only: the convert operation whose output this removes.
+    step_of: int | None = None
 
 
 def token(plan: list[Move]) -> str:
     digest = hashlib.sha1()
     for m in plan:
-        digest.update(f"{m.source}\0{m.destination}\0{m.size}\0{m.mtime_ns}\n".encode())
+        digest.update(
+            f"{m.action}\0{m.source}\0{m.destination or ''}\0{m.size}\0{m.mtime_ns}\0"
+            f"{m.member or ''}\n".encode()
+        )
     return digest.hexdigest()
 
 
@@ -106,13 +138,65 @@ def plan_discards(conn: sqlite3.Connection, label: str, root: Path, games) -> li
     return plan
 
 
+def plan_conversions(
+    conn: sqlite3.Connection, label: str, root: Path, rows: list[conversion.ConversionRow]
+) -> list[Move]:
+    """Two steps per proposed conversion: write the output, then move or delete the original."""
+    scanned = {
+        r["rel_path"]: r
+        for r in conn.execute(
+            "SELECT rel_path, size, mtime_ns FROM folder_file WHERE folder_label = ? AND place = ?",
+            (label, PLACE_FOLDER),
+        )
+    }
+    plan = []
+    for row in sorted(rows, key=lambda r: r.rel_path):
+        f = scanned.get(row.rel_path)
+        if row.status not in conversion.CONVERTING or not row.output or f is None:
+            continue
+        member = next(
+            (m for m in row.members if PurePosixPath(m["name"]).name == Path(row.output).name),
+            None,
+        )
+        common = (row.rel_path, "", conversion.REASON_ORIGINALS, root / row.rel_path)
+        sized = (f["size"], f["mtime_ns"])
+        plan.append(
+            Move(
+                *common,
+                root / row.output,
+                *sized,
+                action=CONVERT,
+                paired_rel=row.output,
+                member=member["name"] if row.status == conversion.UNWRAP else None,
+                member_size=member["size"] if row.status == conversion.UNWRAP else None,
+                member_crc32=member["crc32"] if row.status == conversion.UNWRAP else None,
+            )
+        )
+        if row.originals_to:
+            plan.append(Move(*common, Path(row.originals_to), *sized, follows=True))
+        else:
+            plan.append(Move(*common, None, *sized, action=DELETE, follows=True))
+    return plan
+
+
+def irreversible(plan: list[Move]) -> list[Move]:
+    return [m for m in plan if m.action == DELETE]
+
+
 def active_discards(conn: sqlite3.Connection, label: str) -> list[sqlite3.Row]:
-    """Apply operations whose file is in discarded/ now (moved and not restored)."""
+    """Apply moves whose file is in discarded/ now (moved and not restored)."""
     return conn.execute(
         "SELECT o.* FROM operation o JOIN apply_run r ON r.id = o.run_id "
-        "WHERE o.folder_label = ? AND r.kind = ? AND o.state = ? ORDER BY o.rel_path",
-        (label, APPLY, DONE),
+        "WHERE o.folder_label = ? AND r.kind = ? AND o.state = ? AND o.action = ? "
+        "ORDER BY o.rel_path",
+        (label, APPLY, DONE, MOVE),
     ).fetchall()
+
+
+def _root_of(op) -> Path:
+    """The folder an operation's rel_path is relative to, from its source path."""
+    source = Path(op["source"])
+    return source.parents[len(PurePosixPath(op["rel_path"]).parts) - 1]
 
 
 def plan_restore(
@@ -140,7 +224,32 @@ def plan_restore(
                 undoes=op["id"],
             )
         )
-    if operation_ids is not None and len(plan) != len(set(operation_ids)):
+        converted = (
+            op["step_of"]
+            and conn.execute(
+                "SELECT * FROM operation WHERE id = ? AND state = ?", (op["step_of"], DONE)
+            ).fetchone()
+        )
+        if converted:
+            # The original is back, so the output made from it goes.
+            output = Path(converted["destination"])
+            plan.append(
+                Move(
+                    str(output.relative_to(_root_of(converted)).as_posix()),
+                    op["group_key"],
+                    op["reason"],
+                    output,
+                    None,
+                    converted["moved_size"],
+                    converted["moved_mtime_ns"],
+                    undoes=converted["id"],
+                    action=REMOVE,
+                    paired_rel=converted["rel_path"],
+                    step_of=converted["id"],
+                )
+            )
+    moved_back = [m for m in plan if m.action == MOVE]
+    if operation_ids is not None and len(moved_back) != len(set(operation_ids)):
         raise PlanError("some of these files are not in discarded/ (already restored?)")
     return plan
 
@@ -156,10 +265,25 @@ def _inside(path: Path, root: Path) -> bool:
     return True
 
 
-def preflight(plan: list[Move], source_root: Path, destination_root: Path) -> list[tuple[str, str]]:
+def _roots(m: Move, kind: str, folder: Path, discarded: Path) -> tuple[Path, Path]:
+    """Where a step's source and destination must be."""
+    if m.action == MOVE:
+        return (folder, discarded) if kind == APPLY else (discarded, folder)
+    return folder, folder
+
+
+def _space_needed(m: Move) -> int:
+    return m.member_size if m.member is not None else m.size
+
+
+def preflight(
+    plan: list[Move], folder_root: Path, discarded_root: Path, kind: str = APPLY
+) -> list[tuple[str, str]]:
     """Every reason the plan must not run, per file. Empty means it may run."""
     problems = []
+    claimed: set[Path] = set()
     for m in plan:
+        source_root, destination_root = _roots(m, kind, folder_root, discarded_root)
         if not os.path.lexists(m.source):
             problems.append((m.rel_path, f"{m.source} is missing"))
         elif m.source.is_symlink() or not m.source.is_file():
@@ -170,10 +294,22 @@ def preflight(plan: list[Move], source_root: Path, destination_root: Path) -> li
             stat = m.source.stat()
             if (stat.st_size, stat.st_mtime_ns) != (m.size, m.mtime_ns):
                 problems.append((m.rel_path, f"{m.source} changed since it was scanned"))
+        if m.action not in WRITES:
+            continue
         if os.path.lexists(m.destination):
             problems.append((m.rel_path, f"{m.destination} already exists"))
         elif not _inside(m.destination, destination_root):
             problems.append((m.rel_path, f"{m.destination} is outside {destination_root}"))
+        elif m.destination in claimed:
+            problems.append((m.rel_path, f"{m.destination} is also another file's destination"))
+        claimed.add(m.destination)
+        if m.action == CONVERT and m.member is not None and not m.member_crc32:
+            problems.append((m.rel_path, f"the scan listed no CRC32 for {m.member}"))
+    needed = sum(_space_needed(m) for m in plan if m.action == CONVERT)
+    if needed and folder_root.is_dir():
+        free = shutil.disk_usage(folder_root).free
+        if free < needed:
+            problems.append(("", f"the outputs need {needed} bytes; {folder_root} has {free} free"))
     return problems
 
 
@@ -198,21 +334,94 @@ def _finish_run(conn: sqlite3.Connection, run_id: int, status: str, message: str
 def _set_state(conn, op_id: int, state: str, error: str = "", moved=None) -> None:
     conn.execute(
         "UPDATE operation SET state = ?, error = ?, moved_mtime_ns = COALESCE(?, moved_mtime_ns), "
+        "moved_size = COALESCE(?, moved_size), "
         "updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?",
-        (state, error, moved.st_mtime_ns if moved else None, op_id),
+        (
+            state,
+            error,
+            moved.st_mtime_ns if moved else None,
+            moved.st_size if moved else None,
+            op_id,
+        ),
     )
 
 
+def carry_over(conn, label: str, old: str, new: str, moved, members: list[tuple]) -> None:
+    """Give a conversion's output (`new`) the scan rows of its original (`old`)."""
+    kind = "archive" if members else "rom"
+    conn.execute(
+        "DELETE FROM folder_file WHERE folder_label = ? AND rel_path = ? AND place = ?",
+        (label, new, PLACE_FOLDER),
+    )
+    conn.execute(
+        "INSERT INTO folder_file (folder_label, rel_path, size, mtime_ns, kind) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (label, new, moved.st_size, moved.st_mtime_ns, kind),
+    )
+    for table in CARRIED:
+        columns = [
+            c[1]
+            for c in conn.execute(f"PRAGMA table_info({table})")
+            if c[1] not in ("folder_label", "rel_path")
+        ]
+        listed = ", ".join(columns)
+        conn.execute(
+            f"INSERT OR IGNORE INTO {table} (folder_label, rel_path, {listed}) "
+            f"SELECT folder_label, ?, {listed} FROM {table} "
+            "WHERE folder_label = ? AND rel_path = ?",
+            (new, label, old),
+        )
+    conn.executemany(
+        "INSERT INTO archive_member VALUES (?, ?, ?, ?, ?)",
+        [(label, new, *member) for member in members],
+    )
+    conn.execute(
+        "UPDATE keep_choice SET rel_path = ? WHERE folder_label = ? AND rel_path = ?",
+        (new, label, old),
+    )
+
+
+def _drop_output(conn, label: str, output: str, original: str) -> None:
+    """A conversion's output was removed: its original takes its rows and picks back."""
+    conn.execute(
+        "UPDATE keep_choice SET rel_path = ? WHERE folder_label = ? AND rel_path = ?",
+        (original, label, output),
+    )
+    conn.execute(
+        "DELETE FROM manual_identity WHERE folder_label = ? AND rel_path = ?", (label, output)
+    )
+    conn.execute("DELETE FROM folder_file WHERE folder_label = ? AND rel_path = ?", (label, output))
+
+
+def _wrapped_members(m: Move) -> list[tuple]:
+    """The archive_member rows of a conversion's output (none for a bare ROM)."""
+    if m.destination.suffix.lower() != conversion.ZIP_SUFFIX:
+        return []
+    with zipfile.ZipFile(m.destination) as z:
+        return [(i.filename, i.file_size, format(i.CRC, CRC_FORMAT)) for i in z.infolist()]
+
+
 def _settle(conn, kind: str, label: str, op_id: int, m: Move, moved) -> None:
-    """The file is at its destination: record it and update where the table finds it."""
+    """The step is done: record it and update where the table finds the files."""
+    members = _wrapped_members(m) if m.action == CONVERT else []
     conn.execute("BEGIN")
     try:
         _set_state(conn, op_id, DONE, moved=moved)
-        place = PLACE_DISCARDED if kind == APPLY else PLACE_FOLDER
-        conn.execute(
-            "UPDATE folder_file SET place = ? WHERE folder_label = ? AND rel_path = ?",
-            (place, label, m.rel_path),
-        )
+        if m.action == MOVE:
+            place = PLACE_DISCARDED if kind == APPLY else PLACE_FOLDER
+            conn.execute(
+                "UPDATE folder_file SET place = ? WHERE folder_label = ? AND rel_path = ?",
+                (place, label, m.rel_path),
+            )
+        elif m.action == CONVERT:
+            carry_over(conn, label, m.rel_path, m.paired_rel, moved, members)
+        elif m.action == DELETE:
+            conn.execute(
+                "DELETE FROM folder_file WHERE folder_label = ? AND rel_path = ?",
+                (label, m.rel_path),
+            )
+        elif m.action == REMOVE:
+            _drop_output(conn, label, m.rel_path, m.paired_rel)
         if m.undoes is not None:
             conn.execute(
                 "UPDATE operation SET state = ?, restored_by = ?, "
@@ -225,24 +434,69 @@ def _settle(conn, kind: str, label: str, op_id: int, m: Move, moved) -> None:
         raise
 
 
+# Writes a conversion's output: (step) -> the output's stat. Raises moves.MoveError.
+Convert = Callable[[Move], os.stat_result]
+
+
+def _unchanged(m: Move) -> None:
+    """Delete and remove re-check the file just before it goes; nothing can bring it back."""
+    if not m.source.is_file() or m.source.is_symlink():
+        raise moves.MoveError(f"{m.source} is not a regular file")
+    stat = m.source.stat()
+    if (stat.st_size, stat.st_mtime_ns) != (m.size, m.mtime_ns):
+        raise moves.MoveError(f"{m.source} changed since the plan was made")
+
+
+def _carry_out(config: ApplyConfig, convert: Convert | None, m: Move):
+    if m.action == MOVE:
+        return moves.move(config, m.source, m.destination)
+    if m.action == CONVERT:
+        if convert is None:
+            raise moves.MoveError("this run cannot convert")
+        return convert(m)
+    _unchanged(m)
+    m.source.unlink()
+    moves.fsync_dir(m.source.parent)
+    return None
+
+
+def _summary(kind: str, plan: list[Move], done: int) -> str:
+    def files(n: int) -> str:
+        return f"{n} {'file' if n == 1 else 'files'}"
+
+    converted = sum(1 for m in plan if m.action == CONVERT)
+    if kind == APPLY and converted:
+        return f"{files(converted)} converted"
+    if kind == RESTORE:
+        return f"{files(sum(1 for m in plan if m.action == MOVE))} restored"
+    return f"{files(done)} moved to discarded/"
+
+
 def run(
-    config: ApplyConfig, conn: sqlite3.Connection, run_id: int, label: str, plan: list[Move]
+    config: ApplyConfig,
+    conn: sqlite3.Connection,
+    run_id: int,
+    label: str,
+    plan: list[Move],
+    convert: Convert | None = None,
 ) -> None:
     """Carry out a planned run; stops at the first failure, leaving that file in place."""
     try:
-        _run(config, conn, run_id, label, plan)
+        _run(config, conn, run_id, label, plan, convert)
     except Exception as exc:  # a background run must never stay 'running'
         _finish_run(conn, run_id, FAILED, f"unexpected error: {exc!r}")
         raise
 
 
-def _run(config, conn, run_id: int, label: str, plan: list[Move]) -> None:
+def _run(config, conn, run_id: int, label: str, plan: list[Move], convert) -> None:
     kind = conn.execute("SELECT kind FROM apply_run WHERE id = ?", (run_id,)).fetchone()[0]
     done = 0
+    previous = None
     for m in plan:
         op_id = conn.execute(
             "INSERT INTO operation (run_id, folder_label, rel_path, group_key, reason, source, "
-            "destination, size, mtime_ns, state) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "destination, size, mtime_ns, state, action, step_of) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 run_id,
                 label,
@@ -250,22 +504,24 @@ def _run(config, conn, run_id: int, label: str, plan: list[Move]) -> None:
                 m.group_key,
                 m.reason,
                 str(m.source),
-                str(m.destination),
+                str(m.destination) if m.destination else "",
                 m.size,
                 m.mtime_ns,
                 STARTED,
+                m.action,
+                previous if m.follows else m.step_of,
             ),
         ).lastrowid
         try:
-            moved = moves.move(config, m.source, m.destination)
+            moved = _carry_out(config, convert, m)
         except (moves.MoveError, OSError) as exc:
             _set_state(conn, op_id, FAILED, str(exc))
-            _finish_run(conn, run_id, FAILED, f"stopped after {done} of {len(plan)} files: {exc}")
+            _finish_run(conn, run_id, FAILED, f"stopped after {done} of {len(plan)} steps: {exc}")
             return
         _settle(conn, kind, label, op_id, m, moved)
+        previous = op_id
         done += 1
-    verb = "moved to discarded/" if kind == APPLY else "restored"
-    _finish_run(conn, run_id, DONE, f"{done} {'file' if done == 1 else 'files'} {verb}")
+    _finish_run(conn, run_id, DONE, _summary(kind, plan, done))
 
 
 def progress(conn: sqlite3.Connection, run_id: int) -> dict | None:
@@ -305,54 +561,96 @@ def failed_operations(conn: sqlite3.Connection, label: str) -> list[sqlite3.Row]
 
 
 def recover(config: ApplyConfig, conn: sqlite3.Connection) -> int:
-    """Settle every move a restart cut off; return how many there were."""
+    """Settle every step a restart cut off; return how many there were."""
     pending = conn.execute(
         "SELECT o.*, r.kind FROM operation o JOIN apply_run r ON r.id = o.run_id WHERE o.state = ?",
         (STARTED,),
     ).fetchall()
     for op in pending:
-        source, destination = Path(op["source"]), Path(op["destination"])
-        moves.temp_path(config, destination).unlink(missing_ok=True)
-        m = Move(
-            op["rel_path"],
-            op["group_key"],
-            op["reason"],
-            source,
-            destination,
-            op["size"],
-            op["mtime_ns"],
-            undoes=_undone_by_restore(conn, op),
-        )
-        has_source, has_destination = source.exists(), destination.exists()
-        if has_destination and not has_source:
-            _settle(conn, op["kind"], op["folder_label"], op["id"], m, destination.stat())
-        elif has_source and not has_destination:
-            _set_state(conn, op["id"], FAILED, "interrupted before the move; nothing changed")
-        elif has_source and has_destination and moves.same_file(config, source, destination):
-            source.unlink()
-            _settle(conn, op["kind"], op["folder_label"], op["id"], m, destination.stat())
-        elif has_source:
-            _set_state(
-                conn,
-                op["id"],
-                FAILED,
-                f"interrupted with different files at {source} and {destination}; "
-                "both left in place",
-            )
+        m = _step_of_row(conn, op)
+        if m.destination is not None:
+            moves.temp_path(config, m.destination).unlink(missing_ok=True)
+        outcome = _recovered(config, m)
+        if outcome is None:
+            settled = m.destination.stat() if m.action in WRITES else None
+            _settle(conn, op["kind"], op["folder_label"], op["id"], m, settled)
         else:
-            _set_state(conn, op["id"], FAILED, f"neither {source} nor {destination} exists")
+            _set_state(conn, op["id"], FAILED, outcome)
     for run_row in conn.execute("SELECT id FROM apply_run WHERE status = ?", (RUNNING,)).fetchall():
         _finish_run(conn, run_row[0], FAILED, "interrupted by a restart; settled at start-up")
     return len(pending)
 
 
+def _step_of_row(conn: sqlite3.Connection, op: sqlite3.Row) -> Move:
+    """Rebuild a journalled step, as far as settling it needs."""
+    source = Path(op["source"])
+    destination = Path(op["destination"]) if op["destination"] else None
+    paired = undoes = None
+    if op["action"] == CONVERT:
+        paired = destination.relative_to(_root_of(op)).as_posix()
+    elif op["action"] == REMOVE:
+        undoes = op["step_of"]
+        row = conn.execute("SELECT rel_path FROM operation WHERE id = ?", (undoes,)).fetchone()
+        paired = row[0] if row else None
+    elif op["action"] == MOVE:
+        undoes = _undone_by_restore(conn, op)
+    return Move(
+        op["rel_path"],
+        op["group_key"],
+        op["reason"],
+        source,
+        destination,
+        op["size"],
+        op["mtime_ns"],
+        undoes=undoes,
+        action=op["action"],
+        paired_rel=paired,
+    )
+
+
+def _recovered(config: ApplyConfig, m: Move) -> str | None:
+    """None when the step turns out finished (or is finished now); otherwise why it failed."""
+    has_source = m.source.exists()
+    if m.action == DELETE:
+        # Deleting cannot be undone, so a cut-off delete keeps the file rather than finish.
+        return None if not has_source else "interrupted before deleting; the file is still there"
+    if m.action == REMOVE:
+        if not has_source:
+            return None
+        try:
+            _unchanged(m)
+        except moves.MoveError as exc:
+            return f"interrupted before {m.source} was removed, and it changed since: {exc}"
+        m.source.unlink()
+        return None
+    has_destination = m.destination.exists()
+    if m.action == CONVERT:
+        # The output is only given its name once verified, so a named output is a good one.
+        if has_destination:
+            return None
+        return "interrupted before the output was written; nothing changed"
+    if has_destination and not has_source:
+        return None
+    if has_source and not has_destination:
+        return "interrupted before the move; nothing changed"
+    if has_source and has_destination and moves.same_file(config, m.source, m.destination):
+        m.source.unlink()
+        return None
+    if has_source:
+        return (
+            f"interrupted with different files at {m.source} and {m.destination}; "
+            "both left in place"
+        )
+    return f"neither {m.source} nor {m.destination} exists"
+
+
 def _undone_by_restore(conn: sqlite3.Connection, op: sqlite3.Row) -> int | None:
     """For a restore cut off by a restart: the apply operation it was undoing."""
-    if op["kind"] != RESTORE:
+    if op["kind"] != RESTORE or op["action"] != MOVE:
         return None
     row = conn.execute(
         "SELECT id FROM operation WHERE folder_label = ? AND rel_path = ? AND state = ? "
-        "AND destination = ? AND id < ? ORDER BY id DESC LIMIT 1",
+        "AND action = 'move' AND destination = ? AND id < ? ORDER BY id DESC LIMIT 1",
         (op["folder_label"], op["rel_path"], DONE, op["source"], op["id"]),
     ).fetchone()
     return row[0] if row else None

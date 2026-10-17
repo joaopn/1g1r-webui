@@ -9,13 +9,15 @@ from concurrent.futures import ThreadPoolExecutor
 
 from g1r import db, journal
 from g1r.config import Settings
+from g1r.converter import Converter
 from g1r.scanner import Scanner
 
 
 class Jobs:
-    def __init__(self, settings: Settings, scanner: Scanner):
+    def __init__(self, settings: Settings, scanner: Scanner, converter: Converter | None = None):
         self.settings = settings
         self.scanner = scanner
+        self.converter = converter or Converter(settings)
         self.pool = ThreadPoolExecutor(
             max_workers=settings.jobs.workers, thread_name_prefix="g1r-job"
         )
@@ -51,7 +53,7 @@ class Jobs:
     def _run_apply(self, run_id: int, label: str, plan) -> None:
         conn = self._connect()
         try:
-            journal.run(self.settings.apply, conn, run_id, label, plan)
+            journal.run(self.settings.apply, conn, run_id, label, plan, self.converter)
         finally:
             conn.close()
 

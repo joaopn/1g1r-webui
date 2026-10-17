@@ -47,7 +47,7 @@ def same_device(a: Path, b: Path) -> bool:
     return a.stat().st_dev == b.stat().st_dev
 
 
-def _fsync_dir(directory: Path) -> None:
+def fsync_dir(directory: Path) -> None:
     fd = os.open(directory, os.O_RDONLY)
     try:
         os.fsync(fd)
@@ -55,7 +55,7 @@ def _fsync_dir(directory: Path) -> None:
         os.close(fd)
 
 
-def _place(existing: Path, destination: Path) -> None:
+def place(existing: Path, destination: Path) -> None:
     """Give `existing` the name `destination` too, never replacing a file already there."""
     try:
         os.link(existing, destination)
@@ -95,14 +95,14 @@ def move(config: ApplyConfig, source: Path, destination: Path) -> os.stat_result
     except OSError as exc:
         raise MoveError(f"cannot create {destination.parent}: {exc.strerror}") from exc
     if same_device(source, destination.parent):
-        _place(source, destination)
+        place(source, destination)
     else:
         temp = temp_path(config, destination)
         try:
             expected = _copy(config, source, temp)
             if temp.stat().st_size != size or sha1_of(config, temp) != expected:
                 raise MoveError(f"the copy of {source} does not match it")
-            _place(temp, destination)
+            place(temp, destination)
         except FileExistsError as exc:
             raise MoveError(f"{temp} already exists") from exc
         except OSError as exc:
@@ -112,7 +112,7 @@ def move(config: ApplyConfig, source: Path, destination: Path) -> os.stat_result
             temp.unlink(missing_ok=True)
             raise
         source.unlink()
-    _fsync_dir(destination.parent)
+    fsync_dir(destination.parent)
     moved = destination.stat()
     if moved.st_size != size:
         raise MoveError(f"{destination} has the wrong size after the move")

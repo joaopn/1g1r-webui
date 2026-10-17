@@ -10,7 +10,9 @@ from g1r.config import ApplyConfig
 
 from .test_api import scanned, setup  # noqa: F401  (fixture)
 
-CONFIG = ApplyConfig(copy_chunk_bytes=4, temp_suffix=".part")
+CONFIG = ApplyConfig(
+    copy_chunk_bytes=4, temp_suffix=".part", zip_compress_level=6, extract_timeout_seconds=5
+)
 
 
 # The move engine ------------------------------------------------------------------

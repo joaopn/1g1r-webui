@@ -103,7 +103,16 @@ def game_rows(
         op["rel_path"]: op["id"]
         for op in journal.active_discards(conn, label)
         if places.get(op["rel_path"]) == journal.PLACE_DISCARDED
+        and op["reason"] == REASON_DISCARDED
     }
+    # Other discarded files (a conversion's originals) are no versions: their output is.
+    identities = [
+        r
+        for r in identities
+        if places.get(r["rel_path"]) != journal.PLACE_DISCARDED or r["rel_path"] in gone
+    ]
+    if not identities:
+        return []
     # Discarded files keep the identity of the scan before their move; use the folder's DAT.
     dat_sha1 = next(
         (r["dat_sha1"] for r in identities if r["rel_path"] not in gone),
