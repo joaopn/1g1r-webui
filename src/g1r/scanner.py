@@ -182,6 +182,9 @@ class Scanner:
         dat_file = self.settings.paths.data_dir / active["file"]
         rows = self.report_runner(self.settings, dat_file, root)
         by_path = igir.identified_files(rows)
+        parts = {
+            e.lower() for e in self.settings.platforms.profiles[folder.platform].part_extensions
+        }
         unmatched = []
         for f in files:
             if f.kind not in ("rom", "archive"):
@@ -189,7 +192,9 @@ class Scanner:
             games = by_path.get(str(root / f.rel_path), set())
             if games:
                 found.identify(f.rel_path, games, METHOD_CHECKSUM)
-            else:
+            elif not _part(f.rel_path, parts):
+                # A cue sheet or track the DAT misses waits for conversion: not hashed,
+                # not looked up online, not suggested.
                 unmatched.append(f)
         dat = self.registry.load_active(conn, library, folder.platform)
         if unmatched and self.settings.headers.get(folder.platform):

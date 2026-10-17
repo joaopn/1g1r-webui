@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from g1r import discs
+from g1r import db, discs
 from g1r.web.app import create_app
 
 SECTOR = 2352
@@ -195,3 +195,19 @@ def test_a_chd_is_known_by_its_header_not_its_bytes(tmp_path):
     )
     (tmp_path / "c.chd").write_bytes(b"not a chd")
     assert chd_identity(tmp_path / "c.chd") is None
+
+
+def test_parts_are_not_hashed_or_looked_up(psx):
+    client, folder = psx
+    audio_cue(folder, "A (USA)", 2)
+    dat = (
+        "<?xml version='1.0'?><datafile><header><name>Sony - PlayStation</name></header>"
+        '<game name="Other (USA)"><rom name="Other (USA).bin" size="1" crc="00000000"/></game>'
+        "</datafile>"
+    )
+    client.post("/api/dats/psx/upload", files={"file": ("psx.dat", dat.encode())})
+    assert scan(client)["status"] == "done"
+    assert client.get("/api/folders/psx/unmatched").json() == []
+    # content_hash rows are what an online lookup would send.
+    conn = db.open_database(client.app.state.settings)
+    assert conn.execute("SELECT COUNT(*) FROM content_hash").fetchone()[0] == 0
