@@ -39,23 +39,26 @@ class Jobs:
         finally:
             conn.close()
 
-    def apply(self, conn, label: str, kind: str, scope: str, check) -> int:
-        """Start a run. `check()` re-plans under the lock and returns the plan or raises."""
+    def apply(self, conn, label: str, kind: str, scope: str, check, after=None) -> int:
+        """Start a run. `check()` re-plans under the lock and returns the plan or raises;
+        `after()`, if given, runs once the run has ended, however it ended."""
         with self.starting:
             reason = journal.busy(conn, label)
             if reason:
                 raise journal.PlanError(reason)
             plan = check()
             run_id = journal.start_run(conn, label, kind, scope, len(plan))
-        self.pool.submit(self._run_apply, run_id, label, plan)
+        self.pool.submit(self._run_apply, run_id, label, plan, after)
         return run_id
 
-    def _run_apply(self, run_id: int, label: str, plan) -> None:
+    def _run_apply(self, run_id: int, label: str, plan, after=None) -> None:
         conn = self._connect()
         try:
             journal.run(self.settings.apply, conn, run_id, label, plan, self.converter)
         finally:
             conn.close()
+            if after is not None:
+                after()
 
     def shutdown(self) -> None:
         self.pool.shutdown(wait=True, cancel_futures=True)

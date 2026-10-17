@@ -1,4 +1,5 @@
-"""What sits in discarded/<label>/, grouped by reason (design §8). Read-only: listing only.
+"""What sits in discarded/<label>/, grouped by reason (design §8): the listing, and tidying
+up the directories emptying it leaves behind.
 
 The layout is discarded/<label>/<reason>/<original relative path>. A file outside a known
 reason directory is still listed, under the directory it is in, so nothing there is hidden.
@@ -119,6 +120,21 @@ def listing(
         reasons.values(),
         key=lambda r: (order.index(r.id) if r.known else len(order), r.id),
     )
+
+
+def files_under(settings: Settings, label: str) -> list[tuple[str, os.stat_result]]:
+    """Every regular file in discarded/<label>/, relative to it."""
+    return _walk(folder_root(settings, label))
+
+
+def prune_empty(root: Path) -> None:
+    """Remove the empty directories under root (root itself stays)."""
+    for directory, _, _ in os.walk(root, topdown=False):
+        if Path(directory) != root:
+            try:
+                os.rmdir(directory)
+            except OSError:
+                pass  # not empty, or already gone
 
 
 def totals(settings: Settings, label: str) -> dict:

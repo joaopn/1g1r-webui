@@ -57,6 +57,19 @@ class ConvertScope(BaseModel):
     confirm: str | None = None
 
 
+class UnmatchedScope(BaseModel):
+    rel_paths: list[str]
+    # Delete for good (guarded) instead of moving to discarded/<label>/manual/.
+    delete: bool = False
+    token: str | None = None
+    confirm: str | None = None
+
+
+class Guarded(BaseModel):
+    token: str | None = None
+    confirm: str | None = None
+
+
 class RestoreScope(BaseModel):
     operation_ids: list[int] | None = None
     group_key: str | None = None
@@ -447,6 +460,97 @@ def build_router(
         except journal.PlanError as exc:
             raise conflict(str(exc), exc.problems) from exc
         return journal.progress(conn, run_id)
+
+    def step_dict(m: journal.Move) -> dict:
+        return {
+            "rel_path": m.rel_path,
+            "size": m.size,
+            "destination": str(m.destination) if m.destination else None,
+        }
+
+    def guarded_preview(conn, label: str, plan, problems) -> dict:
+        return {
+            "token": journal.token(plan),
+            "files": [step_dict(m) for m in plan],
+            "irreversible": len(journal.irreversible(plan)),
+            "bytes": sum(m.size for m in plan),
+            "problems": [{"rel_path": r, "problem": p} for r, p in problems],
+            "busy": journal.busy(conn, label),
+        }
+
+    def start_guarded(request, conn, label, scope, body, make_plan, nothing, after=None):
+        def check():
+            plan, problems = make_plan()
+            if journal.token(plan) != body.token:
+                raise journal.PlanError("the plan changed since you reviewed it; look again")
+            if problems:
+                raise journal.PlanError(
+                    "nothing was changed: some files are not as listed", problems
+                )
+            if not plan:
+                raise journal.PlanError(nothing)
+            if journal.irreversible(plan) and body.confirm != label:
+                raise journal.PlanError(
+                    f"this deletes files for good: type the folder label {label!r} to confirm"
+                )
+            return plan
+
+        try:
+            run_id = request.app.state.jobs.apply(conn, label, journal.APPLY, scope, check, after)
+        except journal.PlanError as exc:
+            raise conflict(str(exc), exc.problems) from exc
+        return journal.progress(conn, run_id)
+
+    def unmatched_plan(conn, label: str, body: UnmatchedScope):
+        folder = folder_or_404(label)
+        root, gone = folder_root(folder), discarded.folder_root(settings, label)
+        try:
+            plan = journal.plan_unmatched(
+                conn, label, root, gone, body.rel_paths, delete=body.delete
+            )
+        except journal.PlanError as exc:
+            raise conflict(str(exc), exc.problems) from exc
+        return plan, journal.preflight(plan, root, gone)
+
+    @router.post("/folders/{label}/unmatched/preview")
+    def unmatched_preview(label: str, body: UnmatchedScope, conn: Conn):
+        return guarded_preview(conn, label, *unmatched_plan(conn, label, body))
+
+    @router.post("/folders/{label}/unmatched", status_code=HTTPStatus.ACCEPTED)
+    def unmatched_apply(label: str, body: UnmatchedScope, request: Request, conn: Conn):
+        return start_guarded(
+            request,
+            conn,
+            label,
+            journal.SCOPE_UNMATCHED,
+            body,
+            lambda: unmatched_plan(conn, label, body),
+            "there is nothing to move or delete",
+        )
+
+    def empty_plan(conn, label: str):
+        folder = folder_or_404(label)
+        gone = discarded.folder_root(settings, label)
+        plan = journal.plan_empty(conn, label, gone, discarded.files_under(settings, label))
+        return plan, journal.preflight(plan, folder_root(folder), gone)
+
+    @router.post("/folders/{label}/discarded/empty/preview")
+    def empty_preview(label: str, conn: Conn):
+        return guarded_preview(conn, label, *empty_plan(conn, label))
+
+    @router.post("/folders/{label}/discarded/empty", status_code=HTTPStatus.ACCEPTED)
+    def empty_discarded(label: str, body: Guarded, request: Request, conn: Conn):
+        root = discarded.folder_root(settings, label)
+        return start_guarded(
+            request,
+            conn,
+            label,
+            journal.SCOPE_EMPTY,
+            body,
+            lambda: empty_plan(conn, label),
+            "discarded/ is already empty",
+            after=lambda: discarded.prune_empty(root),
+        )
 
     @router.post("/folders/{label}/restore", status_code=HTTPStatus.ACCEPTED)
     def restore(label: str, body: RestoreScope, request: Request, conn: Conn):

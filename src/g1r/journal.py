@@ -41,6 +41,12 @@ MOVE = "move"
 CONVERT = "convert"
 DELETE = "delete"
 REMOVE = "remove"
+# Run scopes besides 1G1R (a group key or '' for the folder).
+SCOPE_UNMATCHED = "unmatched"
+SCOPE_EMPTY = "empty"
+# Unmatched files the user moved out go to this discarded/ subfolder.
+REASON_MANUAL = "manual"
+
 # Steps that write a new name for the file and must find that name free.
 WRITES = (MOVE, CONVERT)
 
@@ -78,8 +84,11 @@ class Move:
     member_crc32: str | None = None
     # This step finishes the convert step just before it (moves or deletes its original).
     follows: bool = False
-    # Remove only: the convert operation whose output this removes.
+    # Remove only: the convert operation whose output this removes. Delete of a file in
+    # discarded/: the apply move that put it there (None if the app did not).
     step_of: int | None = None
+    # The source is a file in discarded/ (emptying it), not in the folder.
+    in_discarded: bool = False
 
 
 def token(plan: list[Move]) -> str:
@@ -179,17 +188,104 @@ def plan_conversions(
     return plan
 
 
+def plan_unmatched(
+    conn: sqlite3.Connection,
+    label: str,
+    root: Path,
+    discarded_root: Path,
+    rel_paths: list[str],
+    *,
+    delete: bool,
+) -> list[Move]:
+    """Move unmatched files to discarded/<label>/manual/, or delete them (guarded)."""
+    unmatched = {
+        r["rel_path"]: r
+        for r in conn.execute(
+            "SELECT f.rel_path, f.size, f.mtime_ns FROM folder_file f "
+            "WHERE f.folder_label = ? AND f.kind IN ('rom', 'archive') AND f.place = ? "
+            "AND NOT EXISTS (SELECT 1 FROM identity i "
+            "WHERE i.folder_label = f.folder_label AND i.rel_path = f.rel_path)",
+            (label, PLACE_FOLDER),
+        )
+    }
+    missing = [rel for rel in rel_paths if rel not in unmatched]
+    if missing:
+        raise PlanError(
+            "these files are not unmatched content (rescan?)",
+            [(m, "not unmatched") for m in missing],
+        )
+    plan = []
+    for rel in sorted(set(rel_paths)):
+        f = unmatched[rel]
+        if delete:
+            plan.append(
+                Move(
+                    rel,
+                    "",
+                    REASON_MANUAL,
+                    root / rel,
+                    None,
+                    f["size"],
+                    f["mtime_ns"],
+                    action=DELETE,
+                )
+            )
+        else:
+            plan.append(
+                Move(
+                    rel,
+                    "",
+                    REASON_MANUAL,
+                    root / rel,
+                    discarded_root / REASON_MANUAL / rel,
+                    f["size"],
+                    f["mtime_ns"],
+                )
+            )
+    return plan
+
+
+def plan_empty(conn: sqlite3.Connection, label: str, discarded_root: Path, files) -> list[Move]:
+    """Delete every file in discarded/<label>/ for good (guarded).
+
+    `files` is (path relative to discarded_root, stat) for each file found there.
+    """
+    moved = {op["destination"]: op for op in active_discards(conn, label)}
+    plan = []
+    for rel, stat in sorted(files):
+        path = discarded_root / rel
+        op = moved.get(str(path))
+        plan.append(
+            Move(
+                rel,
+                "",
+                PurePosixPath(rel).parts[0],
+                path,
+                None,
+                stat.st_size,
+                stat.st_mtime_ns,
+                action=DELETE,
+                paired_rel=op["rel_path"] if op else None,
+                step_of=op["id"] if op else None,
+                in_discarded=True,
+            )
+        )
+    return plan
+
+
 def irreversible(plan: list[Move]) -> list[Move]:
     return [m for m in plan if m.action == DELETE]
 
 
 def active_discards(conn: sqlite3.Connection, label: str) -> list[sqlite3.Row]:
-    """Apply moves whose file is in discarded/ now (moved and not restored)."""
+    """Apply moves whose file is in discarded/ now (moved, not restored, not emptied)."""
     return conn.execute(
         "SELECT o.* FROM operation o JOIN apply_run r ON r.id = o.run_id "
         "WHERE o.folder_label = ? AND r.kind = ? AND o.state = ? AND o.action = ? "
+        "AND NOT EXISTS (SELECT 1 FROM operation d WHERE d.step_of = o.id "
+        "AND d.action = ? AND d.state = ?) "
         "ORDER BY o.rel_path",
-        (label, APPLY, DONE, MOVE),
+        (label, APPLY, DONE, MOVE, DELETE, DONE),
     ).fetchall()
 
 
@@ -269,6 +365,8 @@ def _roots(m: Move, kind: str, folder: Path, discarded: Path) -> tuple[Path, Pat
     """Where a step's source and destination must be."""
     if m.action == MOVE:
         return (folder, discarded) if kind == APPLY else (discarded, folder)
+    if m.in_discarded:
+        return discarded, discarded
     return folder, folder
 
 
@@ -415,10 +513,17 @@ def _settle(conn, kind: str, label: str, op_id: int, m: Move, moved) -> None:
             )
         elif m.action == CONVERT:
             carry_over(conn, label, m.rel_path, m.paired_rel, moved, members)
+        elif m.action == DELETE and m.in_discarded:
+            # Gone from discarded/: the table stops showing it as a discarded version.
+            if m.paired_rel is not None:
+                conn.execute(
+                    "DELETE FROM folder_file WHERE folder_label = ? AND rel_path = ? AND place = ?",
+                    (label, m.paired_rel, PLACE_DISCARDED),
+                )
         elif m.action == DELETE:
             conn.execute(
-                "DELETE FROM folder_file WHERE folder_label = ? AND rel_path = ?",
-                (label, m.rel_path),
+                "DELETE FROM folder_file WHERE folder_label = ? AND rel_path = ? AND place = ?",
+                (label, m.rel_path, PLACE_FOLDER),
             )
         elif m.action == REMOVE:
             _drop_output(conn, label, m.rel_path, m.paired_rel)
@@ -465,6 +570,8 @@ def _summary(kind: str, plan: list[Move], done: int) -> str:
         return f"{n} {'file' if n == 1 else 'files'}"
 
     converted = sum(1 for m in plan if m.action == CONVERT)
+    if plan and all(m.action == DELETE for m in plan):
+        return f"{files(done)} deleted"
     if kind == APPLY and converted:
         return f"{files(converted)} converted"
     if kind == RESTORE:
@@ -563,7 +670,8 @@ def failed_operations(conn: sqlite3.Connection, label: str) -> list[sqlite3.Row]
 def recover(config: ApplyConfig, conn: sqlite3.Connection) -> int:
     """Settle every step a restart cut off; return how many there were."""
     pending = conn.execute(
-        "SELECT o.*, r.kind FROM operation o JOIN apply_run r ON r.id = o.run_id WHERE o.state = ?",
+        "SELECT o.*, r.kind, r.scope FROM operation o JOIN apply_run r ON r.id = o.run_id "
+        "WHERE o.state = ?",
         (STARTED,),
     ).fetchall()
     for op in pending:
@@ -594,6 +702,11 @@ def _step_of_row(conn: sqlite3.Connection, op: sqlite3.Row) -> Move:
         paired = row[0] if row else None
     elif op["action"] == MOVE:
         undoes = _undone_by_restore(conn, op)
+    elif op["action"] == DELETE and op["scope"] == SCOPE_EMPTY and op["step_of"]:
+        row = conn.execute(
+            "SELECT rel_path FROM operation WHERE id = ?", (op["step_of"],)
+        ).fetchone()
+        paired = row[0] if row else None
     return Move(
         op["rel_path"],
         op["group_key"],
@@ -605,6 +718,7 @@ def _step_of_row(conn: sqlite3.Connection, op: sqlite3.Row) -> Move:
         undoes=undoes,
         action=op["action"],
         paired_rel=paired,
+        in_discarded=op["scope"] == SCOPE_EMPTY,
     )
 
 
