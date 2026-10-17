@@ -268,3 +268,42 @@ def test_unmatched_assign_and_lookup_settings(setup):
 
     assert client.get("/api/settings").json()["lookups"] == {"hasheous": False}
     assert client.put("/api/settings/lookups", json={"hasheous": True}).json() == {"hasheous": True}
+
+
+def test_discarded_listing_and_home_warnings(setup, roms_root):
+    client, _, _ = setup
+    scanned(client)
+    empty = client.get("/api/folders/nes/discarded").json()
+    assert (empty["files"], empty["reasons"]) == (0, [])
+    base = roms_root / "discarded" / "nes"
+    (base / "1g1r").mkdir(parents=True)
+    (base / "1g1r" / "Contra (Japan).zip").write_bytes(b"12")
+    (base / "1g1r" / "Gone (USA).zip").write_bytes(b"3")
+    (base / "originals").mkdir()
+    (base / "originals" / "odd.nes").write_bytes(b"4567")
+    (base / "loose.bin").write_bytes(b"8")
+    body = client.get("/api/folders/nes/discarded").json()
+    assert (body["files"], body["bytes"]) == (4, 8)
+    assert [r["id"] for r in body["reasons"]] == ["1g1r", "originals", ""]
+    one = {f["rel_path"]: f for f in body["reasons"][0]["files"]}
+    assert one["Contra (Japan).zip"]["occupied"] is True
+    assert one["Gone (USA).zip"]["occupied"] is False
+    assert one["Gone (USA).zip"]["restore_to"].endswith("NES Set/Gone (USA).zip")
+    assert body["reasons"][2]["known"] is False
+
+    folder = client.get("/api/folders").json()[0]
+    assert folder["discarded"] == {"files": 4, "bytes": 8}
+    assert folder["warnings"] == []
+    (roms_root / "NES Set" / "game.sfc").write_bytes(b"x")
+    client.post("/api/folders/nes/scan")
+    for _ in range(500):
+        if client.get("/api/folders/nes/scan").json()["status"] != "running":
+            break
+    (warning,) = client.get("/api/folders").json()[0]["warnings"]
+    assert warning["text"].startswith("Not NES ROMs or archives: 1 file.")
+    new = client.post(
+        "/api/dats/nes/upload", files={"file": ("nes.dat", dat_bytes([*NAMES, "New"]))}
+    )
+    client.put("/api/dats/nes/active", json={"version_id": new.json()["version_id"]})
+    texts = [w["text"] for w in client.get("/api/folders").json()[0]["warnings"]]
+    assert "The active DAT changed since the last scan. Rescan to use it." in texts

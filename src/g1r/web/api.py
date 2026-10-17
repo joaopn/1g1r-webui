@@ -11,7 +11,7 @@ import yaml
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel
 
-from g1r import conversion, matching, mounts, scanner, unmatched
+from g1r import conversion, dashboard, discarded, matching, mounts, scanner, unmatched
 from g1r.config import RANKING_CRITERIA, RankingConfig, Settings
 from g1r.dat_registry import DatRegistry, RegistryError
 from g1r.library import FolderEntry, Library, LibraryStore
@@ -206,15 +206,31 @@ def build_router(
         result = []
         for folder in library.folders:
             table = matching.table(settings, conn, folder.label, store.ranking_for(folder))
+            info = folder_info(library, folder)
+            scan = scanner.latest_scan(conn, folder.label)
+            dat = registry.active_version(conn, library, folder.platform)
             result.append(
                 {
-                    **folder_info(library, folder),
-                    "scan": row_dict(scanner.latest_scan(conn, folder.label)),
-                    "dat": row_dict(registry.active_version(conn, library, folder.platform)),
+                    **info,
+                    "scan": row_dict(scan),
+                    "dat": row_dict(dat),
                     "summary": scanner.folder_summary(conn, folder.label),
                     "counts": table.counts,
                     "reclaim_bytes": table.reclaim_bytes,
                     "conversion": conversion.counts(conversion_rows(library, folder, conn)),
+                    "discarded": discarded.totals(settings, folder.label),
+                    "warnings": dashboard.warnings(
+                        conn,
+                        folder.label,
+                        location=info["location"],
+                        platform_short=(
+                            platforms[folder.platform].short
+                            if folder.platform in platforms
+                            else folder.platform
+                        ),
+                        scan=scan,
+                        dat=dat,
+                    ),
                 }
             )
         return result
@@ -266,6 +282,18 @@ def build_router(
             "others": [dict(r) for r in scanner.other_files(conn, label)],
             "ranking": store.ranking_for(folder).model_dump(),
             "ranking_is_default": folder.ranking is None,
+        }
+
+    @router.get("/folders/{label}/discarded")
+    def folder_discarded(label: str):
+        folder = folder_or_404(label)
+        info = folder_info(store.load(), folder)
+        reasons = discarded.listing(settings, label, info["location"])
+        return {
+            "root": str(discarded.folder_root(settings, label)),
+            "files": sum(len(r.files) for r in reasons),
+            "bytes": sum(r.bytes for r in reasons),
+            "reasons": [asdict(r) | {"bytes": r.bytes} for r in reasons],
         }
 
     @router.get("/folders/{label}/games")

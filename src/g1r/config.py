@@ -50,7 +50,7 @@ class PathsConfig(_Strict):
 
     @property
     def discarded_root(self) -> Path:
-        return self.roms_root / self.discarded_dirname
+        return Path(os.path.normpath(self.roms_root / self.discarded_dirname))
 
 
 class DatabaseConfig(_Strict):
