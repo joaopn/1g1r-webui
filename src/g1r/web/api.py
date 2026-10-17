@@ -256,6 +256,7 @@ def build_router(
                 for pid, p in platforms.items()
             },
             "targets": {k: v.model_dump() for k, v in settings.platforms.targets.items()},
+            "archive_extensions": settings.platforms.archive_extensions,
             "dat_sources": {k: v.model_dump() for k, v in settings.dats.sources.items()},
             "ranking": {
                 "criteria": list(RANKING_CRITERIA),
@@ -354,6 +355,12 @@ def build_router(
             "summary": scanner.folder_summary(conn, label, parts_of(folder)),
             "unmatched": [dict(r) for r in scanner.unmatched_files(conn, label, parts_of(folder))],
             "others": [dict(r) for r in scanner.other_files(conn, label)],
+            "unsupported": scanner.unsupported_files(
+                conn,
+                label,
+                platforms[folder.platform].rom_extensions,
+                platforms[folder.platform].romsets,
+            ),
             "ranking": store.ranking_for(folder).model_dump(),
             "ranking_is_default": folder.ranking is None,
         }

@@ -107,8 +107,10 @@ def test_zip_target(gb):
     assert bare.reversible
     assert rows["Clash.gb"].status == conversion.FLAGGED
     assert "already exists" in rows["Clash.gb"].note
-    assert rows["Two (USA).zip"].status == conversion.FLAGGED
-    assert rows["Empty.zip"].note == "no ROM file inside"
+    # The disks of one game stay together in their zip.
+    two = rows["Two (USA).zip"]
+    assert (two.status, two.note) == (conversion.DONE, "2 ROM files kept together in one archive")
+    assert rows["Empty.zip"].note == "no Game Boy ROM inside (gb)"
 
 
 def test_plain_target(gb):
@@ -121,6 +123,7 @@ def test_plain_target(gb):
     assert rows["Bare (Europe).gb"].status == conversion.DONE
     # Clash.zip would unwrap onto the existing Clash.gb.
     assert rows["Clash.zip"].status == conversion.FLAGGED
+    assert "only single-ROM archives are converted" in rows["Two (USA).zip"].note
 
 
 def test_delete_originals_makes_the_step_irreversible(gb):
@@ -133,4 +136,4 @@ def test_counts(gb):
     settings, conn = gb
     counts = conversion.counts(list(by_path(settings, conn, "zip").values()))
     assert counts["to_convert"] == counts["wrap"] == 1
-    assert counts["flagged"] == 3 and counts["all"] == 8
+    assert counts["flagged"] == 2 and counts["all"] == 8

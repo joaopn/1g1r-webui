@@ -38,3 +38,18 @@ def test_bad_dats_are_rejected(data):
 def test_bom_and_whitespace_are_tolerated():
     data = b"\xef\xbb\xbf\n" + (DATA / "nes-nointro.dat").read_bytes()
     assert parse_dat_bytes(data).header.name.startswith("Nintendo")
+
+
+def test_serials_are_read_from_both_formats():
+    clrmamepro = (
+        b'clrmamepro (\n\tname "Nintendo - Nintendo 3DS"\n)\n\ngame (\n'
+        b'\tname "Pilotwings Resort (USA) (En,Fr,Es)"\n\tserial "CTR-P-AWAE"\n'
+        b'\trom ( name "P.3ds" size 4 crc 47B9251C serial "CTR-P-AWAE" )\n)\n'
+    )
+    assert parse_dat_bytes(clrmamepro).games[0].serial == "CTR-P-AWAE"
+    logiqx = (
+        b"<datafile><header><name>Sony - PlayStation 2</name></header>"
+        b'<game name="A (USA)"><serial>SLUS-20246</serial><rom name="A.iso" size="4"/></game>'
+        b"</datafile>"
+    )
+    assert parse_dat_bytes(logiqx).games[0].serial == "SLUS-20246"

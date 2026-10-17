@@ -133,3 +133,15 @@ def test_download_failure_is_reported(make_settings):
     registry = DatRegistry(settings, LibraryStore(settings), fail)
     with pytest.raises(RegistryError, match="network down"):
         registry.download_libretro(db.open_database(settings), "nes")
+
+
+def test_where_each_platform_downloads_from(env):
+    _, _, registry, _, _ = env
+    assert registry.downloads("nes") == ["libretro"]
+    # The libretro mirror keeps a disc's data track only: archived sets would not match it.
+    assert registry.downloads("dc") == ["redump"]
+    assert registry.downloads("psx") == ["redump"]
+    # No public Switch DAT: identified by title ID, and a DAT can still be uploaded.
+    assert registry.downloads("switch") == []
+    with pytest.raises(RegistryError):
+        registry.download(env[3], "switch", "libretro")

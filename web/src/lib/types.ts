@@ -3,7 +3,7 @@ export type ColumnSize = { rem: number; min: number; max: number };
 export type Platform = {
   name: string;
   short: string;
-  kind: "console" | "handheld" | "arcade";
+  kind: "console" | "handheld" | "arcade" | "computer";
   dat_name: string;
   rom_extensions: string[];
   targets: string[];
@@ -39,6 +39,7 @@ export type Meta = {
     discarded_columns_default: string[];
   };
   platforms: Record<string, Platform>;
+  archive_extensions: string[];
   targets: Record<string, Target>;
   dat_sources: Record<string, { label: string; identification_only: boolean; website?: string }>;
   ranking: { criteria: string[]; labels: Record<string, string>; default: Ranking };
@@ -124,12 +125,16 @@ export type Discarded = { root: string; files: number; bytes: number; reasons: D
 
 export type FileRow = { rel_path: string; size: number; kind: string };
 
+/** A file left alone because it is not in a format the platform supports. */
+export type UnsupportedFile = { rel_path: string; size: number; reason: string };
+
 export type FolderDetail = FolderInfo & {
   scan: Scan | null;
   dat: DatVersion | null;
   summary: Summary;
   unmatched: FileRow[];
   others: FileRow[];
+  unsupported: UnsupportedFile[];
   ranking: Ranking;
   ranking_is_default: boolean;
 };

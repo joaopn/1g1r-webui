@@ -237,6 +237,10 @@ def read_cards(settings: Settings, platform: str, root: Path, files, members) ->
 # The scan ------------------------------------------------------------------------
 
 
+# A suggestion from the card's product code ranks above every name-based one.
+SERIAL_SCORE = 1.0
+
+
 class Scanner:
     def __init__(
         self,
@@ -570,8 +574,25 @@ class Scanner:
     def _suggest(self, dat: Dat, unmatched: list[InventoryFile], found: "Found") -> None:
         config = self.settings.fuzzy
         names = [g.name for g in dat.games]
+        by_serial: dict[str, list[str]] = {}
+        for g in dat.games:
+            if g.serial:
+                by_serial.setdefault(g.serial.upper(), []).append(g.name)
         for f in unmatched:
             best = fuzzy.suggestions(config, f.rel_path, names)
+            card = found.cards.get(f.rel_path)
+            code = card[0].product_code.upper() if card else ""
+            if by_serial.get(code):
+                # The card's own product code (an encrypted image never has the DAT's hash):
+                # the entries with that serial first, ordered by how well the name fits.
+                fits = dict(best)
+                same = sorted(by_serial[code], key=lambda n: (-fits.get(n, 0), n))
+                found.suggestions[f.rel_path] = [
+                    *[(n, SERIAL_SCORE) for n in same],
+                    *[b for b in best if b[0] not in same],
+                ][: config.max_suggestions]
+                # A product code is not a checksum, and revisions share it: never auto-matched.
+                continue
             known = found.known_as.get(f.rel_path)
             if known:
                 # ScreenScraper's name for the data is a better hint than the file name.
@@ -805,3 +826,34 @@ def other_files(conn: sqlite3.Connection, label: str) -> list[sqlite3.Row]:
         "ORDER BY kind, rel_path",
         (label,),
     ).fetchall()
+
+
+def unsupported_files(
+    conn: sqlite3.Connection, label: str, rom_extensions: list[str], romsets: bool
+) -> list[dict]:
+    """Files the app leaves alone because they are not in a format the platform supports:
+    an unknown extension, or an archive with no supported ROM inside (an arcade romset's
+    chips have no fixed extensions, so romsets are not looked into)."""
+    exts = {e.lower() for e in rom_extensions}
+    inside: dict[str, set[str]] = {}
+    for rel, member in conn.execute(
+        "SELECT rel_path, member FROM archive_member WHERE folder_label = ?", (label,)
+    ):
+        inside.setdefault(rel, set()).add(PurePosixPath(member).suffix.lower().lstrip("."))
+    result = []
+    for row in conn.execute(
+        "SELECT rel_path, size, kind FROM folder_file WHERE folder_label = ? "
+        "AND kind IN ('other', 'archive') AND place = 'folder' ORDER BY rel_path",
+        (label,),
+    ):
+        rel = row["rel_path"]
+        if row["kind"] == "other":
+            ext = PurePosixPath(rel).suffix.lower().lstrip(".")
+            reason = f".{ext} is not a supported format" if ext else "no file extension"
+        elif not romsets and rel in inside and not inside[rel] & exts:
+            found = ", ".join(f".{e}" if e else "no extension" for e in sorted(inside[rel]))
+            reason = f"no supported ROM inside (it holds {found})"
+        else:
+            continue
+        result.append({"rel_path": rel, "size": row["size"], "reason": reason})
+    return result

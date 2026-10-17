@@ -10,6 +10,7 @@ import { GamesTable } from "@/components/games/GamesTable";
 import { RankingEditor } from "@/components/RankingEditor";
 import { ScanPanel } from "@/components/ScanPanel";
 import { StatCard } from "@/components/StatCard";
+import { UnsupportedFiles } from "@/components/UnsupportedFiles";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { UnmatchedSection } from "@/components/unmatched/UnmatchedSection";
@@ -83,6 +84,7 @@ export function FolderMatchingPage() {
   if (folder.error) return <p className="text-status-bad">{errorText(folder.error)}</p>;
   if (!meta.data || !folder.data) return <p className="text-muted-foreground">Loading…</p>;
   const f = folder.data;
+  const ignored = f.others.filter((file) => file.kind === "ignored");
   const source = f.dat ? meta.data.dat_sources[f.dat.source] : null;
   const other = (f.summary.counts.other ?? 0) + (f.summary.counts.ignored ?? 0);
   const proposed = (games.data ?? []).reduce(
@@ -116,6 +118,8 @@ export function FolderMatchingPage() {
           <span className="text-status-warn">none — add one in Settings → DATs</span>
         )}
       </ScanPanel>
+
+      <UnsupportedFiles files={f.unsupported} platform={f.platform} meta={meta.data} />
 
       <RunPanel label={label} meta={meta.data} />
 
@@ -211,18 +215,16 @@ export function FolderMatchingPage() {
         }
         scanning={f.scan?.status === "running"}
       />
-      {f.others.length > 0 ? (
+      {ignored.length > 0 ? (
         <details className="rounded-lg border border-border bg-card">
           <summary className="cursor-pointer px-4 py-3 font-medium">
-            Other files ({formatCount(f.others.length)})
+            Ignored files ({formatCount(ignored.length)})
           </summary>
           <ul className="space-y-1 border-border border-t px-4 py-3 text-sm">
-            {f.others.map((file) => (
+            {ignored.map((file) => (
               <li key={file.rel_path} className="flex justify-between gap-4">
                 <span className="truncate">{file.rel_path}</span>
-                <span className="shrink-0 text-muted-foreground">
-                  {file.kind === "ignored" ? "ignored filename" : "not a ROM of this platform"}
-                </span>
+                <span className="shrink-0 text-muted-foreground">ignored filename</span>
               </li>
             ))}
           </ul>

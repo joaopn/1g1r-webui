@@ -8,6 +8,7 @@ import { RunPanel } from "@/components/apply/RunPanel";
 import { ConversionTable } from "@/components/conversion/ConversionTable";
 import { ScanPanel } from "@/components/ScanPanel";
 import { StatCard } from "@/components/StatCard";
+import { UnsupportedFiles } from "@/components/UnsupportedFiles";
 import { Button } from "@/components/ui/button";
 import { ApiError, api, json } from "@/lib/api";
 import { formatCount, formatFiles } from "@/lib/format";
@@ -53,6 +54,8 @@ export function FolderConversionPage() {
           </Link>
         </span>
       </ScanPanel>
+
+      <UnsupportedFiles files={f.unsupported} platform={f.platform} meta={meta.data} />
 
       {counts && counts.all > 0 ? (
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">

@@ -1,36 +1,11 @@
 import os
 import shutil
 import zipfile
-from http import HTTPStatus
 
 import pytest
-from fastapi.testclient import TestClient
-
-from g1r.web.app import create_app
 
 DVD_SECTOR = 2048
 SECTORS = 600
-
-
-@pytest.fixture
-def folder_of(make_settings, roms_root):
-    """A started app with one folder of the given platform (label = platform)."""
-    (roms_root / "discarded").mkdir()
-    clients = []
-
-    def make(platform: str):
-        folder = roms_root / platform
-        folder.mkdir()
-        client = TestClient(create_app(make_settings(), report_runner=lambda *a: []))
-        client.__enter__()
-        clients.append(client)
-        body = {"platform": platform, "mount": "roms", "path": platform, "label": platform}
-        assert client.post("/api/folders", json=body).status_code == HTTPStatus.CREATED
-        return client, folder
-
-    yield make
-    for client in clients:
-        client.__exit__(None, None, None)
 
 
 def proposals(client, label):
@@ -85,7 +60,9 @@ def test_dvd_platforms_make_dvd_chds_from_isos(folder_of):
     (folder / "Q (USA).cso").write_bytes(b"CISO")
     rows = proposals(client, "psp")
     assert rows["P (USA).iso"]["disc_mode"] == "createdvd"
-    assert rows["Q (USA).cso"]["status"] == "flagged"
+    q = rows["Q (USA).cso"]
+    assert (q["status"], q["disc_mode"], q["output"]) == ("make chd", "createdvd", "Q (USA).chd")
+    assert q["note"] == "decoded to an ISO in a work folder first"
 
 
 @pytest.mark.skipif(shutil.which("chdman") is None, reason="chdman is not installed")

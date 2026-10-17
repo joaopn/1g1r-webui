@@ -17,7 +17,7 @@ import zlib
 from collections.abc import Callable
 from pathlib import Path, PurePosixPath
 
-from g1r import conversion, discs, hashing, moves
+from g1r import conversion, cso, discs, hashing, moves
 from g1r.config import Settings
 
 CRC_FORMAT = "08x"
@@ -187,6 +187,8 @@ class Converter:
                 if step.recipe == conversion.RECIPE_ARCHIVE_DISC
                 else step.source
             )
+            if disc.suffix.lower().lstrip(".") == cso.CSO:
+                disc = self._decode_cso(disc, work)
             sheet = disc.suffix.lower().lstrip(".") in discs.SHEETS
             originals = discs.sheet_paths(disc) if sheet else [disc]
             each, whole = self._digests(originals)
@@ -208,11 +210,21 @@ class Converter:
                 raise moves.MoveError(
                     f"the CHD of {step.source.name} does not give back the same tracks"
                 )
-        except discs.DiscError as exc:
+        except (discs.DiscError, cso.CsoError) as exc:
             temp.unlink(missing_ok=True)
             raise moves.MoveError(str(exc)) from exc
         finally:
             shutil.rmtree(work, ignore_errors=True)
+
+    def _decode_cso(self, source: Path, work: Path) -> Path:
+        """The ISO a CSO holds, decoded into `work/source`; the CHD is made from it and
+        checked against it."""
+        if self.settings.cso is None:
+            raise moves.MoveError("no cso settings: CSO images cannot be read")
+        image = work / "source" / f"{source.stem}.{discs.ISO}"
+        image.parent.mkdir(parents=True, exist_ok=True)
+        cso.decode(self.settings.cso, source, image)
+        return image
 
     def _rvz(self, step, image: Path, sha1: str, temp: Path) -> None:
         """dolphin-tool makes the RVZ; the disc it holds must have the image's SHA1."""

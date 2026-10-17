@@ -34,6 +34,8 @@ class DatGame:
     roms: list[DatRom] = field(default_factory=list)
     # A BIOS set (arcade): every game needs it.
     bios: bool = False
+    # The product code printed on the game (Redump, libretro): "SLUS-20246", "CTR-P-AWAE".
+    serial: str | None = None
 
 
 @dataclass
@@ -94,6 +96,7 @@ def _parse_xml(data: bytes) -> Dat:
             category=game_el.findtext("category"),
             description=game_el.findtext("description"),
             bios=game_el.get("isbios") == "yes",
+            serial=game_el.findtext("serial"),
         )
         for rom in game_el.iter("rom"):
             game.roms.append(
@@ -191,6 +194,7 @@ def _parse_clrmamepro(data: bytes) -> Dat:
             cloneof=_get(items, "cloneof"),
             category=_get(items, "category"),
             description=_get(items, "description"),
+            serial=_get(items, "serial"),
         )
         for key, rom in items:
             if key == "rom" and not isinstance(rom, str):

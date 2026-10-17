@@ -130,7 +130,9 @@ class DatRegistry:
     def downloads(self, platform: str) -> list[str]:
         """The sources the platform's DAT can be downloaded from, in the order shown."""
         profile = self._profile(platform)
-        found = []
+        found: list[str] = []
+        if not profile.dat_download:
+            return found
         for source_id, source in self.settings.dats.sources.items():
             if not source.url_template:
                 continue

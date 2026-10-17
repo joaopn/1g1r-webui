@@ -27,6 +27,7 @@ class CardInfo:
     image_size: int
     data_size: int
     encrypted: bool
+    product_code: str = ""
 
     @property
     def trimmed(self) -> bool:
@@ -68,7 +69,10 @@ def read_ncsd(config: NcsdConfig, path: Path, member: str | None, size: int) -> 
             if exponent is None or units is None or first is None:
                 return None
             unit = config.media_unit_bytes << exponent
-            ncch_end = config.ncch_flags_offset + config.crypto_flag + struct.calcsize(U8)
+            ncch_end = max(
+                config.ncch_flags_offset + config.crypto_flag + struct.calcsize(U8),
+                config.product_code_offset + config.product_code_bytes,
+            )
             # Streams (zip members) only read forward: skip to the partition.
             stream.read(max(first * unit - len(header), 0))
             ncch = stream.read(ncch_end)
@@ -82,7 +86,9 @@ def read_ncsd(config: NcsdConfig, path: Path, member: str | None, size: int) -> 
         and flags is not None
         and not flags & config.no_crypto_mask
     )
-    return CardInfo(units * unit, size, encrypted)
+    code = ncch[config.product_code_offset : config.product_code_offset + config.product_code_bytes]
+    product = code.split(b"\0")[0].decode("ascii", errors="replace").strip()
+    return CardInfo(units * unit, size, encrypted, product)
 
 
 def padded_crc(

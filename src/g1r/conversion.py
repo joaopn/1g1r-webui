@@ -11,7 +11,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
-from g1r import cards, discs
+from g1r import cards, cso, discs
 from g1r.config import PLAIN, Settings, TargetConfig
 
 REASON_ORIGINALS = "originals"
@@ -27,8 +27,10 @@ BYTESWAP = "byteswap"
 # What a card image's header says, as the Conversion table explains it.
 NOTE_TEXT = {
     cards.ENCRYPTED: (
-        "encrypted: Azahar and Citra need a decrypted image; decrypting needs keys from "
-        "your console and is not done here"
+        "encrypted: standalone Azahar plays it only with keys dumped from your console, the "
+        "libretro core not at all; the DAT lists decrypted images, so it is not matched by "
+        "checksum (Unmatched suggests the entries with its product code); decrypting is not "
+        "done here"
     ),
     cards.TRIMMED: "trimmed (the card's empty padding was cut off): it runs the same",
 }
@@ -197,7 +199,7 @@ def rows(
                 row.status, row.note = PART, f"converted with {taken[rel]}"
             else:
                 row.status, row.note = FLAGGED, "a track no cue sheet in the folder refers to"
-        elif to_disc and f["kind"] == "rom" and ext in discs.IMAGES:
+        elif to_disc and f["kind"] == "rom" and ext in (*discs.IMAGES, cso.CSO):
             _disc(settings, label, row, RECIPE_DISC, ext, profile, target, delete_originals)
         elif to_disc and f["kind"] == "archive" and _disc_inside(roms, part_extensions):
             _disc(
@@ -223,13 +225,19 @@ def rows(
                     FLAGGED,
                     f"a {row.container} romset: the app makes no romsets",
                 )
-        elif row.container not in (PLAIN, *disc_formats) and len(roms) != 1:
+        elif row.container not in (PLAIN, *disc_formats) and not roms:
             row.status = FLAGGED
-            row.note = (
-                "no ROM file inside"
-                if not roms
-                else f"{len(roms)} ROM files in one archive; split it by hand"
-            )
+            row.note = f"no {profile.name} ROM inside ({', '.join(profile.rom_extensions)})"
+        elif row.container not in (PLAIN, *disc_formats) and len(roms) > 1:
+            # The disks of one game belong together: kept as they are, never unpacked.
+            together = f"{len(roms)} ROM files kept together in one archive"
+            if row.container == target.produces:
+                row.status, row.note = DONE, together
+            elif row.container in target.accepts:
+                row.status, row.note = ACCEPTED, together
+            else:
+                row.status = FLAGGED
+                row.note = f"{together}: only single-ROM archives are converted"
         elif rel in swapped and byte_order is not None:
             _byteswap(
                 settings, label, target, row, roms, swapped[rel], byte_order, delete_originals
@@ -330,7 +338,7 @@ def _disc(settings, label, row, recipe, source, profile, target, delete_original
         row.verify = "dolphin-tool verify: the RVZ's disc SHA1 must equal the image's"
     else:
         row.status = MAKE_CHD
-        dvd = source in discs.IMAGES and profile.iso_mode == ISO_MODE_DVD
+        dvd = source in (*discs.IMAGES, cso.CSO) and profile.iso_mode == ISO_MODE_DVD
         row.disc_mode = discs.CREATEDVD if dvd else discs.CREATECD
         row.verify = "chdman verify, then the data extracted back must equal the originals (SHA1)"
     if recipe == RECIPE_ARCHIVE_DISC:
@@ -341,6 +349,8 @@ def _disc(settings, label, row, recipe, source, profile, target, delete_original
         row.output = str(parent / f"{PurePosixPath(row.rel_path).stem}.{produces}")
         if row.parts:
             row.note = f"with its {len(row.parts)} track file(s)"
+        elif source == cso.CSO:
+            row.note = "decoded to an ISO in a work folder first"
     if delete_originals:
         row.reversible = False
     else:

@@ -114,9 +114,11 @@ ignored_filenames:
 platforms:
   # The whitelist: only these platforms can be added. Wave 1 (cartridge systems).
   enabled:
+    - amiga
     - atari2600
     - atari5200
     - atari7800
+    - c64
     - colecovision
     - gamegear
     - gb
@@ -185,6 +187,26 @@ platforms:
   # Per platform: display name, its icon (a short label and the kind of device), the
   # No-Intro DAT name, the ROM file extensions, the allowed targets and the default target.
   profiles:
+    amiga:
+      name: Amiga
+      short: "AMI"
+      kind: computer
+      # No-Intro's Amiga set is floppy images in IPF (SPS) form.
+      dat_name: Commodore - Amiga
+      rom_extensions: [ipf]
+      targets: [zip, plain]
+      default_target: zip
+      screenscraper_id: 64
+    c64:
+      name: Commodore 64
+      short: "C64"
+      kind: computer
+      # No-Intro's C64 set: cartridges (.crt) and disk images (.d64).
+      dat_name: Commodore - 64
+      rom_extensions: [crt, d64]
+      targets: [zip, plain]
+      default_target: zip
+      screenscraper_id: 66
     atari2600:
       name: Atari 2600
       short: "2600"
@@ -395,6 +417,8 @@ platforms:
       targets: [plain]
       default_target: plain
       title_ids: true
+      # No public Switch DAT exists: files are identified by title ID.
+      dat_download: false
       screenscraper_id: 225
     tg16:
       name: PC Engine / TurboGrafx-16
@@ -504,7 +528,7 @@ platforms:
       dat_name: Sony - PlayStation 2
       dat_family: redump
       redump_system: ps2
-      rom_extensions: [chd, cue, bin, iso]
+      rom_extensions: [chd, cue, bin, iso, cso]
       part_extensions: [cue, bin]
       iso_mode: dvd
       targets: [chd]
@@ -556,8 +580,11 @@ dats:
       url_template: "https://raw.githubusercontent.com/libretro/libretro-database/master/metadat/{family}/{name}.dat"
       # The mirror has no parent/clone data and lists headered and headerless NES
       # entries separately: good for identifying files, not for grouping versions.
+      # It keeps one ROM per game (a disc's data track, one disk of a multi-disk game),
+      # so a set kept whole in an archive does not match it: disc DATs come from
+      # redump.info.
       identification_only: true
-      families: [nointro, redump]
+      families: [nointro]
     nointro:
       label: No-Intro (DAT-o-MATIC)
       website: "https://datomatic.no-intro.org/index.php?page=download&s=64&op=daily"
@@ -738,6 +765,8 @@ title_ids:
 # little-endian u32 counts of media units of media_unit_bytes << flags[media_unit_flag]; the
 # first partition is an NCCH, encrypted unless its flags[crypto_flag] has no_crypto_mask.
 # A trimmed image (shorter than its size) is padded with padding_hex to compare with the DAT.
+# The NCCH's product code is plain text: an encrypted image (which never has the DAT's hash,
+# the DAT listing decrypted images) is suggested the DAT entries with that serial.
 card_images:
   ncsd:
     magic: NCSD
@@ -753,6 +782,20 @@ card_images:
     crypto_flag: 7
     no_crypto_mask: 4
     padding_hex: ff
+    product_code_offset: 336
+    product_code_bytes: 16
+
+# CSO (CISO v0/v1), the PlayStation 2 and PSP compressed ISO: a header, then one index entry
+# per block plus one (the end), each the block's offset >> the header's index shift. A block
+# is raw deflate, or stored as it is when its entry has plain_bit set. Decoded to an ISO
+# in a work folder before chdman makes the CHD; v2 and ZSO (LZ4) are not read.
+cso:
+  magic: CISO
+  header: "<4sIQIBB2x"
+  index_entry: "<I"
+  versions: [0, 1]
+  plain_bit: 31
+  window_bits: -15
 
 # Reading No-Intro / Redump names: "Title (Region) (Languages) (Rev 1) (Beta) ...".
 names:

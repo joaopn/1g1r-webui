@@ -125,7 +125,7 @@ class TargetConfig(_Strict):
         return self
 
 
-PLATFORM_KINDS = ("console", "handheld", "arcade")
+PLATFORM_KINDS = ("console", "handheld", "arcade", "computer")
 
 
 DAT_FAMILIES = ("nointro", "redump", "fbneo")
@@ -163,6 +163,8 @@ class PlatformProfile(_Strict):
     # igir --merge-roms modes to identify with, each in its own run; a file is identified by
     # any of them (arcade sets are split or non-merged, and igir must be told which).
     igir_merge_modes: list[str] = Field(default_factory=list)
+    # False: no source publishes this platform's DAT (Switch); only an upload can add one.
+    dat_download: bool = True
     # Identified by title ID (Switch, `title_ids`), with or without a DAT: a base game, its
     # update and its DLC are one game; the base is ranked, DLC kept, updates proposed.
     title_ids: bool = False
@@ -407,6 +409,22 @@ class NcsdConfig(_Strict):
     crypto_flag: int = Field(ge=0)
     no_crypto_mask: int = Field(gt=0)
     padding_hex: str
+    # The NCCH's product code ("CTR-P-AWAE"), NUL-padded, readable without keys.
+    product_code_offset: int = Field(ge=0)
+    product_code_bytes: int = Field(gt=0)
+
+
+class CsoConfig(_Strict):
+    magic: str
+    # struct formats: the header (magic, header size, image size, block size, version,
+    # index shift) and one index entry.
+    header: str
+    index_entry: str
+    versions: list[int]
+    # The index entry bit that marks a block stored as it is (not deflated).
+    plain_bit: int = Field(ge=0)
+    # zlib window bits for the blocks' raw deflate streams (negative: no zlib header).
+    window_bits: int
 
 
 class TitleIdConfig(_Strict):
@@ -482,6 +500,7 @@ class Settings(_Strict):
     headers: dict[str, list[HeaderRule]]
     byte_orders: dict[str, ByteOrderConfig] = Field(default_factory=dict)
     card_images: dict[str, NcsdConfig] = Field(default_factory=dict)
+    cso: CsoConfig | None = None
     title_ids: TitleIdConfig | None = None
     names: NamesConfig
     grouping: GroupingConfig

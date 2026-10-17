@@ -87,6 +87,7 @@ export const META: Meta = {
     zip: { label: "Zip (TorrentZip)", description: "", produces: "zip", accepts: ["zip", "7z"] },
     plain: { label: "Unpacked", description: "", produces: "plain", accepts: ["plain"] },
   },
+  archive_extensions: ["zip", "7z"],
   dat_sources: { libretro: { label: "libretro-database mirror", identification_only: true } },
   ranking: {
     criteria: ["prerelease", "region", "language", "revision", "original"],

@@ -1,7 +1,11 @@
+from http import HTTPStatus
+
 import pytest
 import yaml
+from fastapi.testclient import TestClient
 
 from g1r.config import DATA_DIR_ENV, deep_merge, load_settings
+from g1r.web.app import create_app
 
 
 @pytest.fixture
@@ -35,3 +39,24 @@ def make_settings(data_dir, roms_root, extra_root):
         return load_settings({DATA_DIR_ENV: str(data_dir)})
 
     return _make
+
+
+@pytest.fixture
+def folder_of(make_settings, roms_root):
+    """A started app with one folder of the given platform (label = platform)."""
+    (roms_root / "discarded").mkdir()
+    clients = []
+
+    def make(platform: str):
+        folder = roms_root / platform
+        folder.mkdir()
+        client = TestClient(create_app(make_settings(), report_runner=lambda *a: []))
+        client.__enter__()
+        clients.append(client)
+        body = {"platform": platform, "mount": "roms", "path": platform, "label": platform}
+        assert client.post("/api/folders", json=body).status_code == HTTPStatus.CREATED
+        return client, folder
+
+    yield make
+    for client in clients:
+        client.__exit__(None, None, None)

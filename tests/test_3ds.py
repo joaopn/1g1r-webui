@@ -14,7 +14,9 @@ UNITS = 8
 PARTITION_UNIT = 1
 
 
-def card(make_settings, *, encrypted: bool, keep_units: int = UNITS) -> tuple[bytes, bytes]:
+def card(
+    make_settings, *, encrypted: bool, keep_units: int = UNITS, product: str = ""
+) -> tuple[bytes, bytes]:
     """A small NCSD image (media unit = the config's base, exponent 0): the full image as the
     DAT lists it, and the file as dumped (cut after `keep_units` when trimmed)."""
     c = make_settings().card_images["ncsd"]
@@ -30,6 +32,8 @@ def card(make_settings, *, encrypted: bool, keep_units: int = UNITS) -> tuple[by
     at = ncch + c.ncch_magic_offset
     image[at : at + len(c.ncch_magic)] = c.ncch_magic.encode()
     image[ncch + c.ncch_flags_offset + c.crypto_flag] = 0 if encrypted else c.no_crypto_mask
+    code = ncch + c.product_code_offset
+    image[code : code + c.product_code_bytes] = product.encode().ljust(c.product_code_bytes, b"\0")
     full = bytes(image)
     return full, full[:data_end]
 
@@ -100,3 +104,35 @@ def test_trimmed_images_match_and_encrypted_ones_are_flagged(n3ds, make_settings
     assert "trimmed" in rows["Trim (USA).3ds"]["note"]
     zipped = rows["Zipped (USA).zip"]
     assert (zipped["status"], zipped["output"]) == ("unwrap", "Zipped (USA).3ds")
+
+
+def test_an_encrypted_image_is_suggested_the_entries_with_its_product_code(n3ds, make_settings):
+    client, folder = n3ds
+    locked, _ = card(make_settings, encrypted=True, product="CTR-P-AWAE")
+    (folder / "3DS0032 - Pilotwings Resort (Usa).3ds").write_bytes(locked)
+    entries = [
+        ("Pilotwings Resort (Japan)", "CTR-P-AWAJ"),
+        ("Pilotwings Resort (USA) (En,Fr,Es)", "CTR-P-AWAE"),
+        ("Pilotwings Resort (USA) (En,Fr,Es) (Rev 1)", "CTR-P-AWAE"),
+    ]
+    games = "".join(
+        f'<game name="{n}"><serial>{s}</serial>'
+        f'<rom name="{n}.3ds" size="{len(locked)}" crc="00000000"/></game>'
+        for n, s in entries
+    )
+    dat = (
+        "<?xml version='1.0'?><datafile><header><name>Nintendo - Nintendo 3DS</name></header>"
+        f"{games}</datafile>"
+    ).encode()
+    client.post("/api/dats/3ds/upload", files={"file": ("3ds.dat", dat)})
+    client.post("/api/folders/3ds/scan")
+    for _ in range(500):
+        if client.get("/api/folders/3ds/scan").json()["status"] != "running":
+            break
+    (row,) = client.get("/api/folders/3ds/unmatched").json()
+    names = [s["game_name"] for s in row["suggestions"]]
+    # Both releases with the code come first (a revision shares it); the Japanese one after.
+    assert names[:2] == [entries[1][0], entries[2][0]]
+    assert entries[0][0] in names[2:]
+    # A product code is not a checksum: the image stays unmatched until you choose.
+    assert client.get("/api/folders/3ds/games").json() == []
