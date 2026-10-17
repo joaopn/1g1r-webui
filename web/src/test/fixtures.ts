@@ -36,6 +36,32 @@ export const META: Meta = {
       ].map((id) => [id, size(8)]),
     ),
     game_columns_default: ["keep", "game", "status", "file", "region", "size", "match", "proposed"],
+    conversion_columns: Object.fromEntries(
+      [
+        "file",
+        "contains",
+        "container",
+        "status",
+        "output",
+        "size",
+        "check",
+        "originals",
+        "note",
+      ].map((id) => [id, size(8)]),
+    ),
+    conversion_columns_default: [
+      "file",
+      "contains",
+      "status",
+      "output",
+      "size",
+      "originals",
+      "note",
+    ],
+    discarded_columns: Object.fromEntries(
+      ["reason", "file", "size", "modified", "restore_to", "restore"].map((id) => [id, size(8)]),
+    ),
+    discarded_columns_default: ["reason", "file", "size", "modified", "restore"],
   },
   platforms: {
     nes: {

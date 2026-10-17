@@ -1,13 +1,10 @@
 import {
   Archive,
   ArchiveRestore,
-  ArrowDown,
-  ArrowUp,
   ChevronRight,
   Circle,
   CircleCheck,
   CircleDashed,
-  Columns3,
   Copy,
   CornerDownRight,
   EyeOff,
@@ -23,13 +20,13 @@ import { type CSSProperties, type KeyboardEvent, useMemo, useState } from "react
 import { useSearchParams } from "react-router-dom";
 import { Pager } from "@/components/Pager";
 import { QuickViewBar } from "@/components/QuickViewBar";
+import { ColumnChooser, HeaderCell } from "@/components/table/TableParts";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { formatBytes, formatCount } from "@/lib/format";
 import type { Game, GameStatus, Meta, Version } from "@/lib/types";
-import { useDragWidth } from "@/lib/useDragWidth";
 import { cn } from "@/lib/utils";
 import {
   activeFilterCount,
@@ -213,8 +210,9 @@ export function GamesTable({
         </div>
         <FilterButton filter={filter} onChange={setFilter} games={games} />
         <ColumnChooser
+          columns={COLUMNS}
           visible={columnIds}
-          onChange={chooseColumns}
+          onChange={(ids) => chooseColumns(ids as ColumnId[])}
           widthsChanged={Object.keys(widths).length > 0}
           onResetWidths={() => {
             setWidths({});
@@ -238,13 +236,16 @@ export function GamesTable({
               {columns.map((column) => (
                 <HeaderCell
                   key={column.id}
-                  column={column}
+                  id={column.id}
+                  label={column.label}
+                  sortable={column.sortable}
+                  size={sizes[column.id]}
                   width={widthOf(sizes[column.id], widths[column.id])}
                   meta={meta}
-                  sort={sort}
+                  active={sort === column.id}
                   order={order}
-                  onSort={onSort}
-                  onResize={resize}
+                  onSort={(id) => onSort(id as ColumnId)}
+                  onResize={(id, rem) => resize(id as ColumnId, rem)}
                 />
               ))}
             </div>
@@ -270,81 +271,6 @@ export function GamesTable({
       </div>
 
       <Pager page={page} pages={pages} onPage={setPage} />
-    </div>
-  );
-}
-
-function HeaderCell({
-  column,
-  width,
-  meta,
-  sort,
-  order,
-  onSort,
-  onResize,
-}: {
-  column: Column;
-  width: number;
-  meta: Meta;
-  sort: ColumnId | null;
-  order: "asc" | "desc";
-  onSort: (id: ColumnId) => void;
-  onResize: (id: ColumnId, rem: number | null) => void;
-}) {
-  const size = meta.ui.game_columns[column.id];
-  const drag = useDragWidth({
-    width,
-    min: size.min,
-    max: size.max,
-    step: meta.ui.resize_step_rem,
-    shiftMultiplier: meta.ui.resize_shift_multiplier,
-    defaultPx: meta.ui.rem_fallback_px,
-    onChange: (rem) => onResize(column.id, rem),
-    onReset: () => onResize(column.id, null),
-  });
-  const active = sort === column.id;
-  return (
-    <div className="relative min-w-0" data-testid={`header-${column.id}`}>
-      {column.sortable ? (
-        <button
-          type="button"
-          onClick={() => onSort(column.id)}
-          data-testid={`sort-${column.id}`}
-          className={cn(
-            "inline-flex max-w-full items-center gap-1 uppercase tracking-wide hover:text-foreground",
-            active && "text-foreground",
-          )}
-        >
-          <span className="truncate">{column.label}</span>
-          {active ? (
-            order === "asc" ? (
-              <ArrowUp className="size-3 shrink-0" aria-hidden="true" />
-            ) : (
-              <ArrowDown className="size-3 shrink-0" aria-hidden="true" />
-            )
-          ) : null}
-        </button>
-      ) : (
-        <span className="block truncate">{column.label}</span>
-      )}
-      {/* biome-ignore lint/a11y/useSemanticElements: an <hr> cannot take focus; a focusable separator is the ARIA splitter. */}
-      <span
-        role="separator"
-        aria-orientation="vertical"
-        aria-label={`Resize the ${column.label} column`}
-        aria-valuenow={width}
-        aria-valuemin={size.min}
-        aria-valuemax={size.max}
-        tabIndex={0}
-        title="Drag to resize, double-click to reset"
-        data-testid={`resize-${column.id}`}
-        className={cn(
-          "-right-2 absolute top-0 z-[1] flex h-full w-3 cursor-col-resize touch-none select-none justify-center",
-          "after:h-full after:w-px after:bg-border hover:after:bg-foreground/40",
-          "focus-visible:outline-none focus-visible:after:w-0.5 focus-visible:after:bg-ring",
-        )}
-        {...drag}
-      />
     </div>
   );
 }
@@ -876,62 +802,6 @@ function FilterButton({
           onClick={() => onChange({ ...NO_FILTER, q: filter.q, view: filter.view })}
         >
           Clear filters
-        </Button>
-      </PopoverContent>
-    </Popover>
-  );
-}
-
-function ColumnChooser({
-  visible,
-  onChange,
-  widthsChanged,
-  onResetWidths,
-}: {
-  visible: ColumnId[];
-  onChange: (next: ColumnId[]) => void;
-  widthsChanged: boolean;
-  onResetWidths: () => void;
-}) {
-  const shown = new Set(visible);
-  const toggle = (id: ColumnId) => {
-    const next = shown.has(id)
-      ? visible.filter((v) => v !== id)
-      : COLUMNS.map((c) => c.id).filter((v) => shown.has(v) || v === id);
-    if (next.length > 0) onChange(next);
-  };
-  return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <Button variant="outline" size="sm" data-testid="columns-button">
-          <Columns3 className="size-3.5" aria-hidden="true" /> Columns
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent align="end" className="w-52" aria-label="Columns">
-        <fieldset className="space-y-1.5">
-          <legend className="mb-1 text-muted-foreground text-xs">Columns</legend>
-          {COLUMNS.map((column) => (
-            <label key={column.id} className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                className="size-3.5 accent-primary"
-                checked={shown.has(column.id)}
-                disabled={shown.has(column.id) && visible.length <= 1}
-                onChange={() => toggle(column.id)}
-                data-testid={`column-${column.id}`}
-              />
-              {column.label}
-            </label>
-          ))}
-        </fieldset>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="mt-3 w-full"
-          disabled={!widthsChanged}
-          onClick={onResetWidths}
-        >
-          Reset widths
         </Button>
       </PopoverContent>
     </Popover>

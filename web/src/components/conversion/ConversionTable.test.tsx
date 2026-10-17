@@ -51,3 +51,27 @@ test("search and sorting by file", async () => {
   await userEvent.type(screen.getByLabelText("Search files"), "contra");
   expect(files()).toEqual(["Contra (USA).zip"]);
 });
+
+test("the Matching table's tools: filters, any-column sort, column chooser, resize", async () => {
+  window.localStorage.clear();
+  const sized = CONVERSION_ROWS.map((r, i) => ({ ...r, size: (i + 1) * 1000 }));
+  renderTable(sized);
+  // Filters menu: only the flagged rows.
+  await userEvent.click(screen.getByTestId("filters-button"));
+  await userEvent.click(screen.getByTestId("filter-status-flagged"));
+  expect(files()).toEqual(["Two.zip"]);
+  await userEvent.click(screen.getByText("Clear filters"));
+  expect(files()).toHaveLength(4);
+  // Sort by size, largest first.
+  await userEvent.click(screen.getByTestId("sort-size"));
+  await userEvent.click(screen.getByTestId("sort-size"));
+  const sizes = [...sized].sort((a, b) => b.size - a.size).map((r) => r.rel_path);
+  expect(files()).toEqual(sizes);
+  // Hide a column; the choice is remembered.
+  expect(screen.getByTestId("header-contains")).toBeInTheDocument();
+  await userEvent.click(screen.getByTestId("columns-button"));
+  await userEvent.click(screen.getByTestId("column-contains"));
+  expect(screen.queryByTestId("header-contains")).not.toBeInTheDocument();
+  expect(window.localStorage.getItem("g1r.conversion.columns.v1")).not.toContain("contains");
+  expect(screen.getByTestId("resize-file")).toHaveAttribute("role", "separator");
+});

@@ -73,6 +73,27 @@ ui:
     proposed: {rem: 7, min: 5, max: 24}
   # Shown on a first visit; each browser remembers its own choice afterwards.
   game_columns_default: [keep, game, status, file, region, size, match, proposed]
+  # The Conversion table's columns, the same way.
+  conversion_columns:
+    file: {rem: 14, min: 8, max: 48}
+    contains: {rem: 8, min: 6, max: 40}
+    container: {rem: 5.5, min: 4, max: 10}
+    status: {rem: 7.5, min: 6, max: 14}
+    output: {rem: 12, min: 8, max: 48}
+    size: {rem: 5.5, min: 4.5, max: 10}
+    check: {rem: 16, min: 8, max: 48}
+    originals: {rem: 10, min: 6, max: 48}
+    note: {rem: 12, min: 6, max: 48}
+  conversion_columns_default: [file, contains, status, output, size, originals, note]
+  # The Discarded table's columns, the same way.
+  discarded_columns:
+    reason: {rem: 8, min: 5, max: 16}
+    file: {rem: 20, min: 8, max: 48}
+    size: {rem: 5.5, min: 4.5, max: 10}
+    modified: {rem: 11.5, min: 8, max: 16}
+    restore_to: {rem: 18, min: 8, max: 48}
+    restore: {rem: 14, min: 8, max: 24}
+  discarded_columns_default: [reason, file, size, modified, restore]
 
 folders:
   # Folder labels name the folder in the UI and its discarded/<label>/ directory.

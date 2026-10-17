@@ -1,5 +1,12 @@
-import { isNumberRecord, isStringArray, readJson, removeKey, writeJson } from "@/lib/storage";
+import {
+  columnPrefs,
+  type Widths as TableWidths,
+  template as tableTemplate,
+  widthOf,
+} from "@/components/table/prefs";
 import type { ColumnSize, Game, GameStatus, Version } from "@/lib/types";
+
+export { widthOf };
 
 /**
  * The Matching table's columns. Labels, sort keys and renderers live here; widths and the
@@ -46,8 +53,6 @@ export const COLUMNS: Column[] = [
   { id: "proposed", label: "Proposed", sortable: true, level: "version" },
 ];
 
-const IDS = new Set<string>(COLUMNS.map((c) => c.id));
-
 export const SOURCE_LABELS: Record<string, string> = {
   "dat-parent-clone": "DAT parent/clone",
   "retool-clone-list": "Retool clone list",
@@ -86,34 +91,29 @@ export const STATUS_ORDER: GameStatus[] = [
   "single",
 ];
 
-export const COLUMNS_KEY = "g1r.games.columns.v1";
-export const WIDTHS_KEY = "g1r.games.widths.v1";
+const PREFS = columnPrefs(
+  "games",
+  COLUMNS.map((c) => c.id),
+);
+export const COLUMNS_KEY = PREFS.columnsKey;
+export const WIDTHS_KEY = PREFS.widthsKey;
 
 export function loadColumns(defaults: string[]): ColumnId[] {
-  const stored = readJson<string[]>(COLUMNS_KEY, defaults, isStringArray).filter((id) =>
-    IDS.has(id),
-  );
-  return (stored.length > 0 ? stored : defaults) as ColumnId[];
+  return PREFS.loadColumns(defaults) as ColumnId[];
 }
 
 export function saveColumns(ids: ColumnId[]): void {
-  writeJson(COLUMNS_KEY, ids);
+  PREFS.saveColumns(ids);
 }
 
-export type Widths = Partial<Record<ColumnId, number>>;
+export type Widths = TableWidths;
 
 export function loadWidths(): Widths {
-  const stored = readJson<Record<string, number>>(WIDTHS_KEY, {}, isNumberRecord);
-  return Object.fromEntries(Object.entries(stored).filter(([id]) => IDS.has(id))) as Widths;
+  return PREFS.loadWidths();
 }
 
 export function saveWidths(widths: Widths): void {
-  if (Object.keys(widths).length === 0) removeKey(WIDTHS_KEY);
-  else writeJson(WIDTHS_KEY, widths);
-}
-
-export function widthOf(size: ColumnSize, stored: number | undefined): number {
-  return stored === undefined ? size.rem : Math.min(size.max, Math.max(size.min, stored));
+  PREFS.saveWidths(widths);
 }
 
 /** Visible columns in their canonical order; never empty. */
@@ -124,7 +124,11 @@ export function visibleColumns(ids: ColumnId[]): Column[] {
 }
 
 export function template(columns: Column[], sizes: Record<string, ColumnSize>, widths: Widths) {
-  return columns.map((c) => `${widthOf(sizes[c.id], widths[c.id])}rem`).join(" ");
+  return tableTemplate(
+    columns.map((c) => c.id),
+    sizes,
+    widths,
+  );
 }
 
 /** The version a game's own row describes: the kept one, else the only one. */

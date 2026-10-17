@@ -1,11 +1,8 @@
-import { ArchiveRestore, Search, TriangleAlert } from "lucide-react";
+import { ArchiveRestore, TriangleAlert } from "lucide-react";
 import { useMemo } from "react";
-import { useSearchParams } from "react-router-dom";
-import { Pager } from "@/components/Pager";
-import { QuickViewBar } from "@/components/QuickViewBar";
+import { type DataColumn, DataTable, type RowFilter } from "@/components/table/DataTable";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { formatBytes, formatCount, formatWhen } from "@/lib/format";
+import { formatBytes, formatWhen } from "@/lib/format";
 import type { Discarded, DiscardedFile, Meta } from "@/lib/types";
 
 const ALL = "all";
@@ -13,9 +10,24 @@ const reasonView = (id: string) => `reason:${id}`;
 
 type Row = DiscardedFile & { reason: string; reasonView: string };
 
-const HEADERS = ["Reason", "File", "Size", "File date", "Restores to"];
+/** Whether Restore can put a file back, and if not, why. */
+type RestoreState = "restorable" | "occupied" | "not-ours" | "unavailable";
 
-/** Read-only listing of discarded/<label>/: one row per file, a quick view per reason. */
+const RESTORE_LABELS: Record<RestoreState, string> = {
+  restorable: "can be restored",
+  occupied: "a file is already there",
+  "not-ours": "not moved here by this app",
+  unavailable: "folder unavailable",
+};
+
+function restoreState(row: Row): RestoreState {
+  if (row.restore_to === null) return "unavailable";
+  if (row.occupied) return "occupied";
+  if (row.operation_id === null) return "not-ours";
+  return "restorable";
+}
+
+/** discarded/<label>/: one row per file, a quick view per reason, Restore for the app's moves. */
 export function DiscardedTable({
   data,
   meta,
@@ -28,8 +40,6 @@ export function DiscardedTable({
   onRestore?: (operationId: number) => void;
   busy?: boolean;
 }) {
-  const [params, setParams] = useSearchParams();
-  const q = params.get("q") ?? "";
   const rows = useMemo<Row[]>(
     () =>
       data.reasons.flatMap((r) =>
@@ -37,151 +47,127 @@ export function DiscardedTable({
       ),
     [data],
   );
-  const views = [
-    { id: ALL, label: "All", test: () => true },
-    ...data.reasons.map((r) => ({
-      id: reasonView(r.id),
-      label: r.label,
-      test: (row: Row) => row.reasonView === reasonView(r.id),
-    })),
-  ];
-  const view = views.find((v) => v.id === params.get("view")) ?? views[0];
-  const needle = q.trim().toLocaleLowerCase();
-  const searched = needle
-    ? rows.filter((r) => r.rel_path.toLocaleLowerCase().includes(needle))
-    : rows;
-  const shown = searched.filter(view.test);
-  const pageSize = meta.ui.page_size;
-  const pages = Math.max(1, Math.ceil(shown.length / pageSize));
-  const page = Math.min(pages, Math.max(1, Math.trunc(Number(params.get("page") ?? "1")) || 1));
-  const visible = shown.slice((page - 1) * pageSize, page * pageSize);
-  const formatSize = (value: number) =>
-    formatBytes(value, meta.ui.byte_unit_base, meta.ui.byte_units);
+  const views = useMemo(
+    () => [
+      { id: ALL, label: "All", test: () => true },
+      ...data.reasons.map((r) => ({
+        id: reasonView(r.id),
+        label: r.label,
+        test: (row: Row) => row.reasonView === reasonView(r.id),
+      })),
+    ],
+    [data],
+  );
 
-  const update = (changes: Record<string, string>, keepPage = false) => {
-    const next = new URLSearchParams(params);
-    for (const [key, value] of Object.entries(changes)) {
-      if (value) next.set(key, value);
-      else next.delete(key);
-    }
-    if (!keepPage) next.delete("page");
-    setParams(next, { replace: true });
-  };
+  const columns = useMemo<DataColumn<Row>[]>(() => {
+    const formatSize = (value: number) =>
+      formatBytes(value, meta.ui.byte_unit_base, meta.ui.byte_units);
+    return [
+      {
+        id: "reason",
+        label: "Reason",
+        sortValue: (r) => r.reason,
+        render: (r) => <span className="text-muted-foreground">{r.reason}</span>,
+        title: (r) => r.reason,
+      },
+      {
+        id: "file",
+        label: "File",
+        sortValue: (r) => r.rel_path.toLowerCase(),
+        render: (r) => r.rel_path,
+        title: (r) => r.rel_path,
+      },
+      {
+        id: "size",
+        label: "Size",
+        className: "text-right",
+        sortValue: (r) => r.size,
+        render: (r) => (
+          <span className="text-muted-foreground tabular-nums">{formatSize(r.size)}</span>
+        ),
+      },
+      {
+        id: "modified",
+        label: "File date",
+        sortValue: (r) => r.modified,
+        render: (r) => (
+          <span className="text-muted-foreground tabular-nums">{formatWhen(r.modified)}</span>
+        ),
+      },
+      {
+        id: "restore_to",
+        label: "Back to",
+        sortValue: (r) => r.restore_to ?? "",
+        render: (r) => <span className="text-muted-foreground">{r.restore_to ?? ""}</span>,
+        title: (r) => r.restore_to ?? undefined,
+      },
+      {
+        id: "restore",
+        label: "Restore",
+        sortValue: (r) => RESTORE_LABELS[restoreState(r)],
+        title: (r) => r.restore_to ?? undefined,
+        render: (r) => {
+          const state = restoreState(r);
+          if (state === "occupied")
+            return (
+              <span className="inline-flex items-center gap-1 text-status-warn">
+                <TriangleAlert className="size-3 shrink-0" aria-hidden="true" />
+                {RESTORE_LABELS[state]}
+              </span>
+            );
+          if (state !== "restorable")
+            return <span className="text-muted-foreground">{RESTORE_LABELS[state]}</span>;
+          return onRestore ? (
+            <Button
+              variant="outline"
+              size="xs"
+              disabled={busy}
+              onClick={() => r.operation_id !== null && onRestore(r.operation_id)}
+              aria-label={`Restore ${r.rel_path}`}
+            >
+              <ArchiveRestore aria-hidden="true" />
+              Restore
+            </Button>
+          ) : (
+            <span className="text-muted-foreground">its old place in the folder (free)</span>
+          );
+        },
+      },
+    ];
+  }, [meta, onRestore, busy]);
+
+  const filters = useMemo<RowFilter<Row>[]>(
+    () => [
+      {
+        id: "restore",
+        label: "Restore",
+        options: (Object.keys(RESTORE_LABELS) as RestoreState[]).map((s) => ({
+          value: s,
+          label: RESTORE_LABELS[s],
+        })),
+        valueOf: restoreState,
+      },
+    ],
+    [],
+  );
 
   return (
-    <div className="space-y-3">
-      <QuickViewBar
-        name="discarded-view"
-        views={views.map((v) => ({
-          id: v.id,
-          label: v.label,
-          count: searched.filter(v.test).length,
-        }))}
-        value={view.id}
-        onChange={(id) => update({ view: id === ALL ? "" : id })}
-      />
-      <div className="relative">
-        <Search
-          className="-translate-y-1/2 absolute top-1/2 left-2.5 size-4 text-muted-foreground"
-          aria-hidden="true"
-        />
-        <Input
-          aria-label="Search files"
-          placeholder="Search discarded files"
-          className="pl-8"
-          value={q}
-          onChange={(event) => update({ q: event.target.value })}
-        />
-      </div>
-      <p className="text-muted-foreground text-xs">
-        {formatCount(shown.length)} of {formatCount(rows.length)} files
-      </p>
-      <div className="overflow-x-auto rounded-md border border-border bg-card">
-        <table className="w-full min-w-[48rem] table-fixed text-sm">
-          <colgroup>
-            <col className="w-[8rem]" />
-            <col className="w-[34%]" />
-            <col className="w-[6rem]" />
-            <col className="w-[11.5rem]" />
-            <col />
-          </colgroup>
-          <thead className="border-border border-b text-left text-muted-foreground text-xs uppercase tracking-wide">
-            <tr>
-              {HEADERS.map((h) => (
-                <th
-                  key={h}
-                  className={
-                    h === "Size" ? "px-3 py-2 text-right font-medium" : "px-3 py-2 font-medium"
-                  }
-                >
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {visible.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={HEADERS.length}
-                  className="px-3 py-6 text-center text-muted-foreground"
-                >
-                  No files match.
-                </td>
-              </tr>
-            ) : (
-              visible.map((row) => (
-                <tr
-                  key={`${row.reasonView}/${row.rel_path}`}
-                  data-testid={`discarded-${row.rel_path}`}
-                  className="border-border border-b last:border-b-0 hover:bg-accent/40"
-                >
-                  <td className="truncate px-3 py-1.5 text-muted-foreground" title={row.reason}>
-                    {row.reason}
-                  </td>
-                  <td className="truncate px-3 py-1.5" title={row.rel_path}>
-                    {row.rel_path}
-                  </td>
-                  <td className="px-3 py-1.5 text-right text-muted-foreground tabular-nums">
-                    {formatSize(row.size)}
-                  </td>
-                  <td className="whitespace-nowrap px-3 py-1.5 text-muted-foreground tabular-nums">
-                    {formatWhen(row.modified)}
-                  </td>
-                  <td className="truncate px-3 py-1.5" title={row.restore_to ?? undefined}>
-                    {row.restore_to === null ? (
-                      <span className="text-muted-foreground">folder unavailable</span>
-                    ) : row.occupied ? (
-                      <span className="inline-flex items-center gap-1 text-status-warn">
-                        <TriangleAlert className="size-3 shrink-0" aria-hidden="true" />a file is
-                        already there
-                      </span>
-                    ) : row.operation_id === null ? (
-                      <span className="text-muted-foreground">not moved here by this app</span>
-                    ) : onRestore ? (
-                      <Button
-                        variant="outline"
-                        size="xs"
-                        disabled={busy}
-                        onClick={() => row.operation_id !== null && onRestore(row.operation_id)}
-                        aria-label={`Restore ${row.rel_path}`}
-                      >
-                        <ArchiveRestore aria-hidden="true" />
-                        Restore
-                      </Button>
-                    ) : (
-                      <span className="text-muted-foreground">
-                        its old place in the folder (free)
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-      <Pager page={page} pages={pages} onPage={(p) => update({ page: String(p) }, true)} />
-    </div>
+    <DataTable
+      name="discarded"
+      label="Discarded files"
+      noun="files"
+      rows={rows}
+      rowKey={(r) => `${r.reasonView}/${r.rel_path}`}
+      rowTestId={(r) => `discarded-${r.rel_path}`}
+      columns={columns}
+      sizes={meta.ui.discarded_columns}
+      defaultColumns={meta.ui.discarded_columns_default}
+      views={views}
+      search={(r, needle) => r.rel_path.toLocaleLowerCase().includes(needle)}
+      searchLabel="Search files"
+      searchPlaceholder="Search discarded files"
+      filters={filters}
+      meta={meta}
+    />
   );
 }

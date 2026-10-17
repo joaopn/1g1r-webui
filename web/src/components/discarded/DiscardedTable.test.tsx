@@ -89,3 +89,21 @@ test("files the app moved have a Restore button; others say who put them there",
     within(screen.getByTestId("discarded-Other.zip")).getByText("not moved here by this app"),
   ).toBeInTheDocument();
 });
+
+test("filters by what Restore can do, sorts by any column, chooses columns", async () => {
+  window.localStorage.clear();
+  renderTable();
+  const rows = () =>
+    screen
+      .getAllByTestId(/^discarded-/)
+      .map((r) => r.getAttribute("data-testid")?.replace("discarded-", ""));
+  await userEvent.click(screen.getByTestId("filters-button"));
+  await userEvent.click(screen.getByTestId("filter-restore-occupied"));
+  expect(rows()).toEqual(["Contra (Japan).zip"]);
+  await userEvent.click(screen.getByText("Clear filters"));
+  await userEvent.click(screen.getByTestId("sort-file"));
+  expect(rows()).toEqual(["Bare (Europe).nes", "Contra (Japan).zip", "Gradius (USA).zip"]);
+  await userEvent.click(screen.getByTestId("columns-button"));
+  await userEvent.click(screen.getByTestId("column-restore_to"));
+  expect(screen.getByTestId("header-restore_to")).toBeInTheDocument();
+});

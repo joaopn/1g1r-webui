@@ -89,12 +89,18 @@ class UiConfig(_Strict):
     rem_fallback_px: float = Field(gt=0)
     game_columns: dict[str, ColumnSize]
     game_columns_default: list[str] = Field(min_length=1)
+    conversion_columns: dict[str, ColumnSize]
+    conversion_columns_default: list[str] = Field(min_length=1)
+    discarded_columns: dict[str, ColumnSize]
+    discarded_columns_default: list[str] = Field(min_length=1)
 
     @model_validator(mode="after")
     def _known_defaults(self) -> "UiConfig":
-        unknown = [c for c in self.game_columns_default if c not in self.game_columns]
-        if unknown:
-            raise ValueError(f"ui.game_columns_default names unknown columns {unknown}")
+        for table in ("game", "conversion", "discarded"):
+            sizes = getattr(self, f"{table}_columns")
+            unknown = [c for c in getattr(self, f"{table}_columns_default") if c not in sizes]
+            if unknown:
+                raise ValueError(f"ui.{table}_columns_default names unknown columns {unknown}")
         return self
 
 

@@ -33,6 +33,10 @@ export type Meta = {
     rem_fallback_px: number;
     game_columns: Record<string, ColumnSize>;
     game_columns_default: string[];
+    conversion_columns: Record<string, ColumnSize>;
+    conversion_columns_default: string[];
+    discarded_columns: Record<string, ColumnSize>;
+    discarded_columns_default: string[];
   };
   platforms: Record<string, Platform>;
   targets: Record<string, Target>;
