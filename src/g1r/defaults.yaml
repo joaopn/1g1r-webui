@@ -108,6 +108,10 @@ platforms:
     - neo-geo-pocket
     - neo-geo-pocket-color
     - nes
+    - neo-geo-cd
+    - psx
+    - saturn
+    - segacd
     - sega32
     - sms
     - snes
@@ -118,6 +122,8 @@ platforms:
 
   # Archive formats a ROM may be wrapped in.
   archive_extensions: [zip, 7z]
+  # Disc image formats that are a container of their own (what a disc target produces).
+  disc_formats: [chd, rvz]
 
   # Target formats (the format the conversion part produces). Chosen once per platform.
   # `produces` is the container a conversion writes ("plain" = the bare ROM file);
@@ -133,6 +139,11 @@ platforms:
       description: The bare ROM file, no archive.
       produces: plain
       accepts: [plain]
+    chd:
+      label: CHD (compressed disc image)
+      description: One lossless compressed file per disc, made with chdman. Read by DuckStation, Beetle, Flycast, PCSX2 and PPSSPP.
+      produces: chd
+      accepts: [chd]
 
   # Per platform: display name, its icon (a short label and the kind of device), the
   # No-Intro DAT name, the ROM file extensions, the allowed targets and the default target.
@@ -141,7 +152,7 @@ platforms:
       name: Atari 2600
       short: "2600"
       kind: console
-      nointro_dat: Atari - 2600
+      dat_name: Atari - 2600
       rom_extensions: [a26, bin]
       targets: [zip, plain]
       default_target: zip
@@ -150,7 +161,7 @@ platforms:
       name: Atari 5200
       short: "5200"
       kind: console
-      nointro_dat: Atari - 5200
+      dat_name: Atari - 5200
       rom_extensions: [a52, bin]
       targets: [zip, plain]
       default_target: zip
@@ -159,7 +170,7 @@ platforms:
       name: Atari 7800
       short: "7800"
       kind: console
-      nointro_dat: Atari - 7800
+      dat_name: Atari - 7800
       rom_extensions: [a78, bin]
       targets: [zip, plain]
       default_target: zip
@@ -168,7 +179,7 @@ platforms:
       name: ColecoVision
       short: "CV"
       kind: console
-      nointro_dat: Coleco - ColecoVision
+      dat_name: Coleco - ColecoVision
       rom_extensions: [col, rom, bin]
       targets: [zip, plain]
       default_target: zip
@@ -177,7 +188,7 @@ platforms:
       name: Game Gear
       short: "GG"
       kind: handheld
-      nointro_dat: Sega - Game Gear
+      dat_name: Sega - Game Gear
       rom_extensions: [gg]
       targets: [zip, plain]
       default_target: zip
@@ -186,7 +197,7 @@ platforms:
       name: Game Boy
       short: "GB"
       kind: handheld
-      nointro_dat: Nintendo - Game Boy
+      dat_name: Nintendo - Game Boy
       rom_extensions: [gb]
       targets: [zip, plain]
       default_target: zip
@@ -195,7 +206,7 @@ platforms:
       name: Game Boy Advance
       short: "GBA"
       kind: handheld
-      nointro_dat: Nintendo - Game Boy Advance
+      dat_name: Nintendo - Game Boy Advance
       rom_extensions: [gba]
       targets: [zip, plain]
       default_target: zip
@@ -204,7 +215,7 @@ platforms:
       name: Game Boy Color
       short: "GBC"
       kind: handheld
-      nointro_dat: Nintendo - Game Boy Color
+      dat_name: Nintendo - Game Boy Color
       rom_extensions: [gbc]
       targets: [zip, plain]
       default_target: zip
@@ -213,7 +224,7 @@ platforms:
       name: Mega Drive / Genesis
       short: "MD"
       kind: console
-      nointro_dat: Sega - Mega Drive - Genesis
+      dat_name: Sega - Mega Drive - Genesis
       rom_extensions: [md, gen, bin, smd]
       targets: [zip, plain]
       default_target: zip
@@ -222,7 +233,7 @@ platforms:
       name: Atari Jaguar
       short: "JAG"
       kind: console
-      nointro_dat: Atari - Jaguar
+      dat_name: Atari - Jaguar
       rom_extensions: [j64, jag, rom, abs, cof]
       targets: [zip, plain]
       default_target: zip
@@ -231,7 +242,7 @@ platforms:
       name: Atari Lynx
       short: "LNX"
       kind: handheld
-      nointro_dat: Atari - Lynx
+      dat_name: Atari - Lynx
       rom_extensions: [lnx, lyx]
       targets: [zip, plain]
       default_target: zip
@@ -240,7 +251,7 @@ platforms:
       name: Nintendo DS
       short: "NDS"
       kind: handheld
-      nointro_dat: Nintendo - Nintendo DS
+      dat_name: Nintendo - Nintendo DS
       rom_extensions: [nds]
       targets: [zip, plain]
       default_target: zip
@@ -249,7 +260,7 @@ platforms:
       name: Neo Geo Pocket
       short: "NGP"
       kind: handheld
-      nointro_dat: SNK - Neo Geo Pocket
+      dat_name: SNK - Neo Geo Pocket
       rom_extensions: [ngp]
       targets: [zip, plain]
       default_target: zip
@@ -258,7 +269,7 @@ platforms:
       name: Neo Geo Pocket Color
       short: "NGPC"
       kind: handheld
-      nointro_dat: SNK - Neo Geo Pocket Color
+      dat_name: SNK - Neo Geo Pocket Color
       rom_extensions: [ngc, ngpc]
       targets: [zip, plain]
       default_target: zip
@@ -267,7 +278,7 @@ platforms:
       name: Nintendo Entertainment System
       short: "NES"
       kind: console
-      nointro_dat: Nintendo - Nintendo Entertainment System
+      dat_name: Nintendo - Nintendo Entertainment System
       rom_extensions: [nes]
       targets: [zip, plain]
       default_target: zip
@@ -276,7 +287,7 @@ platforms:
       name: Sega 32X
       short: "32X"
       kind: console
-      nointro_dat: Sega - 32X
+      dat_name: Sega - 32X
       rom_extensions: [32x, bin]
       targets: [zip, plain]
       default_target: zip
@@ -285,7 +296,7 @@ platforms:
       name: Master System
       short: "SMS"
       kind: console
-      nointro_dat: Sega - Master System - Mark III
+      dat_name: Sega - Master System - Mark III
       rom_extensions: [sms]
       targets: [zip, plain]
       default_target: zip
@@ -294,7 +305,7 @@ platforms:
       name: Super Nintendo
       short: "SNES"
       kind: console
-      nointro_dat: Nintendo - Super Nintendo Entertainment System
+      dat_name: Nintendo - Super Nintendo Entertainment System
       rom_extensions: [sfc, smc]
       targets: [zip, plain]
       default_target: zip
@@ -303,7 +314,7 @@ platforms:
       name: PC Engine / TurboGrafx-16
       short: "PCE"
       kind: console
-      nointro_dat: NEC - PC Engine - TurboGrafx 16
+      dat_name: NEC - PC Engine - TurboGrafx 16
       rom_extensions: [pce]
       targets: [zip, plain]
       default_target: zip
@@ -312,16 +323,64 @@ platforms:
       name: Virtual Boy
       short: "VB"
       kind: handheld
-      nointro_dat: Nintendo - Virtual Boy
+      dat_name: Nintendo - Virtual Boy
       rom_extensions: [vb]
       targets: [zip, plain]
       default_target: zip
       screenscraper_id: 11
+    psx:
+      name: PlayStation
+      short: "PS1"
+      kind: console
+      dat_name: Sony - PlayStation
+      dat_family: redump
+      redump_system: psx
+      rom_extensions: [chd, cue, bin, iso]
+      part_extensions: [cue, bin]
+      targets: [chd]
+      default_target: chd
+      screenscraper_id: 57
+    saturn:
+      name: Saturn
+      short: "SAT"
+      kind: console
+      dat_name: Sega - Saturn
+      dat_family: redump
+      redump_system: ss
+      rom_extensions: [chd, cue, bin, iso]
+      part_extensions: [cue, bin]
+      targets: [chd]
+      default_target: chd
+      screenscraper_id: 22
+    segacd:
+      name: Sega CD
+      short: "SCD"
+      kind: console
+      dat_name: Sega - Mega CD & Sega CD
+      dat_family: redump
+      redump_system: mcd
+      rom_extensions: [chd, cue, bin, iso]
+      part_extensions: [cue, bin]
+      targets: [chd]
+      default_target: chd
+      screenscraper_id: 20
+    neo-geo-cd:
+      name: Neo Geo CD
+      short: "NGCD"
+      kind: console
+      dat_name: SNK - Neo Geo CD
+      dat_family: redump
+      redump_system: ngcd
+      rom_extensions: [chd, cue, bin, iso]
+      part_extensions: [cue, bin]
+      targets: [chd]
+      default_target: chd
+      screenscraper_id: 70
     wonderswan:
       name: WonderSwan
       short: "WS"
       kind: handheld
-      nointro_dat: Bandai - WonderSwan
+      dat_name: Bandai - WonderSwan
       rom_extensions: [ws]
       targets: [zip, plain]
       default_target: zip
@@ -330,7 +389,7 @@ platforms:
       name: WonderSwan Color
       short: "WSC"
       kind: handheld
-      nointro_dat: Bandai - WonderSwan Color
+      dat_name: Bandai - WonderSwan Color
       rom_extensions: [wsc]
       targets: [zip, plain]
       default_target: zip
@@ -339,11 +398,15 @@ platforms:
 dats:
   # DAT files are stored under <data_dir>/<directory>/<platform>/<sha1>.dat.
   directory: dats
+  # Who makes a platform's DATs (platforms.profiles.<id>.dat_family).
+  families:
+    nointro: {label: No-Intro, libretro_dir: no-intro, clonelist_suffix: (No-Intro)}
+    redump: {label: Redump, libretro_dir: redump, clonelist_suffix: (Redump)}
   sources:
     libretro:
       label: libretro-database mirror
-      # {name} is the platform's No-Intro DAT name.
-      url_template: "https://raw.githubusercontent.com/libretro/libretro-database/master/metadat/no-intro/{name}.dat"
+      # {family} is the family's libretro_dir, {name} the platform's DAT name.
+      url_template: "https://raw.githubusercontent.com/libretro/libretro-database/master/metadat/{family}/{name}.dat"
       # The mirror has no parent/clone data and lists headered and headerless NES
       # entries separately: good for identifying files, not for grouping versions.
       identification_only: true
@@ -351,6 +414,15 @@ dats:
       label: No-Intro (DAT-o-MATIC)
       website: "https://datomatic.no-intro.org/index.php?page=download&s=64&op=daily"
       identification_only: false
+      families: [nointro]
+    redump:
+      label: redump.info
+      # One request per click; {system} is the platform's redump_system. The answer is a zip
+      # holding one Logiqx DAT with serials and categories.
+      url_template: "https://redump.info/datfile/{system}/serial,version"
+      website: "https://redump.info/downloads.php"
+      identification_only: false
+      families: [redump]
     upload:
       label: Uploaded file
       identification_only: false
@@ -423,6 +495,14 @@ archives:
   seven_zip_binary: 7z
   list_timeout_seconds: 300
 
+chdman:
+  binary: chdman
+  # One createcd/createdvd, verify or extract run must finish within this many seconds.
+  timeout_seconds: 7200
+  # Extra options for createcd/createdvd, e.g. ["--numprocessors", "4"]; empty: chdman's
+  # own defaults (its standard codecs and hunk size).
+  create_args: []
+
 jobs:
   # Folder scans run in the background, this many at a time.
   workers: 1
@@ -437,6 +517,9 @@ apply:
   zip_compress_level: 9
   # Taking one ROM out of a 7z archive must finish within this many seconds.
   extract_timeout_seconds: 600
+  # Disc conversions unpack and check tracks in a work directory with this suffix, beside
+  # the output; removed when done, and at start-up if a restart left one.
+  work_suffix: .g1r-work
 
 # Copier/emulator headers some ROM files carry in front of the data. When igir finds no
 # match, the header is stripped and the remaining data looked up in the DAT by CRC and size.
@@ -474,7 +557,7 @@ grouping:
   # their DAT name with region, language, revision, pre-release, re-release and neutral
   # tags removed. Every other tag (e.g. a publisher) keeps games apart.
   infer_from_dat_names: true
-  # Retool's clone lists ("<DAT name> (No-Intro).json"), bundled in the image.
+  # Retool's clone lists ("<DAT name> (No-Intro).json" or "(Redump).json"), bundled in the image.
   retool_clonelists_dir: /opt/retool/clonelists
 
 # How the version to keep is picked. This is the template a new folder starts from;

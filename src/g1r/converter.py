@@ -7,15 +7,16 @@ its size and CRC32 must equal what the scan listed. Either way the source is lef
 moving or deleting it is the journal's next step.
 """
 
+import hashlib
 import os
 import shutil
 import subprocess
 import zipfile
 import zlib
 from collections.abc import Callable
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
-from g1r import conversion, moves
+from g1r import conversion, discs, moves
 from g1r.config import Settings
 
 CRC_FORMAT = "08x"
@@ -77,7 +78,9 @@ class Converter:
             raise moves.MoveError(f"{step.destination} already exists")
         temp = moves.temp_path(self.config, step.destination)
         try:
-            if step.member is None:
+            if step.recipe in (conversion.RECIPE_DISC, conversion.RECIPE_ARCHIVE_DISC):
+                self._disc(step, temp)
+            elif step.member is None:
                 self._wrap(step.source, temp)
             else:
                 self._unwrap(step, temp)
@@ -118,6 +121,80 @@ class Converter:
             or bad is not None
         ):
             raise moves.MoveError(f"the new zip of {source} does not hold the same data")
+
+    def _disc(self, step, temp: Path) -> None:
+        """chdman makes the CHD; it must pass `verify`, and its tracks extracted back must
+        equal the originals: the same data in order, and per file when there are several."""
+        chdman = self.settings.chdman
+        work = moves.work_path(self.config, step.destination)
+        try:
+            work.mkdir()
+        except FileExistsError as exc:
+            raise moves.MoveError(f"{work} already exists (left by an interrupted run?)") from exc
+        try:
+            disc = (
+                self._unpack(step, work)
+                if step.recipe == conversion.RECIPE_ARCHIVE_DISC
+                else step.source
+            )
+            cue = disc.suffix.lower().lstrip(".") == discs.CUE
+            originals = discs.cue_paths(disc) if cue else [disc]
+            each, whole = self._digests(originals)
+            discs.create(chdman, step.disc_mode, disc, temp)
+            discs.verify(chdman, temp)
+            back = work / "back"
+            back.mkdir()
+            if step.disc_mode == discs.CREATEDVD:
+                image = back / "disc.iso"
+                discs.extract_dvd(chdman, temp, image)
+                tracks = [image]
+            else:
+                tracks = discs.extract_cd(chdman, temp, back)
+            again, whole_again = self._digests(tracks)
+            if whole_again != whole or (len(originals) > 1 and again != each):
+                raise moves.MoveError(
+                    f"the CHD of {step.source.name} does not give back the same tracks"
+                )
+        except discs.DiscError as exc:
+            temp.unlink(missing_ok=True)
+            raise moves.MoveError(str(exc)) from exc
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
+
+    def _unpack(self, step, work: Path) -> Path:
+        """Extract an archive's disc files to `work/source`, each checked against the CRC32
+        and size the scan listed; return the cue sheet or ISO among them."""
+        source = work / "source"
+        found = None
+        for name, size, crc in step.inner:
+            relative = PurePosixPath(name)
+            if relative.is_absolute() or ".." in relative.parts:
+                raise moves.MoveError(f"{step.source.name} holds {name}, outside the archive")
+            path = source.joinpath(*relative.parts)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            self.extract(self.settings, step.source, name, path)
+            if not crc:
+                raise moves.MoveError(f"the scan listed no CRC32 for {name}")
+            if crc_and_size(self.config.copy_chunk_bytes, path) != (crc.lower(), size):
+                raise moves.MoveError(f"{name} did not extract as the archive lists it")
+            if relative.suffix.lower().lstrip(".") in (discs.CUE, discs.ISO):
+                found = path
+        if found is None:
+            raise moves.MoveError(f"{step.source.name} holds no cue sheet or ISO")
+        return found
+
+    def _digests(self, paths: list[Path]) -> tuple[list[str], str]:
+        """SHA1 of each file, and of all of them in order (the disc's data)."""
+        whole = hashlib.sha1(usedforsecurity=False)
+        each = []
+        for path in paths:
+            one = hashlib.sha1(usedforsecurity=False)
+            with path.open("rb") as handle:
+                while chunk := handle.read(self.config.copy_chunk_bytes):
+                    one.update(chunk)
+                    whole.update(chunk)
+            each.append(one.hexdigest())
+        return each, whole.hexdigest()
 
     def _unwrap(self, step, temp: Path) -> None:
         if not step.member_crc32:

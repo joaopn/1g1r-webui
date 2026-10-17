@@ -84,7 +84,7 @@ export function PlatformsSettingsPage() {
                     {p.name}
                   </span>
                 </td>
-                <td className="px-3 py-2 text-muted-foreground">{p.nointro_dat}</td>
+                <td className="px-3 py-2 text-muted-foreground">{p.dat_name}</td>
                 <td className="px-3 py-2 text-muted-foreground">{p.rom_extensions.join(", ")}</td>
                 <td className="px-3 py-2">
                   <select
@@ -129,9 +129,13 @@ function DatRowView({ row, meta }: { row: DatRow; meta: Meta }) {
   const refresh = () => queryClient.invalidateQueries({ queryKey: keys.dats });
   const onError = (err: unknown) => toast.error(`${row.platform}: ${errorText(err)}`);
   const download = useMutation({
-    mutationFn: () => api(`/dats/${row.platform}/download`, { method: "POST" }),
-    onSuccess: () => {
-      toast.success(`${platform?.name}: libretro DAT downloaded`);
+    mutationFn: (source: string) =>
+      api(`/dats/${row.platform}/download?source=${encodeURIComponent(source)}`, {
+        method: "POST",
+      }),
+    onSuccess: (_, source) => {
+      const label = row.downloads.find((d) => d.source === source)?.label ?? source;
+      toast.success(`${platform?.name}: DAT downloaded from ${label}`);
       refresh();
       queryClient.invalidateQueries({ queryKey: keys.folders });
     },
@@ -238,15 +242,19 @@ function DatRowView({ row, meta }: { row: DatRow; meta: Meta }) {
       </td>
       <td className="px-3 py-2.5">
         <div className="flex flex-nowrap gap-1.5 whitespace-nowrap">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => download.mutate()}
-            disabled={download.isPending}
-            title="libretro-database mirror (identification only)"
-          >
-            <Download className="size-3.5" aria-hidden="true" /> libretro
-          </Button>
+          {row.downloads.map((d) => (
+            <Button
+              key={d.source}
+              variant="outline"
+              size="sm"
+              onClick={() => download.mutate(d.source)}
+              disabled={download.isPending}
+              title={d.identification_only ? `${d.label} (identification only)` : d.label}
+            >
+              <Download className="size-3.5" aria-hidden="true" />{" "}
+              {d.source === "libretro" ? "libretro" : d.label}
+            </Button>
+          ))}
           <Button
             variant="outline"
             size="sm"

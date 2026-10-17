@@ -27,6 +27,11 @@ def temp_path(config: ApplyConfig, destination: Path) -> Path:
     return destination.with_name(destination.name + config.temp_suffix)
 
 
+def work_path(config: ApplyConfig, destination: Path) -> Path:
+    """The directory a disc conversion unpacks and checks its tracks in."""
+    return destination.with_name(destination.name + config.work_suffix)
+
+
 def sha1_of(config: ApplyConfig, path: Path) -> str:
     digest = hashlib.sha1()
     with path.open("rb") as handle:

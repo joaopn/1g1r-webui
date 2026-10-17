@@ -8,9 +8,13 @@ from g1r.dats import Dat
 
 
 def rows(
-    conn: sqlite3.Connection, label: str, hasheous_on: bool, screenscraper_on: bool = False
+    conn: sqlite3.Connection,
+    label: str,
+    hasheous_on: bool,
+    screenscraper_on: bool = False,
+    parts: frozenset[str] = frozenset(),
 ) -> list[dict]:
-    files = scanner.unmatched_files(conn, label)
+    files = scanner.unmatched_files(conn, label, parts)
     hashes: dict[str, dict] = {}
     for h in conn.execute(
         "SELECT rel_path, variant, crc32, sha1 FROM content_hash WHERE folder_label = ? "

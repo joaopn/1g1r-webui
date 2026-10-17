@@ -131,6 +131,12 @@ export function FolderMatchingPage() {
           <StatCard value={formatCount(other)} label="other files" />
         </div>
       ) : null}
+      {(f.summary.waiting ?? 0) > 0 ? (
+        <p className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-muted-foreground text-sm">
+          {formatCount(f.summary.waiting ?? 0)} cue sheet and track file(s) wait for conversion:
+          each disc becomes one version here once it is a CHD (Conversion page).
+        </p>
+      ) : null}
       {(f.summary.counts.other ?? 0) > 0 ? (
         <p className="flex items-center gap-2 rounded-md border border-status-warn px-3 py-2 text-sm text-status-warn">
           <TriangleAlert className="size-4" aria-hidden="true" />

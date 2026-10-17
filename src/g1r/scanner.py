@@ -21,7 +21,9 @@ from g1r.conversion import ZIP_SUFFIX
 from g1r.dat_registry import DatRegistry
 from g1r.dats import Dat
 from g1r.hashing import (
+    CHD_SUFFIX,
     ContentHash,
+    chd_identity,
     content_hashes,
     header_size,
     payload_count,
@@ -247,7 +249,7 @@ class Scanner:
                         self.settings,
                         conn,
                         hashes,
-                        profile.nointro_dat,
+                        profile.dat_name,
                         self.lookup_post,
                         refresh=refresh,
                     )
@@ -312,6 +314,9 @@ class Scanner:
                 roms_inside.setdefault(rel, []).append(member)
 
         def payload_size(f: InventoryFile) -> int | None:
+            if f.kind == "rom" and f.rel_path.lower().endswith(CHD_SUFFIX):
+                identity = chd_identity(root / f.rel_path)
+                return identity[0] if identity else None
             if f.kind == "rom":
                 return f.size
             # Only zips are read for their data here (hashing.payloads); 7z is not compared.
@@ -499,7 +504,7 @@ def latest_scan(conn: sqlite3.Connection, label: str) -> sqlite3.Row | None:
     ).fetchone()
 
 
-def folder_summary(conn: sqlite3.Connection, label: str) -> dict:
+def folder_summary(conn: sqlite3.Connection, label: str, parts=frozenset()) -> dict:
     counts = {
         row["kind"]: row["n"]
         for row in conn.execute(
@@ -523,17 +528,36 @@ def folder_summary(conn: sqlite3.Connection, label: str) -> dict:
         )
     }
     roms = counts.get("rom", 0) + counts.get("archive", 0)
+    waiting = 0
+    unidentified_parts = 0
+    if parts:
+        for row in conn.execute(
+            "SELECT f.rel_path, EXISTS (SELECT 1 FROM identity i WHERE i.folder_label = "
+            "f.folder_label AND i.rel_path = f.rel_path) AS known FROM folder_file f "
+            "WHERE f.folder_label = ? AND f.kind = 'rom' AND f.place = 'folder'",
+            (label,),
+        ):
+            if _part(row["rel_path"], parts):
+                waiting += 1
+                unidentified_parts += not row["known"]
     return {
         "counts": counts,
         "roms": roms,
         "identified": identified,
-        "unmatched": roms - identified,
+        "unmatched": roms - identified - unidentified_parts,
+        # Cue sheets and tracks: they become versions once converted to one file.
+        "waiting": waiting,
         "methods": methods,
     }
 
 
-def unmatched_files(conn: sqlite3.Connection, label: str) -> list[sqlite3.Row]:
-    return conn.execute(
+def _part(rel_path: str, parts) -> bool:
+    return PurePosixPath(rel_path).suffix.lower().lstrip(".") in parts
+
+
+def unmatched_files(conn: sqlite3.Connection, label: str, parts=frozenset()) -> list[sqlite3.Row]:
+    """Unidentified ROM files; parts of a game (cue sheets, tracks) wait for conversion."""
+    found = conn.execute(
         """SELECT f.* FROM folder_file f
            WHERE f.folder_label = ? AND f.kind IN ('rom', 'archive') AND f.place = 'folder'
              AND NOT EXISTS (SELECT 1 FROM identity i
@@ -541,6 +565,7 @@ def unmatched_files(conn: sqlite3.Connection, label: str) -> list[sqlite3.Row]:
            ORDER BY f.rel_path""",
         (label,),
     ).fetchall()
+    return [r for r in found if not _part(r["rel_path"], parts)]
 
 
 def other_files(conn: sqlite3.Connection, label: str) -> list[sqlite3.Row]:

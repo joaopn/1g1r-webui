@@ -203,12 +203,20 @@ def build_router(
             "delete_originals": folder.delete_originals,
         }
 
-    def produces(library: Library, folder: FolderEntry) -> str:
-        """What the folder's platform target produces: kept among identical copies."""
-        return settings.platforms.targets[store.target_for(library, folder.platform)].produces
+    def parts_of(folder: FolderEntry) -> frozenset[str]:
+        return frozenset(e.lower() for e in platforms[folder.platform].part_extensions)
+
+    def produces(library: Library, folder: FolderEntry) -> matching.FolderView:
+        """The folder's platform as the 1G1R table sees it."""
+        target = settings.platforms.targets[store.target_for(library, folder.platform)]
+        return matching.FolderView(target.produces, parts_of(folder))
 
     def conversion_rows(library: Library, folder: FolderEntry, conn) -> list:
         target = settings.platforms.targets[store.target_for(library, folder.platform)]
+        try:
+            root = mounts.resolve(settings, folder.mount, folder.path)
+        except mounts.FolderPathError:
+            root = None
         return conversion.rows(
             settings,
             conn,
@@ -216,6 +224,7 @@ def build_router(
             folder.platform,
             target,
             delete_originals=folder.delete_originals,
+            root=root if root is not None and root.is_dir() else None,
         )
 
     # Meta ------------------------------------------------------------------------
@@ -230,7 +239,7 @@ def build_router(
                     "name": p.name,
                     "short": p.short,
                     "kind": p.kind,
-                    "nointro_dat": p.nointro_dat,
+                    "dat_name": p.dat_name,
                     "rom_extensions": p.rom_extensions,
                     "targets": p.targets,
                     "default_target": p.default_target,
@@ -260,7 +269,7 @@ def build_router(
                 conn,
                 folder.label,
                 store.ranking_for(folder),
-                prefer=produces(library, folder),
+                folder_view=produces(library, folder),
             )
             info = folder_info(library, folder)
             scan = scanner.latest_scan(conn, folder.label)
@@ -270,7 +279,7 @@ def build_router(
                     **info,
                     "scan": row_dict(scan),
                     "dat": row_dict(dat),
-                    "summary": scanner.folder_summary(conn, folder.label),
+                    "summary": scanner.folder_summary(conn, folder.label, parts_of(folder)),
                     "counts": table.counts,
                     "reclaim_bytes": table.reclaim_bytes,
                     "conversion": conversion.counts(conversion_rows(library, folder, conn)),
@@ -333,8 +342,8 @@ def build_router(
             **folder_info(library, folder),
             "dat": row_dict(registry.active_version(conn, library, folder.platform)),
             "scan": row_dict(scanner.latest_scan(conn, label)),
-            "summary": scanner.folder_summary(conn, label),
-            "unmatched": [dict(r) for r in scanner.unmatched_files(conn, label)],
+            "summary": scanner.folder_summary(conn, label, parts_of(folder)),
+            "unmatched": [dict(r) for r in scanner.unmatched_files(conn, label, parts_of(folder))],
             "others": [dict(r) for r in scanner.other_files(conn, label)],
             "ranking": store.ranking_for(folder).model_dump(),
             "ranking_is_default": folder.ranking is None,
@@ -412,7 +421,9 @@ def build_router(
             if m.action == journal.CONVERT:
                 result.append({"rel_path": m.rel_path, "output": m.paired_rel, "size": m.size})
             elif m.follows:
-                result[-1]["original_to"] = str(m.destination) if m.destination else None
+                entry = result[-1]
+                entry["originals"] = entry.get("originals", 0) + 1
+                entry.setdefault("original_to", str(m.destination) if m.destination else None)
         return result
 
     @router.post("/folders/{label}/apply/preview")
@@ -531,7 +542,7 @@ def build_router(
         root, gone = folder_root(folder), discarded.folder_root(settings, label)
         try:
             plan = journal.plan_unmatched(
-                conn, label, root, gone, body.rel_paths, delete=body.delete
+                conn, label, root, gone, body.rel_paths, delete=body.delete, parts=parts_of(folder)
             )
         except journal.PlanError as exc:
             raise conflict(str(exc), exc.problems) from exc
@@ -673,9 +684,11 @@ def build_router(
 
     @router.get("/folders/{label}/unmatched")
     def folder_unmatched(label: str, conn: Conn):
-        folder_or_404(label)
+        folder = folder_or_404(label)
         lookups = store.load().lookups
-        return unmatched.rows(conn, label, lookups.hasheous, lookups.screenscraper)
+        return unmatched.rows(
+            conn, label, lookups.hasheous, lookups.screenscraper, parts_of(folder)
+        )
 
     @router.put("/folders/{label}/assign")
     def assign(label: str, body: Assignment, conn: Conn):
@@ -817,6 +830,14 @@ def build_router(
                 "pinned": bool(library.dats.get(pid) and library.dats[pid].pinned),
                 "versions": [dict(v) for v in registry.versions(conn, pid)],
                 "folders": [f.label for f in library.folders if f.platform == pid],
+                "downloads": [
+                    {
+                        "source": source_id,
+                        "label": settings.dats.sources[source_id].label,
+                        "identification_only": settings.dats.sources[source_id].identification_only,
+                    }
+                    for source_id in registry.downloads(pid)
+                ],
             }
             for pid in platforms
         ]
@@ -835,8 +856,8 @@ def build_router(
         return data
 
     @router.post("/dats/{platform}/download")
-    def dat_download(platform: str, conn: Conn):
-        version_id = registry_call(lambda: registry.download_libretro(conn, platform))
+    def dat_download(platform: str, conn: Conn, source: str = "libretro"):
+        version_id = registry_call(lambda: registry.download(conn, platform, source))
         return {"version_id": version_id}
 
     @router.post("/dats/{platform}/upload")

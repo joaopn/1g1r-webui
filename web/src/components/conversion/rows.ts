@@ -1,11 +1,21 @@
 import type { ConversionRow, ConversionStatus } from "@/lib/types";
 
 /** What needs you first: proposed steps, then flags, then what is fine as it is. */
-export const STATUS_ORDER: ConversionStatus[] = ["wrap", "unwrap", "flagged", "accepted", "done"];
+export const STATUS_ORDER: ConversionStatus[] = [
+  "wrap",
+  "unwrap",
+  "make chd",
+  "flagged",
+  "part",
+  "accepted",
+  "done",
+];
 
 export const STATUS_LABELS: Record<ConversionStatus, string> = {
   wrap: "zip it",
   unwrap: "unzip it",
+  "make chd": "make CHD",
+  part: "track",
   flagged: "flagged",
   accepted: "accepted as is",
   done: "done",
@@ -17,7 +27,8 @@ export type ConversionView = {
   test: (row: ConversionRow) => boolean;
 };
 
-const converting = (row: ConversionRow) => row.status === "wrap" || row.status === "unwrap";
+export const converting = (row: ConversionRow) =>
+  row.status === "wrap" || row.status === "unwrap" || row.status === "make chd";
 
 /** The quick views above the table; add one here and it appears in the bar with its count. */
 export const CONVERSION_VIEWS: ConversionView[] = [

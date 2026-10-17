@@ -95,6 +95,7 @@ def test_wrap_a_folder_then_restore_the_original(setup, roms_root):  # noqa: F81
             "output": "odd.zip",
             "size": 1,
             "original_to": str(roms_root / ORIGINALS / "odd.nes"),
+            "originals": 1,
         }
     ]
     assert plan["irreversible"] == 0 and plan["problems"] == []

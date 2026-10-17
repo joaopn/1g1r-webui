@@ -125,18 +125,38 @@ def _copies(
     return list(sets.values())
 
 
+@dataclass(frozen=True)
+class FolderView:
+    """What the table needs from the folder's platform."""
+
+    # The container its target produces: kept among identical copies.
+    prefer: str | None = None
+    # Extensions of files that are only part of a game (cue sheets, tracks): not versions.
+    parts: frozenset[str] = frozenset()
+
+
+def is_part(rel_path: str, parts: frozenset[str]) -> bool:
+    return PurePosixPath(rel_path).suffix.lower().lstrip(".") in parts
+
+
 def game_rows(
     settings: Settings,
     conn: sqlite3.Connection,
     label: str,
     ranking: RankingConfig,
-    prefer: str | None = None,
+    view: FolderView | None = None,
 ) -> list[GameRow]:
-    """`prefer`: the container the platform's target produces, kept among identical copies."""
-    identities = conn.execute(
-        "SELECT rel_path, game_name, method, dat_sha1, score FROM identity WHERE folder_label = ?",
-        (label,),
-    ).fetchall()
+    view = view or FolderView()
+    prefer = view.prefer
+    identities = [
+        r
+        for r in conn.execute(
+            "SELECT rel_path, game_name, method, dat_sha1, score FROM identity "
+            "WHERE folder_label = ?",
+            (label,),
+        )
+        if not is_part(r["rel_path"], view.parts)
+    ]
     if not identities:
         return []
     places = dict(
@@ -282,9 +302,9 @@ def table(
     view: str = "all",
     query: str = "",
     page: int = 1,
-    prefer: str | None = None,
+    folder_view: FolderView | None = None,
 ) -> Table:
-    games = game_rows(settings, conn, label, ranking, prefer)
+    games = game_rows(settings, conn, label, ranking, folder_view)
     tests = {
         "all": lambda g: True,
         "several": lambda g: len(g.rows) > 1,
@@ -314,9 +334,9 @@ def table(
     return Table(selected[start : start + size], len(selected), page, pages, counts, reclaim)
 
 
-def find_game(settings, conn, label, ranking, group_key, prefer=None) -> GameRow | None:
+def find_game(settings, conn, label, ranking, group_key, view=None) -> GameRow | None:
     return next(
-        (g for g in game_rows(settings, conn, label, ranking, prefer) if g.group.key == group_key),
+        (g for g in game_rows(settings, conn, label, ranking, view) if g.group.key == group_key),
         None,
     )
 

@@ -4,7 +4,7 @@ export type Platform = {
   name: string;
   short: string;
   kind: "console" | "handheld";
-  nointro_dat: string;
+  dat_name: string;
   rom_extensions: string[];
   targets: string[];
   default_target: string;
@@ -68,6 +68,8 @@ export type Summary = {
   roms: number;
   identified: number;
   unmatched: number;
+  /** Cue sheets and track files: versions once converted to one file. */
+  waiting?: number;
   methods: Record<string, number>;
 };
 
@@ -234,6 +236,8 @@ export type DatRow = {
   pinned: boolean;
   versions: DatVersion[];
   folders: string[];
+  /** Where this platform's DAT can be downloaded from, one button each. */
+  downloads: { source: string; label: string; identification_only: boolean }[];
 };
 
 export type SettingsData = {
@@ -267,7 +271,14 @@ export type Browse = {
 
 export type Target = { label: string; description: string; produces: string; accepts: string[] };
 
-export type ConversionStatus = "wrap" | "unwrap" | "flagged" | "accepted" | "done";
+export type ConversionStatus =
+  | "wrap"
+  | "unwrap"
+  | "make chd"
+  | "flagged"
+  | "part"
+  | "accepted"
+  | "done";
 
 export type ArchiveMember = { name: string; size: number; crc32: string | null };
 
@@ -282,6 +293,10 @@ export type ConversionRow = {
   reversible: boolean;
   verify: string | null;
   note: string;
+  recipe: string | null;
+  /** A cue sheet's track files, converted and moved with it. */
+  parts: string[];
+  disc_mode: string | null;
 };
 
 export type ConversionCounts = Record<ConversionStatus | "to_convert" | "all", number>;

@@ -5,6 +5,7 @@ the header-stripped data is hashed too, since databases list either form.
 """
 
 import hashlib
+import struct
 import zipfile
 import zlib
 from dataclasses import dataclass
@@ -62,8 +63,36 @@ def _hash(variant: str, data: bytes) -> ContentHash:
     )
 
 
+# A CHD (v5) header, big-endian: tag, header length, version, the four compressors, logical
+# size, map and metadata offsets, hunk and unit sizes, then the raw data SHA1, the SHA1 of
+# data and metadata together (what chdman info calls "SHA1"), and the parent's SHA1.
+CHD_TAG = b"MComprHD"
+CHD_SUFFIX = ".chd"
+CHD_V5 = ">8sII16sQQQII20s20s20s"
+
+
+def chd_identity(path: Path) -> tuple[int, str] | None:
+    """A CHD's disc, whatever its compression: (logical size, SHA1 of data and metadata)."""
+    size = struct.calcsize(CHD_V5)
+    try:
+        with path.open("rb") as handle:
+            header = handle.read(size)
+    except OSError:
+        return None
+    if len(header) < size:
+        return None
+    tag, length, _, _, logical, *_, sha1, _ = struct.unpack(CHD_V5, header)
+    if tag != CHD_TAG or length != size:
+        return None
+    return logical, sha1.hex()
+
+
 def payload_sha1(path: Path, rom_extensions: set[str], limit: int) -> str | None:
-    """The SHA1 of the file's ROM data when it holds exactly one payload, else None."""
+    """The SHA1 of the file's ROM data when it holds exactly one payload, else None. A CHD's
+    is the disc's own SHA1 from its header, so two compressions of one disc are equal."""
+    if path.suffix.lower() == CHD_SUFFIX:
+        identity = chd_identity(path)
+        return identity[1] if identity else None
     found = []
     for data in payloads(path, rom_extensions, limit):
         found.append(hashlib.sha1(data, usedforsecurity=False).hexdigest())

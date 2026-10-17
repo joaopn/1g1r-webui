@@ -122,12 +122,24 @@ class TargetConfig(_Strict):
 PLATFORM_KINDS = ("console", "handheld")
 
 
+DAT_FAMILIES = ("nointro", "redump")
+
+
 class PlatformProfile(_Strict):
     name: str
     # The platform's icon: a short label in a chip, and the kind of device it is.
     short: str = Field(min_length=1)
     kind: str
-    nointro_dat: str
+    # The DAT's header name, and who makes it: No-Intro (cartridges) or Redump (discs).
+    dat_name: str
+    dat_family: str = "nointro"
+    # redump.info's name for the system, for the Download button (Redump platforms).
+    redump_system: str | None = None
+    # Files that are only part of a game (a cue sheet and its tracks): no versions in the
+    # 1G1R table until a conversion makes one file of them.
+    part_extensions: list[str] = Field(default_factory=list)
+    # An ISO of this platform is a CD (createcd) or a DVD (createdvd) for chdman.
+    iso_mode: str = "cd"
     rom_extensions: list[str] = Field(min_length=1)
     targets: list[str] = Field(min_length=1)
     default_target: str
@@ -138,6 +150,8 @@ class PlatformProfile(_Strict):
 class PlatformsConfig(_Strict):
     enabled: list[str]
     archive_extensions: list[str]
+    # Disc image formats that are a container of their own (a target can produce them).
+    disc_formats: list[str]
     targets: dict[str, TargetConfig]
     profiles: dict[str, PlatformProfile]
 
@@ -146,7 +160,7 @@ class PlatformsConfig(_Strict):
         missing = [p for p in self.enabled if p not in self.profiles]
         if missing:
             raise ValueError(f"platforms.enabled lists platforms without a profile: {missing}")
-        containers = {*self.archive_extensions, PLAIN}
+        containers = {*self.archive_extensions, *self.disc_formats, PLAIN}
         for target_id, target in self.targets.items():
             unknown = [c for c in target.accepts if c not in containers]
             if unknown:
@@ -157,6 +171,10 @@ class PlatformsConfig(_Strict):
                 raise ValueError(f"platform {platform_id}: unknown targets {unknown}")
             if profile.default_target not in profile.targets:
                 raise ValueError(f"platform {platform_id}: default_target not in its targets")
+            if profile.dat_family not in DAT_FAMILIES:
+                raise ValueError(
+                    f"platform {platform_id}: dat_family must be one of {DAT_FAMILIES}"
+                )
             if profile.kind not in PLATFORM_KINDS:
                 raise ValueError(f"platform {platform_id}: kind must be one of {PLATFORM_KINDS}")
         return self
@@ -170,10 +188,21 @@ class DatSourceConfig(_Strict):
     identification_only: bool
     url_template: str | None = None
     website: str | None = None
+    # The DAT families this source has (empty: every family).
+    families: list[str] = Field(default_factory=list)
+
+
+class DatFamilyConfig(_Strict):
+    label: str
+    # The libretro-database directory with this family's DATs.
+    libretro_dir: str
+    # Retool's clone lists for it are named "<DAT name> <suffix>.json".
+    clonelist_suffix: str
 
 
 class DatsConfig(_Strict):
     directory: str
+    families: dict[str, DatFamilyConfig]
     sources: dict[str, DatSourceConfig]
     download_timeout_seconds: float = Field(gt=0)
     max_upload_bytes: int = Field(gt=0)
@@ -265,6 +294,13 @@ class JobsConfig(_Strict):
     workers: int = Field(gt=0)
 
 
+class ChdmanConfig(_Strict):
+    binary: str
+    timeout_seconds: float = Field(gt=0)
+    # Extra options for createcd/createdvd (codecs, hunk size, processors); empty: chdman's.
+    create_args: list[str] = Field(default_factory=list)
+
+
 class ApplyConfig(_Strict):
     copy_chunk_bytes: int = Field(gt=0)
     temp_suffix: str = Field(min_length=1)
@@ -272,6 +308,9 @@ class ApplyConfig(_Strict):
     zip_compress_level: int = Field(ge=0)
     # Extracting one member from a 7z archive must finish within this many seconds.
     extract_timeout_seconds: int = Field(gt=0)
+    # A disc conversion unpacks and checks its tracks in a directory with this suffix beside
+    # the output; one left behind by a restart is removed at start-up.
+    work_suffix: str = Field(min_length=1)
 
 
 class HeaderRule(_Strict):
@@ -334,6 +373,7 @@ class Settings(_Strict):
     dats: DatsConfig
     igir: IgirConfig
     archives: ArchivesConfig
+    chdman: ChdmanConfig
     lookups: LookupsConfig
     fuzzy: FuzzyConfig
     jobs: JobsConfig

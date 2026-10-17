@@ -42,7 +42,7 @@ export const META: Meta = {
       name: "Nintendo Entertainment System",
       short: "NES",
       kind: "console",
-      nointro_dat: "Nintendo - NES",
+      dat_name: "Nintendo - NES",
       rom_extensions: ["nes"],
       targets: ["zip", "plain"],
       default_target: "zip",
@@ -51,7 +51,7 @@ export const META: Meta = {
       name: "Game Boy",
       short: "GB",
       kind: "handheld",
-      nointro_dat: "Nintendo - Game Boy",
+      dat_name: "Nintendo - Game Boy",
       rom_extensions: ["gb"],
       targets: ["zip", "plain"],
       default_target: "zip",
@@ -157,6 +157,9 @@ const conversionRow = (row: Partial<ConversionRow> & { rel_path: string }): Conv
   reversible: true,
   verify: null,
   note: "",
+  recipe: null,
+  parts: [],
+  disc_mode: null,
   ...row,
 });
 

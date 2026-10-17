@@ -22,6 +22,10 @@ Fetch = Callable[[str], bytes]
 DAT_SUFFIXES = (".dat", ".xml")
 
 
+# Downloads may come zipped (redump.info); a zip starts with these bytes.
+ZIP_MAGIC = b"PK\x03\x04"
+
+
 class RegistryError(ValueError):
     """A DAT could not be added or activated; the message is shown to the user."""
 
@@ -36,7 +40,7 @@ class PackResult:
 
 def header_matches(profile: PlatformProfile, header_name: str) -> bool:
     """No-Intro names some DATs with a suffix, e.g. 'Nintendo - ... (Headered)'."""
-    return header_name == profile.nointro_dat or header_name.startswith(profile.nointro_dat + " (")
+    return header_name == profile.dat_name or header_name.startswith(profile.dat_name + " (")
 
 
 class DatRegistry:
@@ -121,21 +125,44 @@ class DatRegistry:
             self.activate(conn, platform, version_id)
 
     def download_libretro(self, conn: sqlite3.Connection, platform: str) -> int:
+        return self.download(conn, platform, "libretro")
+
+    def downloads(self, platform: str) -> list[str]:
+        """The sources the platform's DAT can be downloaded from, in the order shown."""
         profile = self._profile(platform)
-        source = self.settings.dats.sources["libretro"]
-        url = source.url_template.format(name=urllib.parse.quote(profile.nointro_dat))
+        found = []
+        for source_id, source in self.settings.dats.sources.items():
+            if not source.url_template:
+                continue
+            if source.families and profile.dat_family not in source.families:
+                continue
+            if "{system}" in source.url_template and not profile.redump_system:
+                continue
+            found.append(source_id)
+        return found
+
+    def download(self, conn: sqlite3.Connection, platform: str, source_id: str) -> int:
+        profile = self._profile(platform)
+        if source_id not in self.downloads(platform):
+            raise RegistryError(f"{platform} cannot be downloaded from {source_id}")
+        source = self.settings.dats.sources[source_id]
+        family = self.settings.dats.families[profile.dat_family]
+        url = source.url_template.format(
+            name=urllib.parse.quote(profile.dat_name),
+            family=urllib.parse.quote(family.libretro_dir),
+            system=urllib.parse.quote(profile.redump_system or ""),
+        )
         try:
             data = self.fetch(url)
         except OSError as exc:
             raise RegistryError(f"download failed: {exc}") from exc
-        return self.add(
-            conn,
-            platform,
-            data,
-            source="libretro",
-            origin=url,
-            original_name=f"{profile.nointro_dat}.dat",
-        )
+        name = f"{profile.dat_name}.dat"
+        if data[: len(ZIP_MAGIC)] == ZIP_MAGIC:
+            members = self._zip_dats(data)
+            if len(members) != 1:
+                raise RegistryError(f"the download holds {len(members)} DATs, expected one")
+            name, data = members[0]
+        return self.add(conn, platform, data, source=source_id, origin=url, original_name=name)
 
     def add_upload(self, conn, platform: str, data: bytes, filename: str) -> int:
         """One uploaded .dat/.xml, or a .zip holding exactly one."""

@@ -98,6 +98,12 @@ class Move:
     step_of: int | None = None
     # The source is a file in discarded/ (emptying it), not in the folder.
     in_discarded: bool = False
+    # Convert only: how (conversion.RECIPE_*), chdman's mode for a disc, an archive's members
+    # as listed (name, size, CRC32) for a disc unpacked from it, and the bytes it needs free.
+    recipe: str | None = None
+    disc_mode: str | None = None
+    inner: tuple = ()
+    space: int | None = None
 
 
 def token(plan: list[Move]) -> str:
@@ -105,7 +111,7 @@ def token(plan: list[Move]) -> str:
     for m in plan:
         digest.update(
             f"{m.action}\0{m.source}\0{m.destination or ''}\0{m.size}\0{m.mtime_ns}\0"
-            f"{m.member or ''}\n".encode()
+            f"{m.member or ''}\0{m.recipe or ''}\n".encode()
         )
     return digest.hexdigest()
 
@@ -157,9 +163,14 @@ def plan_discards(conn: sqlite3.Connection, label: str, root: Path, games) -> li
 
 
 def plan_conversions(
-    conn: sqlite3.Connection, label: str, root: Path, rows: list[conversion.ConversionRow]
+    conn: sqlite3.Connection,
+    label: str,
+    root: Path,
+    rows: list[conversion.ConversionRow],
+    discarded_root: Path | None = None,
 ) -> list[Move]:
-    """Two steps per proposed conversion: write the output, then move or delete the original."""
+    """Per proposed conversion: write the output, then move or delete each original (the
+    file, and a cue sheet's track files with it)."""
     scanned = {
         r["rel_path"]: r
         for r in conn.execute(
@@ -170,31 +181,65 @@ def plan_conversions(
     plan = []
     for row in sorted(rows, key=lambda r: r.rel_path):
         f = scanned.get(row.rel_path)
-        if row.status not in conversion.CONVERTING or not row.output or f is None:
+        parts = [scanned.get(p) for p in row.parts]
+        if row.status not in conversion.CONVERTING or not row.output or f is None or None in parts:
             continue
         member = next(
             (m for m in row.members if PurePosixPath(m["name"]).name == Path(row.output).name),
             None,
         )
-        common = (row.rel_path, "", conversion.REASON_ORIGINALS, root / row.rel_path)
-        sized = (f["size"], f["mtime_ns"])
+        unwrap = row.recipe == conversion.RECIPE_UNWRAP
+        sources = [f, *parts]
         plan.append(
             Move(
-                *common,
+                row.rel_path,
+                "",
+                conversion.REASON_ORIGINALS,
+                root / row.rel_path,
                 root / row.output,
-                *sized,
+                f["size"],
+                f["mtime_ns"],
                 action=CONVERT,
                 paired_rel=row.output,
-                member=member["name"] if row.status == conversion.UNWRAP else None,
-                member_size=member["size"] if row.status == conversion.UNWRAP else None,
-                member_crc32=member["crc32"] if row.status == conversion.UNWRAP else None,
+                member=member["name"] if unwrap else None,
+                member_size=member["size"] if unwrap else None,
+                member_crc32=member["crc32"] if unwrap else None,
+                recipe=row.recipe,
+                disc_mode=row.disc_mode,
+                inner=tuple(
+                    (m["name"], m.get("size"), m.get("crc32"))
+                    for m in row.members
+                    if row.recipe == conversion.RECIPE_ARCHIVE_DISC
+                ),
+                space=_conversion_space(row, sources, member),
             )
         )
-        if row.originals_to:
-            plan.append(Move(*common, Path(row.originals_to), *sized, follows=True))
-        else:
-            plan.append(Move(*common, None, *sized, action=DELETE, follows=True))
+        for source in sources:
+            rel = source["rel_path"]
+            sized = (source["size"], source["mtime_ns"])
+            common = (rel, "", conversion.REASON_ORIGINALS, root / rel)
+            if row.originals_to:
+                destination = Path(
+                    conversion.originals_path_under(row.originals_to, row.rel_path, rel)
+                )
+                plan.append(Move(*common, destination, *sized, follows=True))
+            else:
+                plan.append(Move(*common, None, *sized, action=DELETE, follows=True))
     return plan
+
+
+def _conversion_space(row: conversion.ConversionRow, sources, member) -> int:
+    """Bytes the conversion needs free: the output (at most its data's size), and for a
+    disc the tracks extracted back for the check (plus, from an archive, the unpacked copy)."""
+    total = sum(s["size"] for s in sources)
+    if row.recipe == conversion.RECIPE_UNWRAP and member is not None:
+        return member["size"]
+    if row.recipe == conversion.RECIPE_ARCHIVE_DISC:
+        unpacked = sum(m.get("size") or 0 for m in row.members)
+        return unpacked + unpacked + unpacked
+    if row.recipe == conversion.RECIPE_DISC:
+        return total + total
+    return total
 
 
 def plan_unmatched(
@@ -205,8 +250,10 @@ def plan_unmatched(
     rel_paths: list[str],
     *,
     delete: bool,
+    parts: frozenset[str] = frozenset(),
 ) -> list[Move]:
-    """Move unmatched files to discarded/<label>/manual/, or delete them (guarded)."""
+    """Move unmatched files to discarded/<label>/manual/, or delete them (guarded). Parts of
+    a game (cue sheets, tracks) are not unmatched content: they wait for conversion."""
     unmatched = {
         r["rel_path"]: r
         for r in conn.execute(
@@ -216,6 +263,7 @@ def plan_unmatched(
             "WHERE i.folder_label = f.folder_label AND i.rel_path = f.rel_path)",
             (label, PLACE_FOLDER),
         )
+        if PurePosixPath(r["rel_path"]).suffix.lower().lstrip(".") not in parts
     }
     missing = [rel for rel in rel_paths if rel not in unmatched]
     if missing:
@@ -311,12 +359,22 @@ def plan_restore(
     operation_ids: list[int] | None = None,
     group_key: str | None = None,
 ) -> list[Move]:
+    """Moves back; restoring one original of a conversion restores all of its originals,
+    then removes the output made from them."""
+    active = active_discards(conn, label)
+    chosen = [
+        op
+        for op in active
+        if (operation_ids is None or op["id"] in operation_ids)
+        and (group_key is None or op["group_key"] == group_key)
+    ]
+    if operation_ids is not None and len(chosen) != len(set(operation_ids)):
+        raise PlanError("some of these files are not in discarded/ (already restored?)")
+    conversions = {op["step_of"] for op in chosen if op["step_of"]}
+    chosen_ids = {op["id"] for op in chosen}
+    chosen += [op for op in active if op["step_of"] in conversions and op["id"] not in chosen_ids]
     plan = []
-    for op in active_discards(conn, label):
-        if operation_ids is not None and op["id"] not in operation_ids:
-            continue
-        if group_key is not None and op["group_key"] != group_key:
-            continue
+    for op in sorted(chosen, key=lambda o: (o["step_of"] or 0, o["id"])):
         plan.append(
             Move(
                 op["rel_path"],
@@ -329,33 +387,29 @@ def plan_restore(
                 undoes=op["id"],
             )
         )
-        converted = (
-            op["step_of"]
-            and conn.execute(
-                "SELECT * FROM operation WHERE id = ? AND state = ?", (op["step_of"], DONE)
-            ).fetchone()
-        )
-        if converted:
-            # The original is back, so the output made from it goes.
-            output = Path(converted["destination"])
-            plan.append(
-                Move(
-                    str(output.relative_to(_root_of(converted)).as_posix()),
-                    op["group_key"],
-                    op["reason"],
-                    output,
-                    None,
-                    converted["moved_size"],
-                    converted["moved_mtime_ns"],
-                    undoes=converted["id"],
-                    action=REMOVE,
-                    paired_rel=converted["rel_path"],
-                    step_of=converted["id"],
-                )
+    for step_of in sorted(conversions):
+        converted = conn.execute(
+            "SELECT * FROM operation WHERE id = ? AND state = ?", (step_of, DONE)
+        ).fetchone()
+        if converted is None:
+            continue
+        # The originals are back, so the output made from them goes.
+        output = Path(converted["destination"])
+        plan.append(
+            Move(
+                str(output.relative_to(_root_of(converted)).as_posix()),
+                "",
+                conversion.REASON_ORIGINALS,
+                output,
+                None,
+                converted["moved_size"],
+                converted["moved_mtime_ns"],
+                undoes=converted["id"],
+                action=REMOVE,
+                paired_rel=converted["rel_path"],
+                step_of=converted["id"],
             )
-    moved_back = [m for m in plan if m.action == MOVE]
-    if operation_ids is not None and len(moved_back) != len(set(operation_ids)):
-        raise PlanError("some of these files are not in discarded/ (already restored?)")
+        )
     return plan
 
 
@@ -380,6 +434,8 @@ def _roots(m: Move, kind: str, folder: Path, discarded: Path) -> tuple[Path, Pat
 
 
 def _space_needed(m: Move) -> int:
+    if m.space is not None:
+        return m.space
     return m.member_size if m.member is not None else m.size
 
 
@@ -607,7 +663,7 @@ def run(
 def _run(config, conn, run_id: int, label: str, plan: list[Move], convert) -> None:
     kind = conn.execute("SELECT kind FROM apply_run WHERE id = ?", (run_id,)).fetchone()[0]
     done = 0
-    previous = None
+    converting = None  # the convert step the following steps finish
     for m in plan:
         op_id = conn.execute(
             "INSERT INTO operation (run_id, folder_label, rel_path, group_key, reason, source, "
@@ -625,7 +681,7 @@ def _run(config, conn, run_id: int, label: str, plan: list[Move], convert) -> No
                 m.mtime_ns,
                 STARTED,
                 m.action,
-                previous if m.follows else m.step_of,
+                converting if m.follows else m.step_of,
             ),
         ).lastrowid
         try:
@@ -635,7 +691,8 @@ def _run(config, conn, run_id: int, label: str, plan: list[Move], convert) -> No
             _finish_run(conn, run_id, FAILED, f"stopped after {done} of {len(plan)} steps: {exc}")
             return
         _settle(conn, kind, label, op_id, m, moved)
-        previous = op_id
+        if m.action == CONVERT:
+            converting = op_id
         done += 1
     _finish_run(conn, run_id, DONE, _summary(kind, plan, done))
 
@@ -687,6 +744,7 @@ def recover(config: ApplyConfig, conn: sqlite3.Connection) -> int:
         m = _step_of_row(conn, op)
         if m.destination is not None:
             moves.temp_path(config, m.destination).unlink(missing_ok=True)
+            shutil.rmtree(moves.work_path(config, m.destination), ignore_errors=True)
         outcome = _recovered(config, m)
         if outcome is None:
             settled = m.destination.stat() if m.action in WRITES else None

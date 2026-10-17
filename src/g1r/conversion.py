@@ -7,8 +7,9 @@ Proposals only: nothing here touches a file. Every proposal is lossless by const
 import sqlite3
 from collections import Counter
 from dataclasses import dataclass, field
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 
+from g1r import discs
 from g1r.config import PLAIN, Settings, TargetConfig
 
 REASON_ORIGINALS = "originals"
@@ -17,12 +18,26 @@ DONE = "done"
 ACCEPTED = "accepted"
 WRAP = "wrap"
 UNWRAP = "unwrap"
+MAKE_CHD = "make chd"
+# A track file a cue sheet's conversion takes along.
+PART = "part"
 FLAGGED = "flagged"
-STATUSES = (WRAP, UNWRAP, FLAGGED, ACCEPTED, DONE)
-CONVERTING = (WRAP, UNWRAP)
+STATUSES = (WRAP, UNWRAP, MAKE_CHD, FLAGGED, PART, ACCEPTED, DONE)
+CONVERTING = (WRAP, UNWRAP, MAKE_CHD)
 # The only archive the app writes; other targets are listed but never produced here.
 ZIP = "zip"
 ZIP_SUFFIX = f".{ZIP}"
+CHD = "chd"
+# platforms.profiles.<id>.iso_mode for platforms whose ISOs are DVDs.
+ISO_MODE_DVD = "dvd"
+
+# How a conversion is carried out (converter.Converter).
+RECIPE_WRAP = "wrap"
+RECIPE_UNWRAP = "unwrap"
+# chdman createcd/createdvd from a cue sheet or ISO in the folder.
+RECIPE_DISC = "disc"
+# The same from a cue sheet or ISO inside an archive, extracted to a work directory first.
+RECIPE_ARCHIVE_DISC = "archive-disc"
 
 
 @dataclass
@@ -37,14 +52,35 @@ class ConversionRow:
     reversible: bool = True
     verify: str | None = None
     note: str = ""
+    recipe: str | None = None
+    # A cue sheet's track files (paths in the folder), converted and moved with it.
+    parts: list[str] = field(default_factory=list)
+    # createcd or createdvd, for a disc recipe.
+    disc_mode: str | None = None
 
 
-def container_of(rel_path: str, kind: str) -> str:
-    return PurePosixPath(rel_path).suffix.lower().lstrip(".") if kind == "archive" else PLAIN
+def container_of(rel_path: str, kind: str, disc_formats=()) -> str:
+    suffix = PurePosixPath(rel_path).suffix.lower().lstrip(".")
+    if kind == "archive":
+        return suffix
+    return suffix if suffix in disc_formats else PLAIN
 
 
 def originals_path(settings: Settings, label: str, rel_path: str) -> str:
     return str(PurePosixPath(settings.paths.discarded_root, label, REASON_ORIGINALS, rel_path))
+
+
+def originals_path_under(originals_to: str, rel_path: str, part: str) -> str:
+    """Where a conversion's other original (a cue sheet's track) goes, beside `originals_to`
+    (the main file's place there), keeping the folder's structure."""
+    base = PurePosixPath(originals_to)
+    for _ in PurePosixPath(rel_path).parts:
+        base = base.parent
+    return str(base / part)
+
+
+def _ext(name: str) -> str:
+    return PurePosixPath(name).suffix.lower().lstrip(".")
 
 
 def rows(
@@ -55,8 +91,13 @@ def rows(
     target: TargetConfig,
     *,
     delete_originals: bool,
+    root: Path | None = None,
 ) -> list[ConversionRow]:
-    rom_extensions = {e.lower() for e in settings.platforms.profiles[platform].rom_extensions}
+    """`root`: the folder on disk, where loose cue sheets are read (None: not available)."""
+    profile = settings.platforms.profiles[platform]
+    rom_extensions = {e.lower() for e in profile.rom_extensions}
+    disc_formats = {e.lower() for e in settings.platforms.disc_formats}
+    to_disc = target.produces in disc_formats
     files = conn.execute(
         "SELECT rel_path, size, kind FROM folder_file WHERE folder_label = ? "
         "AND kind IN ('rom', 'archive') AND place = 'folder' ORDER BY rel_path",
@@ -81,19 +122,48 @@ def rows(
         r[0].lower()
         for r in conn.execute("SELECT rel_path FROM folder_file WHERE folder_label = ?", (label,))
     }
+    sheets, taken = _cue_sheets(files, root) if to_disc else ({}, {})
 
     def is_rom(name: str) -> bool:
-        return PurePosixPath(name).suffix.lower().lstrip(".") in rom_extensions
+        return _ext(name) in rom_extensions
 
     planned: set[str] = set()
     result = []
     for f in files:
         rel = f["rel_path"]
-        row = ConversionRow(rel, f["size"], container_of(rel, f["kind"]), members.get(rel, []))
+        row = ConversionRow(
+            rel, f["size"], container_of(rel, f["kind"], disc_formats), members.get(rel, [])
+        )
         roms = [m for m in row.members if is_rom(m["name"])]
+        ext = _ext(rel)
         if rel in problems:
             row.status, row.note = FLAGGED, problems[rel]
-        elif row.container != PLAIN and len(roms) != 1:
+        elif to_disc and f["kind"] == "rom" and ext == discs.CUE:
+            sheet = sheets.get(rel)
+            if isinstance(sheet, str):
+                row.status, row.note = FLAGGED, sheet
+            else:
+                row.parts = sheet
+                row.members = [{"name": PurePosixPath(p).name} for p in sheet]
+                _disc(settings, label, row, RECIPE_DISC, discs.CUE, profile, delete_originals)
+        elif to_disc and f["kind"] == "rom" and ext in profile.part_extensions:
+            if rel in taken:
+                row.status, row.note = PART, f"made into a CHD with {taken[rel]}"
+            else:
+                row.status, row.note = FLAGGED, "a track no cue sheet in the folder refers to"
+        elif to_disc and f["kind"] == "rom" and ext == discs.ISO:
+            _disc(settings, label, row, RECIPE_DISC, discs.ISO, profile, delete_originals)
+        elif to_disc and f["kind"] == "archive" and _disc_inside(roms):
+            _disc(
+                settings,
+                label,
+                row,
+                RECIPE_ARCHIVE_DISC,
+                _disc_inside(roms),
+                profile,
+                delete_originals,
+            )
+        elif row.container not in (PLAIN, *disc_formats) and len(roms) != 1:
             row.status = FLAGGED
             row.note = (
                 "no ROM file inside"
@@ -105,34 +175,112 @@ def rows(
         elif row.container in target.accepts:
             row.status, row.note = ACCEPTED, f"{row.container} is accepted as it is"
         else:
-            _propose(settings, label, target, row, roms, delete_originals, existing | planned)
-            if row.output:
+            _propose(settings, label, target, row, roms, delete_originals)
+        if row.output:
+            if row.output.lower() in existing | planned:
+                row.status = FLAGGED
+                row.note = f"{row.output} already exists or is another file's output"
+                row.output = row.verify = row.recipe = row.originals_to = None
+                row.parts = []
+            else:
                 planned.add(row.output.lower())
         result.append(row)
+    # A track whose cue sheet could not be converted is not taken along after all.
+    converting = {p for r in result if r.status == MAKE_CHD for p in r.parts}
+    for row in result:
+        if row.status == PART and row.rel_path not in converting:
+            row.status, row.note = FLAGGED, "its cue sheet cannot be converted (see the cue)"
     return result
 
 
-def _propose(settings, label, target, row, roms, delete_originals, existing) -> None:
+def _cue_sheets(files, root: Path | None) -> tuple[dict, dict]:
+    """Loose cue sheets -> their track files (folder paths), or why they cannot be used;
+    and each track -> the cue sheet taking it along."""
+    present = {f["rel_path"] for f in files}
+    sheets: dict[str, list[str] | str] = {}
+    taken: dict[str, str] = {}
+    for f in files:
+        rel = f["rel_path"]
+        if f["kind"] != "rom" or _ext(rel) != discs.CUE:
+            continue
+        if root is None:
+            sheets[rel] = "the folder is not available to read the cue sheet"
+            continue
+        try:
+            names = discs.read_cue(root / rel)
+        except discs.DiscError as exc:
+            sheets[rel] = str(exc)
+            continue
+        parent = PurePosixPath(rel).parent
+        tracks = [str(parent / PurePosixPath(n.replace("\\", "/"))) for n in names]
+        missing = [t for t in tracks if t not in present]
+        shared = [t for t in tracks if t in taken]
+        if not tracks:
+            sheets[rel] = "the cue sheet names no track files"
+        elif missing:
+            sheets[rel] = (
+                f"the cue sheet refers to {PurePosixPath(missing[0]).name}, which is missing"
+            )
+        elif shared:
+            sheets[rel] = f"{PurePosixPath(shared[0]).name} belongs to {taken[shared[0]]} too"
+        else:
+            sheets[rel] = tracks
+            taken.update(dict.fromkeys(tracks, rel))
+    return sheets, taken
+
+
+def _disc_inside(roms: list[dict]) -> str | None:
+    """An archive holding one disc: a cue sheet with its tracks, or a single ISO."""
+    kinds = Counter(_ext(m["name"]) for m in roms)
+    if kinds.get(discs.CUE) == 1 and set(kinds) <= {discs.CUE, "bin"} and len(roms) > 1:
+        return discs.CUE
+    if len(roms) == 1 and kinds.get(discs.ISO) == 1:
+        return discs.ISO
+    return None
+
+
+def _disc(settings, label, row, recipe, source, profile, delete_originals) -> None:
     parent = PurePosixPath(row.rel_path).parent
-    if target.produces == PLAIN:
+    row.status, row.recipe = MAKE_CHD, recipe
+    dvd = source == discs.ISO and profile.iso_mode == ISO_MODE_DVD
+    row.disc_mode = discs.CREATEDVD if dvd else discs.CREATECD
+    if recipe == RECIPE_ARCHIVE_DISC:
+        inner = next(m["name"] for m in row.members if _ext(m["name"]) == source)
+        row.output = str(parent / f"{PurePosixPath(inner).stem}.{CHD}")
+        row.note = "unpacked to a work folder first, each file checked against its CRC32"
+    else:
+        row.output = str(parent / f"{PurePosixPath(row.rel_path).stem}.{CHD}")
+        if row.parts:
+            row.note = f"with its {len(row.parts)} track file(s)"
+    row.verify = "chdman verify, then the tracks extracted back must equal the originals (SHA1)"
+    if delete_originals:
+        row.reversible = False
+    else:
+        row.originals_to = originals_path(settings, label, row.rel_path)
+
+
+def _propose(settings, label, target, row, roms, delete_originals) -> None:
+    parent = PurePosixPath(row.rel_path).parent
+    disc_formats = {e.lower() for e in settings.platforms.disc_formats}
+    if target.produces == PLAIN or (
+        target.produces in disc_formats
+        and len(roms) == 1
+        and _ext(roms[0]["name"]) == target.produces
+    ):
         member = roms[0]
-        row.status = UNWRAP
+        row.status, row.recipe = UNWRAP, RECIPE_UNWRAP
         row.output = str(parent / PurePosixPath(member["name"]).name)
         row.verify = f"CRC32 {member['crc32']} and size {member['size']} of the extracted file"
         extras = len(row.members) - len(roms)
         if extras:
             row.note = f"{extras} other file(s) in the archive stay in the original"
     elif target.produces != ZIP:
-        row.status, row.note = FLAGGED, f"the app cannot write {target.produces} archives"
+        row.status, row.note = FLAGGED, f"the app cannot make {target.produces} from this file"
         return
     else:
-        row.status = WRAP
+        row.status, row.recipe = WRAP, RECIPE_WRAP
         row.output = str(parent / f"{PurePosixPath(row.rel_path).stem}.{target.produces}")
         row.verify = f"CRC32 and size of the zipped member equal the file's ({row.size} bytes)"
-    if row.output.lower() in existing:
-        row.status, row.note = FLAGGED, f"{row.output} already exists or is another file's output"
-        row.output = row.verify = None
-        return
     if delete_originals:
         row.reversible = False
     else:

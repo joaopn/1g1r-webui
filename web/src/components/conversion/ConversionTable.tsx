@@ -13,6 +13,7 @@ import {
   CONVERSION_VIEWS,
   type ConversionSort,
   conversionView,
+  converting,
   DEFAULT_CONVERSION_VIEW,
   STATUS_LABELS,
   searchRows,
@@ -22,6 +23,8 @@ import {
 const STATUS_STYLE: Record<ConversionStatus, string> = {
   wrap: "border-primary text-primary",
   unwrap: "border-primary text-primary",
+  "make chd": "border-primary text-primary",
+  part: "border-border text-muted-foreground",
   flagged: "border-status-warn text-status-warn",
   accepted: "border-border text-muted-foreground",
   done: "border-status-good/60 text-status-good",
@@ -223,7 +226,7 @@ export function ConversionTable({
                     {row.note ? <span className="block text-xs">{row.note}</span> : null}
                   </td>
                   <td className="px-1 py-1.5 text-right">
-                    {onConvert && (row.status === "wrap" || row.status === "unwrap") ? (
+                    {onConvert && converting(row) ? (
                       <Button
                         variant="ghost"
                         size="icon-xs"

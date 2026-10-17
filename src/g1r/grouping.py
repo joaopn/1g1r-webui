@@ -55,9 +55,13 @@ def _retool_index(path: Path) -> dict[tuple[str, str], str]:
 
 
 def retool_index(settings: Settings, dat: Dat) -> dict[tuple[str, str], str]:
+    """Retool's clone list for the DAT: No-Intro's or Redump's, whichever exists."""
     base = dat.header.name.split(" (")[0]
-    path = settings.grouping.retool_clonelists_dir / f"{base} (No-Intro).json"
-    return _retool_index(path) if path.is_file() else {}
+    for family in settings.dats.families.values():
+        path = settings.grouping.retool_clonelists_dir / f"{base} {family.clonelist_suffix}.json"
+        if path.is_file():
+            return _retool_index(path)
+    return {}
 
 
 def name_key(parsed: ParsedName, settings: Settings) -> str:
