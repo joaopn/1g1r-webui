@@ -523,9 +523,6 @@ export function LookupsSettingsPage() {
           Advanced).
         </p>
       </section>
-      <p className="max-w-3xl text-muted-foreground text-xs">
-        ScreenScraper, the second fallback, needs an account and comes in a later build.
-      </p>
     </Page>
   );
 }
