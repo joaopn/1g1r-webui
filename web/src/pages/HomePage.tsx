@@ -1,6 +1,7 @@
+import { TriangleAlert } from "lucide-react";
 import { Link } from "react-router-dom";
 import { PlatformIcon } from "@/components/PlatformIcon";
-import { formatBytes, formatCount, formatWhen } from "@/lib/format";
+import { formatBytes, formatCount, formatFiles, formatWhen } from "@/lib/format";
 import { foldersByName } from "@/lib/platforms";
 import { useFolders, useMeta } from "@/lib/queries";
 import { cn } from "@/lib/utils";
@@ -64,6 +65,16 @@ export function HomePage() {
                 label: "would free",
                 value: formatBytes(folder.reclaim_bytes, ui.byte_unit_base, ui.byte_units),
               },
+              {
+                label:
+                  folder.discarded.files > 0
+                    ? `already discarded · ${formatFiles(folder.discarded.files)}`
+                    : "already discarded",
+                value:
+                  folder.discarded.files > 0
+                    ? formatBytes(folder.discarded.bytes, ui.byte_unit_base, ui.byte_units)
+                    : "nothing",
+              },
             ];
             return (
               <Link
@@ -103,6 +114,22 @@ export function HomePage() {
                     <span className="text-muted-foreground">Not scanned yet</span>
                   )}
                 </p>
+                {folder.warnings.length > 0 ? (
+                  <ul className="mt-3 space-y-1 text-xs" data-testid={`warnings-${folder.label}`}>
+                    {folder.warnings.map((w) => (
+                      <li
+                        key={w.text}
+                        className={cn(
+                          "flex items-start gap-1.5",
+                          w.level === "bad" ? "text-status-bad" : "text-status-warn",
+                        )}
+                      >
+                        <TriangleAlert className="mt-px size-3.5 shrink-0" aria-hidden="true" />
+                        {w.text}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
                 {folder.summary.roms > 0 ? (
                   <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2">
                     {stats.map((s) => (

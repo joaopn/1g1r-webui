@@ -1,7 +1,7 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AppShell } from "@/components/layout/AppShell";
 import { FolderConversionPage } from "@/pages/FolderConversionPage";
-import { FolderInfoPage } from "@/pages/FolderInfoPage";
+import { FolderDiscardedPage } from "@/pages/FolderDiscardedPage";
 import { FolderMatchingPage } from "@/pages/FolderMatchingPage";
 import { HomePage } from "@/pages/HomePage";
 import {
@@ -18,7 +18,7 @@ export function App() {
         <Route index element={<HomePage />} />
         <Route path="folders/:label/matching" element={<FolderMatchingPage />} />
         <Route path="folders/:label/conversion" element={<FolderConversionPage />} />
-        <Route path="folders/:label/discarded" element={<FolderInfoPage section="Discarded" />} />
+        <Route path="folders/:label/discarded" element={<FolderDiscardedPage />} />
         <Route path="settings" element={<Navigate to="/settings/platforms" replace />} />
         <Route path="settings/platforms" element={<PlatformsSettingsPage />} />
         <Route path="settings/dats" element={<DatsSettingsPage />} />

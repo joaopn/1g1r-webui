@@ -23,3 +23,7 @@ export function formatWhen(value: string | null | undefined): string {
 }
 
 export const formatCount = (value: number) => value.toLocaleString("en-US");
+
+/** "1 file", "1,392 files". */
+export const formatFiles = (value: number) =>
+  `${formatCount(value)} ${value === 1 ? "file" : "files"}`;

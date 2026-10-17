@@ -22,6 +22,8 @@ const FOLDERS = [
     reclaim_bytes: 0,
     delete_originals: false,
     conversion: { wrap: 0, unwrap: 0, flagged: 0, accepted: 0, done: 0, to_convert: 0, all: 0 },
+    discarded: { files: 0, bytes: 0 },
+    warnings: [],
   },
 ];
 

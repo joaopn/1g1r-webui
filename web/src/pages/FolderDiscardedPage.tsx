@@ -1,16 +1,20 @@
 import { useMutation } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
+import { DiscardedTable } from "@/components/discarded/DiscardedTable";
+import { StatCard } from "@/components/StatCard";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
-import { keys, queryClient, useFolder, useMeta } from "@/lib/queries";
+import { formatBytes, formatCount, formatFiles } from "@/lib/format";
+import { keys, queryClient, useDiscarded, useFolder, useMeta } from "@/lib/queries";
 import { FolderHeader } from "@/pages/FolderHeader";
 
-/** Discarded: the folder's facts until that part is built. */
-export function FolderInfoPage({ section }: { section: "Discarded" }) {
+/** Discarded: what is in discarded/<label>/, by reason. Read-only in this build. */
+export function FolderDiscardedPage() {
   const { label = "" } = useParams();
   const meta = useMeta();
   const folder = useFolder(label, false);
+  const discarded = useDiscarded(label);
   const navigate = useNavigate();
   const remove = useMutation({
     mutationFn: () => api(`/folders/${label}`, { method: "DELETE" }),
@@ -22,33 +26,56 @@ export function FolderInfoPage({ section }: { section: "Discarded" }) {
   });
   if (!meta.data || !folder.data) return <p className="text-muted-foreground">Loading…</p>;
   const f = folder.data;
-  const target = meta.data.targets[f.target];
+  const ui = meta.data.ui;
+  const data = discarded.data;
   return (
     <div className="space-y-6">
-      <FolderHeader folder={f} meta={meta.data} section={section} />
-      <dl className="grid max-w-3xl grid-cols-[max-content_1fr] gap-x-6 gap-y-2 text-sm">
-        <dt className="text-muted-foreground">Target format</dt>
-        <dd>
-          {target?.label}{" "}
-          <span className="text-muted-foreground">
-            — set for every {meta.data.platforms[f.platform]?.name} folder in Settings → Platforms
-            &amp; files
-          </span>
-        </dd>
-        <dt className="text-muted-foreground">Discarded files go to</dt>
-        <dd>
-          <code className="text-xs">{f.discarded_to}</code>
+      <FolderHeader folder={f} meta={meta.data} section="Discarded" />
+      <section className="space-y-1 rounded-lg border border-border bg-card px-4 py-3 text-sm">
+        <p>
+          Discarded files go to <code className="text-xs">{f.discarded_to}</code>, under the reason
+          they were moved for, with the folder's own structure.
           {!f.on_main_mount ? (
             <span className="text-status-warn">
               {" "}
-              (another disk: moves will be copy, verify, then remove)
+              This folder is on another disk: moves will be copy, verify, then remove.
             </span>
           ) : null}
-        </dd>
-      </dl>
-      <div className="max-w-3xl rounded-lg border border-border bg-card p-6 text-muted-foreground text-sm">
-        {section} for this folder arrives in a later build. Nothing in this folder is changed.
-      </div>
+        </p>
+        <p className="text-muted-foreground">
+          Restoring a file and emptying this folder's discarded files come with the apply build.
+          Nothing here is changed yet.
+        </p>
+      </section>
+      {data ? (
+        data.files === 0 ? (
+          <p className="text-muted-foreground">Nothing has been discarded from this folder.</p>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              <StatCard value={formatCount(data.files)} label="files" />
+              <StatCard
+                value={formatBytes(data.bytes, ui.byte_unit_base, ui.byte_units)}
+                label="disk space used"
+              />
+            </div>
+            <ul className="space-y-0.5 text-sm">
+              {data.reasons.map((r) => (
+                <li key={r.id}>
+                  <span className="font-medium">{r.label}</span>{" "}
+                  <span className="text-muted-foreground">
+                    · {r.description} · {formatFiles(r.files.length)},{" "}
+                    {formatBytes(r.bytes, ui.byte_unit_base, ui.byte_units)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <DiscardedTable data={data} meta={meta.data} />
+          </>
+        )
+      ) : (
+        <p className="text-muted-foreground">Loading files…</p>
+      )}
       <Button variant="ghost" className="text-muted-foreground" onClick={() => remove.mutate()}>
         Remove from the app (files are not touched)
       </Button>

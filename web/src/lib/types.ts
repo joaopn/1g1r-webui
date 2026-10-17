@@ -90,7 +90,30 @@ export type FolderCard = FolderInfo & {
   counts: Record<string, number>;
   reclaim_bytes: number;
   conversion: ConversionCounts;
+  discarded: { files: number; bytes: number };
+  warnings: FolderWarning[];
 };
+
+export type FolderWarning = { level: "warn" | "bad"; text: string };
+
+export type DiscardedFile = {
+  rel_path: string;
+  size: number;
+  modified: string;
+  restore_to: string | null;
+  occupied: boolean;
+};
+
+export type DiscardedReason = {
+  id: string;
+  label: string;
+  description: string;
+  known: boolean;
+  bytes: number;
+  files: DiscardedFile[];
+};
+
+export type Discarded = { root: string; files: number; bytes: number; reasons: DiscardedReason[] };
 
 export type FileRow = { rel_path: string; size: number; kind: string };
 

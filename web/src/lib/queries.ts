@@ -3,6 +3,7 @@ import { api } from "@/lib/api";
 import type {
   Conversion,
   DatRow,
+  Discarded,
   FolderCard,
   FolderDetail,
   Game,
@@ -22,6 +23,7 @@ export const keys = {
   games: (label: string) => ["games", label] as const,
   conversion: (label: string) => ["conversion", label] as const,
   unmatched: (label: string) => ["unmatched", label] as const,
+  discarded: (label: string) => ["discarded", label] as const,
   settings: ["settings"] as const,
   dats: ["dats"] as const,
 };
@@ -49,6 +51,12 @@ export const useUnmatched = (label: string) =>
     queryFn: () => api<UnmatchedFile[]>(`/folders/${label}/unmatched`),
   });
 
+export const useDiscarded = (label: string) =>
+  useQuery({
+    queryKey: keys.discarded(label),
+    queryFn: () => api<Discarded>(`/folders/${label}/discarded`),
+  });
+
 export function useFolder(label: string, pollMs: number | false) {
   return useQuery({
     queryKey: keys.folder(label),
@@ -64,6 +72,7 @@ export function invalidateFolder(label: string) {
     queryClient.invalidateQueries({ queryKey: keys.games(label) }),
     queryClient.invalidateQueries({ queryKey: keys.conversion(label) }),
     queryClient.invalidateQueries({ queryKey: keys.unmatched(label) }),
+    queryClient.invalidateQueries({ queryKey: keys.discarded(label) }),
     queryClient.invalidateQueries({ queryKey: keys.folders }),
   ]);
 }
