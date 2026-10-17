@@ -57,6 +57,7 @@ export const SOURCE_LABELS: Record<string, string> = {
   "dat-parent-clone": "DAT parent/clone",
   "retool-clone-list": "Retool clone list",
   "dat-name": "same DAT name",
+  "title-id": "title ID",
   single: "—",
 };
 
@@ -74,6 +75,10 @@ export const METHOD_LABELS: Record<string, { short: string; long: string }> = {
   "dat-untrimmed": {
     short: "DAT, trimmed",
     long: "checksum match in the DAT after padding the trimmed card image back to its size",
+  },
+  "title-id": {
+    short: "title ID",
+    long: "identified by its title ID (from its ticket or its file name), without a DAT",
   },
   duplicate: {
     short: "copy",
@@ -148,6 +153,7 @@ export function flagsOf(version: Version): string[] {
     ...(version.rerelease ? ["re-release"] : []),
     ...version.tags,
     ...version.notes,
+    ...(version.role === "dlc" ? ["DLC"] : version.role === "update" ? ["update"] : []),
   ];
 }
 

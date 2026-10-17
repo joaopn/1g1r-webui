@@ -164,6 +164,7 @@ def game_dict(game: matching.GameRow) -> dict:
                 "discarded": row.discarded,
                 "identical": row.identical,
                 "notes": row.notes,
+                "role": row.version.role or None,
                 "discard_reason": row.discard_reason if row.operation else None,
             }
             for row in game.rows
@@ -211,8 +212,12 @@ def build_router(
     def produces(library: Library, folder: FolderEntry) -> matching.FolderView:
         """The folder's platform as the 1G1R table sees it."""
         target = settings.platforms.targets[store.target_for(library, folder.platform)]
+        profile = platforms[folder.platform]
         return matching.FolderView(
-            target.produces, parts_of(folder), platforms[folder.platform].names_from
+            target.produces,
+            parts_of(folder),
+            profile.names_from,
+            profile.title_ids,
         )
 
     def conversion_rows(library: Library, folder: FolderEntry, conn) -> list:

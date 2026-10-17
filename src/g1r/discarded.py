@@ -12,7 +12,7 @@ from pathlib import Path
 
 from g1r.config import Settings
 from g1r.conversion import REASON_ORIGINALS
-from g1r.journal import REASON_DUPLICATES, REASON_MANUAL
+from g1r.journal import REASON_DUPLICATES, REASON_MANUAL, REASON_UPDATES
 from g1r.matching import REASON_DISCARDED
 
 # Files directly in discarded/<label>/, outside any reason directory.
@@ -22,6 +22,7 @@ TIMESTAMP = "%Y-%m-%dT%H:%M:%SZ"
 REASONS = {
     REASON_DISCARDED: ("1G1R", "versions 1G1R did not keep"),
     REASON_DUPLICATES: ("Duplicates", "copies of a file the folder still holds"),
+    REASON_UPDATES: ("Updates", "game updates 1G1R did not keep (game + DLC)"),
     REASON_ORIGINALS: ("Originals", "files a conversion replaced"),
     REASON_MANUAL: ("Moved by you", "unmatched files you moved out"),
 }

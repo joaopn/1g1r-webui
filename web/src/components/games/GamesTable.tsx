@@ -442,7 +442,11 @@ function versionCell(id: ColumnId, version: Version | null, ctx: CellContext) {
             </span>
           ) : version.operation ? (
             <span className="text-status-warn">
-              {version.discard_reason === "duplicates" ? "→ duplicates" : "→ discard"}
+              {version.discard_reason === "duplicates"
+                ? "→ duplicates"
+                : version.discard_reason === "updates"
+                  ? "→ updates"
+                  : "→ discard"}
             </span>
           ) : version.keep ? (
             <span className="font-medium text-status-good">keep</span>

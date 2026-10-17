@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from functools import cache
 from pathlib import Path
 
+from g1r import titles
 from g1r.config import Settings
 from g1r.dats import Dat
 from g1r.names import ParsedName, parse_name
@@ -18,6 +19,7 @@ SOURCE_DAT = "dat-parent-clone"
 SOURCE_RETOOL = "retool-clone-list"
 SOURCE_NAME = "dat-name"
 SOURCE_SINGLE = "single"
+SOURCE_TITLE_ID = "title-id"
 
 
 @dataclass
@@ -31,6 +33,8 @@ class Version:
     # A clone in the DAT's parent/clone data; a BIOS set (arcade).
     clone: bool = False
     bios: bool = False
+    # Title-ID platforms (Switch): titles.BASE, titles.UPDATE or titles.DLC.
+    role: str = ""
 
 
 @dataclass
@@ -153,4 +157,30 @@ def build_groups(
         group.versions.sort(key=lambda v: v.game_name)
         if len(group.versions) == 1 and group.source == SOURCE_NAME:
             group.source = SOURCE_SINGLE
+    return sorted(groups.values(), key=lambda g: g.name.lower())
+
+
+def build_title_groups(settings: Settings, identities: list[tuple[str, str, str]]) -> list[Group]:
+    """Title-ID platforms: one game per base title ID, holding its base files, update and
+    DLC. The identity names carry the ID (titles.identity_name)."""
+    config = settings.title_ids
+    if config is None:
+        return []
+    groups: dict[str, Group] = {}
+    names: dict[str, str] = {}
+    for rel_path, game, method in sorted(identities):
+        title = titles.from_name(game, config)
+        if title is None:
+            continue
+        role = title.role(config)
+        app = titles.hex_id(title.app_id(config), config)
+        key = "tid:" + app
+        if role == titles.BASE or key not in names:
+            names[key] = title.name
+        group = groups.setdefault(key, Group(key=key, name="", source=SOURCE_TITLE_ID))
+        parsed = parse_name(title.name, settings.names)
+        group.versions.append(Version(rel_path, game, method, parsed, game, role=role))
+    for key, group in groups.items():
+        group.name = names[key]
+        group.versions.sort(key=lambda v: (v.role != titles.BASE, v.game_name))
     return sorted(groups.values(), key=lambda g: g.name.lower())

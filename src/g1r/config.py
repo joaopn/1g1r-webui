@@ -163,6 +163,9 @@ class PlatformProfile(_Strict):
     # igir --merge-roms modes to identify with, each in its own run; a file is identified by
     # any of them (arcade sets are split or non-merged, and igir must be told which).
     igir_merge_modes: list[str] = Field(default_factory=list)
+    # Identified by title ID (Switch, `title_ids`), with or without a DAT: a base game, its
+    # update and its DLC are one game; the base is ranked, DLC kept, updates proposed.
+    title_ids: bool = False
     # The default ranking criteria for this platform's folders (None: the global default).
     ranking_criteria: list[str] | None = None
 
@@ -406,6 +409,25 @@ class NcsdConfig(_Strict):
     padding_hex: str
 
 
+class TitleIdConfig(_Strict):
+    digits: int = Field(gt=0)
+    # Title IDs are hexadecimal; a ticket's rights ID has rights_id_digits.
+    radix: int = Field(gt=1)
+    rights_id_digits: int = Field(gt=0)
+    low_hex: str
+    update_low_hex: str
+    dlc_step_hex: str
+    name_pattern: str
+    version_pattern: str
+    name_end_pattern: str
+    pfs0_magic: str
+    pfs0_header: str
+    pfs0_entry: str
+    max_entries: int = Field(gt=0)
+    ticket_suffix: str
+    pfs0_extensions: list[str]
+
+
 class NamesConfig(_Strict):
     regions: list[str]
     prerelease_tags: list[str]
@@ -460,6 +482,7 @@ class Settings(_Strict):
     headers: dict[str, list[HeaderRule]]
     byte_orders: dict[str, ByteOrderConfig] = Field(default_factory=dict)
     card_images: dict[str, NcsdConfig] = Field(default_factory=dict)
+    title_ids: TitleIdConfig | None = None
     names: NamesConfig
     grouping: GroupingConfig
     ranking: RankingConfig

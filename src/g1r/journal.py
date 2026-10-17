@@ -24,6 +24,8 @@ from g1r.converter import CRC_FORMAT
 REASON_1G1R = "1g1r"
 # Identical copies of a kept version (discarded.REASON_DUPLICATES names the same one).
 REASON_DUPLICATES = "duplicates"
+# A title-ID game's update (Switch), which 1G1R does not keep.
+REASON_UPDATES = "updates"
 
 PLACE_FOLDER = "folder"
 PLACE_DISCARDED = "discarded"

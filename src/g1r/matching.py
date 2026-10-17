@@ -8,10 +8,10 @@ from dataclasses import dataclass, field
 from functools import cache
 from pathlib import Path, PurePosixPath
 
-from g1r import journal
+from g1r import journal, titles
 from g1r.config import PLAIN, RankingConfig, Settings
-from g1r.dats import Dat, parse_dat
-from g1r.grouping import Group, Version, build_groups
+from g1r.dats import Dat, DatHeader, parse_dat
+from g1r.grouping import Group, Version, build_groups, build_title_groups
 from g1r.ranking import Decision, decide
 
 STATUS_SINGLE = "single"
@@ -33,8 +33,12 @@ FILTERS = {
 REASON_DISCARDED = journal.REASON_1G1R
 # Identical copies of the version kept go here instead of 1g1r/.
 REASON_DUPLICATES = journal.REASON_DUPLICATES
+# A title-ID game's updates (Switch: game + DLC is what 1G1R keeps).
+REASON_UPDATES = journal.REASON_UPDATES
+# Title-ID versions that are not ranked against the base game.
+EXTRA_ROLES = (titles.UPDATE, titles.DLC)
 # discarded/ subfolders whose files stay versions in the table.
-VERSION_REASONS = (REASON_DISCARDED, REASON_DUPLICATES)
+VERSION_REASONS = (REASON_DISCARDED, REASON_DUPLICATES, REASON_UPDATES)
 
 
 @dataclass
@@ -137,6 +141,8 @@ class FolderView:
     parts: frozenset[str] = frozenset()
     # Where titles come from: DAT names, or descriptions (arcade sets).
     names_from: str = "name"
+    # Identified and grouped by title ID (Switch), no DAT needed.
+    title_ids: bool = False
 
 
 def is_part(rel_path: str, parts: frozenset[str]) -> bool:
@@ -188,8 +194,9 @@ def game_rows(
         identities[0]["dat_sha1"],
     )
     dat = load_dat(settings, conn, dat_sha1)
-    if dat is None:
+    if dat is None and not view.title_ids:
         return []
+    dat = dat or Dat(DatHeader(name=""), [], "none")
     scores = {(r["rel_path"], r["game_name"]): r["score"] for r in identities}
     sizes = dict(
         conn.execute(
@@ -216,25 +223,37 @@ def game_rows(
         "SELECT rel_path, note FROM file_note WHERE folder_label = ? ORDER BY note", (label,)
     ):
         file_notes.setdefault(rel, []).append(note)
-    groups = build_groups(
-        settings,
-        dat,
-        [(r["rel_path"], r["game_name"], r["method"]) for r in identities],
-        view.names_from,
+    triples = [(r["rel_path"], r["game_name"], r["method"]) for r in identities]
+    groups = (
+        build_title_groups(settings, triples)
+        if view.title_ids
+        else build_groups(settings, dat, triples, view.names_from)
     )
     result = []
     for group in groups:
-        # Ranking and picks see only the versions still in the folder.
+        # Ranking and picks see only the versions still in the folder, and (title IDs) only
+        # the base game: its DLC are kept and its updates proposed, whatever is kept.
+        extras = {v.rel_path: v.role for v in group.versions if v.role in EXTRA_ROLES}
         present = Group(
             group.key,
             group.name,
             group.source,
-            [v for v in group.versions if v.rel_path not in gone],
+            [v for v in group.versions if v.rel_path not in gone and v.rel_path not in extras],
         )
         # Identical copies are ranked once; the copy standing for them is the first.
         copies = _copies(present.versions, payloads, prefer, archives)
         ranked = Group(group.key, group.name, group.source, [c[0] for c in copies])
         status, reason, winner, candidates = _decide(ranked, ranking, picks, left, present)
+        if extras and not any(v.role == titles.BASE for v in group.versions):
+            # DLC or an update without its game: nothing to choose, nothing proposed.
+            status, reason, winner, candidates = (
+                STATUS_LEFT,
+                "the base game is not in the folder: its DLC and updates are kept",
+                None,
+                set(),
+            )
+        if extras and status == STATUS_SINGLE:
+            status, reason = STATUS_DECIDED, "one base game: its DLC are kept, updates proposed"
         if group.versions and all(v.bios for v in group.versions):
             # Every arcade game needs its BIOS set: never proposed for discarding.
             status, reason, winner, candidates = (
@@ -253,10 +272,16 @@ def game_rows(
             keep = winner is not None and version.rel_path == winner.rel_path
             operation = None
             discard_reason = REASON_DISCARDED
+            role = extras.get(version.rel_path)
+            if role is not None:
+                keep = role == titles.DLC
+                if role == titles.UPDATE and version.rel_path not in gone and status != STATUS_LEFT:
+                    discard_reason = REASON_UPDATES
+                    operation = discard_path(settings, label, version.rel_path, discard_reason)
             mine = set_of.get(version.rel_path, [])
             twin_of_kept = winner is not None and winner in mine
             stands_in = bool(mine) and mine[0] is version
-            if version in present.versions and not keep and status != STATUS_LEFT:
+            if role is None and version in present.versions and not keep and status != STATUS_LEFT:
                 if twin_of_kept:
                     discard_reason = REASON_DUPLICATES
                     operation = discard_path(settings, label, version.rel_path, discard_reason)

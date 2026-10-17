@@ -17,7 +17,18 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
-from g1r import archives, cards, discs, fuzzy, hasheous, igir, journal, mounts, screenscraper
+from g1r import (
+    archives,
+    cards,
+    discs,
+    fuzzy,
+    hasheous,
+    igir,
+    journal,
+    mounts,
+    screenscraper,
+    titles,
+)
 from g1r.config import Settings
 from g1r.conversion import ZIP_SUFFIX
 from g1r.dat_registry import DatRegistry
@@ -43,6 +54,9 @@ METHOD_CHECKSUM = "dat-checksum"
 METHOD_HEADERLESS = "dat-headerless"
 METHOD_BYTESWAPPED = "dat-byteswapped"
 METHOD_UNTRIMMED = "dat-untrimmed"
+METHOD_TITLE_ID = "title-id"
+# identity.dat_sha1 of an identification that needed no DAT (title IDs).
+NO_DAT = ""
 METHOD_DUPLICATE = "duplicate"
 METHOD_HASHEOUS = "hasheous"
 METHOD_SCREENSCRAPER = "screenscraper"
@@ -285,7 +299,14 @@ class Scanner:
             self.settings, folder.platform, root, files, found.members
         )
         found.cards = read_cards(self.settings, folder.platform, root, files, found.members)
+        if self.settings.platforms.profiles[folder.platform].title_ids:
+            self._title_ids(root, files, found)
         active = self.registry.active_version(conn, library, folder.platform)
+        if active is None and found.identified:
+            # Title IDs identify without a DAT.
+            self._store(conn, label, files, NO_DAT, found)
+            candidates = sum(1 for f in files if f.kind in ("rom", "archive"))
+            return f"{len(found.identified)} of {candidates} files identified by title ID"
         if active is None:
             self._store(conn, label, files, None, found)
             return (
@@ -310,7 +331,7 @@ class Scanner:
         }
         unmatched = []
         for f in files:
-            if f.kind not in ("rom", "archive"):
+            if f.kind not in ("rom", "archive") or f.rel_path in found.identified:
                 continue
             games = by_path.get(str(root / f.rel_path), set())
             if games:
@@ -501,6 +522,19 @@ class Scanner:
             original = originals.get(found.payloads.get(f.rel_path, (None, None))[1])
             if original is not None:
                 found.identify(f.rel_path, games[original], METHOD_DUPLICATE)
+
+    def _title_ids(self, root: Path, files, found: "Found") -> None:
+        """Switch: every file with a title ID (ticket or name) is identified by it; the
+        identity's name carries the ID, which matching groups by."""
+        config = self.settings.title_ids
+        if config is None:
+            return
+        for f in files:
+            if f.kind not in ("rom", "archive"):
+                continue
+            title = titles.read_title(root / f.rel_path, PurePosixPath(f.rel_path).name, config)
+            if title is not None:
+                found.identify(f.rel_path, {titles.identity_name(title, config)}, METHOD_TITLE_ID)
 
     def _untrimmed(self, platform, root: Path, unmatched, dat: Dat, found: "Found") -> None:
         """A trimmed card image is the DAT's entry once padded back to the card's size."""
