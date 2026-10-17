@@ -195,12 +195,26 @@ class IgirConfig(_Strict):
     timeout_seconds: float = Field(gt=0)
 
 
+HASHEOUS_NAME_FROM = ("rom", "game")
+
+
+class HasheousSource(_Strict):
+    label: str
+    name_from: str
+
+    @model_validator(mode="after")
+    def _known(self) -> "HasheousSource":
+        if self.name_from not in HASHEOUS_NAME_FROM:
+            raise ValueError(f"name_from must be one of {HASHEOUS_NAME_FROM}")
+        return self
+
+
 class HasheousConfig(_Strict):
     url: str
     site: str
     timeout_seconds: float = Field(gt=0)
     user_agent: str
-    sources: dict[str, str]
+    sources: dict[str, HasheousSource]
     not_found_ttl_days: float = Field(ge=0)
 
 

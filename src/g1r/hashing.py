@@ -62,6 +62,11 @@ def _hash(variant: str, data: bytes) -> ContentHash:
     )
 
 
+def payload_count(hashes: list[ContentHash]) -> int:
+    """How many ROM payloads the hashes cover (a payload may also have a headerless hash)."""
+    return sum(1 for h in hashes if h.variant.split(":")[0] == FULL)
+
+
 def content_hashes(settings: Settings, platform: str, path: Path) -> list[ContentHash]:
     profile = settings.platforms.profiles[platform]
     extensions = {e.lower() for e in profile.rom_extensions}

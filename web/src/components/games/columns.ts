@@ -23,6 +23,7 @@ export type ColumnId =
   | "flags"
   | "size"
   | "match"
+  | "method"
   | "proposed";
 
 export type Column = { id: ColumnId; label: string; sortable: boolean; level: "game" | "version" };
@@ -41,6 +42,7 @@ export const COLUMNS: Column[] = [
   { id: "flags", label: "Flags", sortable: true, level: "version" },
   { id: "size", label: "Size", sortable: true, level: "version" },
   { id: "match", label: "Match", sortable: true, level: "version" },
+  { id: "method", label: "Matched by", sortable: true, level: "version" },
   { id: "proposed", label: "Proposed", sortable: true, level: "version" },
 ];
 
@@ -51,6 +53,18 @@ export const SOURCE_LABELS: Record<string, string> = {
   "retool-clone-list": "Retool clone list",
   "dat-name": "same DAT name",
   single: "—",
+};
+
+/** How a version was identified, short for the table and long for its tooltip. */
+export const METHOD_LABELS: Record<string, { short: string; long: string }> = {
+  "dat-checksum": { short: "DAT", long: "checksum match in the DAT" },
+  "dat-headerless": {
+    short: "DAT, no header",
+    long: "checksum match in the DAT after removing a copier header",
+  },
+  hasheous: { short: "Hasheous", long: "checksum match found by Hasheous" },
+  fuzzy: { short: "name", long: "name match above your auto-match threshold" },
+  manual: { short: "by you", long: "assigned by you" },
 };
 
 /** Undecided first: those are the games that need you. */
@@ -148,6 +162,8 @@ export function sortValue(game: Game, id: ColumnId): SortValue {
       return game.versions.reduce((total, v) => total + (v.size ?? 0), 0);
     case "match":
       return version.probability;
+    case "method":
+      return METHOD_LABELS[version.method]?.short ?? version.method;
     case "proposed":
       return game.versions.filter((v) => v.operation).length;
     default:

@@ -68,7 +68,8 @@ ui:
     revision: {rem: 5, min: 4, max: 10}
     flags: {rem: 7, min: 5, max: 14}
     size: {rem: 5.5, min: 4.5, max: 10}
-    match: {rem: 6, min: 3.5, max: 12}
+    match: {rem: 6.5, min: 3.5, max: 12}
+    method: {rem: 7, min: 4, max: 14}
     proposed: {rem: 7, min: 5, max: 24}
   # Shown on a first visit; each browser remembers its own choice afterwards.
   game_columns_default: [keep, game, status, file, region, size, match, proposed]
@@ -356,11 +357,13 @@ lookups:
     site: https://hasheous.org
     timeout_seconds: 30
     user_agent: 1g1r-webui
-    # Hasheous sources that may identify a file, in order of preference, with their label.
-    # An answer counts only when its system name starts with the platform's DAT name.
+    # Hasheous sources that may identify a file, in order of preference. An answer counts
+    # only when its system is the platform's DAT. `name_from` says where the DAT name is:
+    # the ROM's file name (one ROM per game: No-Intro) or the game's description (discs,
+    # whose ROMs are tracks: Redump). Hasheous's descriptions can lag behind a revision.
     sources:
-      NoIntros: No-Intro
-      Redump: Redump
+      NoIntros: {label: No-Intro, name_from: rom}
+      Redump: {label: Redump, name_from: game}
     # A "not found" answer is asked again after this many days; found answers are kept.
     not_found_ttl_days: 30
 

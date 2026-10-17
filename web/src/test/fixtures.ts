@@ -6,6 +6,7 @@ export const META: Meta = {
   app: { name: "1g1r-webui", source_url: "" },
   ui: {
     page_size: 50,
+    dat_search_limit: 25,
     poll_interval_ms: 1000,
     hash_display_length: 12,
     byte_unit_base: 1024,
@@ -30,6 +31,7 @@ export const META: Meta = {
         "flags",
         "size",
         "match",
+        "method",
         "proposed",
       ].map((id) => [id, size(8)]),
     ),

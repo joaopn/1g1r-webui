@@ -28,7 +28,8 @@ def suggestions(
     matcher = SequenceMatcher(autojunk=False)
     matcher.set_seq2(wanted)
     scored = []
-    for name in dat_names:
+    # A DAT may list one name twice (libretro's NES DAT: headered and headerless entries).
+    for name in dict.fromkeys(dat_names):
         matcher.set_seq1(normalise(name))
         if (
             matcher.real_quick_ratio() < config.min_score

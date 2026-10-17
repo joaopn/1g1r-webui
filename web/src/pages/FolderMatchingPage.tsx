@@ -7,10 +7,19 @@ import { RankingEditor } from "@/components/RankingEditor";
 import { ScanPanel } from "@/components/ScanPanel";
 import { StatCard } from "@/components/StatCard";
 import { Badge } from "@/components/ui/badge";
+import { UnmatchedSection } from "@/components/unmatched/UnmatchedSection";
 import { ApiError, api, json } from "@/lib/api";
-import { formatBytes, formatCount } from "@/lib/format";
-import { invalidateFolder, keys, queryClient, useFolder, useGames, useMeta } from "@/lib/queries";
-import type { Game, Ranking } from "@/lib/types";
+import { formatCount } from "@/lib/format";
+import {
+  invalidateFolder,
+  keys,
+  queryClient,
+  useFolder,
+  useGames,
+  useMeta,
+  useSettingsData,
+} from "@/lib/queries";
+import type { Game, Ranking, Version } from "@/lib/types";
 import { FolderHeader } from "@/pages/FolderHeader";
 
 const errorText = (err: unknown) => (err instanceof ApiError ? err.message : String(err));
@@ -20,6 +29,7 @@ export function FolderMatchingPage() {
   const meta = useMeta();
   const folder = useFolder(label, meta.data?.ui.poll_interval_ms ?? false);
   const games = useGames(label);
+  const settingsData = useSettingsData();
 
   const updateGame = (game: Game) =>
     queryClient.setQueryData<Game[]>(keys.games(label), (current) =>
@@ -43,6 +53,15 @@ export function FolderMatchingPage() {
     },
     onError: (err) => toast.error(errorText(err)),
   });
+  const unassign = useMutation({
+    mutationFn: (version: Version) =>
+      api(`/folders/${label}/assign`, json("PUT", { rel_path: version.rel_path, game_name: null })),
+    onSuccess: (_, version) => {
+      toast.success(`${version.rel_path} is unmatched again`);
+      return invalidateFolder(label);
+    },
+    onError: (err) => toast.error(errorText(err)),
+  });
   const ranking = useMutation({
     mutationFn: (value: Ranking | null) =>
       api(`/folders/${label}/ranking`, json("PUT", { ranking: value })),
@@ -56,7 +75,6 @@ export function FolderMatchingPage() {
   if (folder.error) return <p className="text-status-bad">{errorText(folder.error)}</p>;
   if (!meta.data || !folder.data) return <p className="text-muted-foreground">Loading…</p>;
   const f = folder.data;
-  const ui = meta.data.ui;
   const source = f.dat ? meta.data.dat_sources[f.dat.source] : null;
   const other = (f.summary.counts.other ?? 0) + (f.summary.counts.ignored ?? 0);
 
@@ -124,37 +142,19 @@ export function FolderMatchingPage() {
             meta={meta.data}
             onKeep={(game, relPath) => keep.mutate({ game, relPath })}
             onLeave={(game, left) => leave.mutate({ game, left })}
+            onUnassign={(version) => unassign.mutate(version)}
           />
         ) : (
           <p className="text-muted-foreground">Loading games…</p>
         )}
       </section>
 
-      <details className="rounded-lg border border-border bg-card">
-        <summary className="cursor-pointer px-4 py-3 font-medium">
-          Unmatched content ({formatCount(f.unmatched.length)})
-        </summary>
-        <div className="border-border border-t px-4 py-3 text-sm">
-          {f.unmatched.length === 0 ? (
-            <p className="text-muted-foreground">Every ROM file was identified.</p>
-          ) : (
-            <ul className="space-y-1">
-              {f.unmatched.map((file) => (
-                <li key={file.rel_path} className="flex justify-between gap-4">
-                  <span className="truncate">{file.rel_path}</span>
-                  <span className="shrink-0 text-muted-foreground tabular-nums">
-                    {formatBytes(file.size, ui.byte_unit_base, ui.byte_units)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-          <p className="mt-2 text-muted-foreground text-xs">
-            Online lookups (Hasheous, ScreenScraper) and manual assignment come in a later build.
-            These files are kept as they are.
-          </p>
-        </div>
-      </details>
+      <UnmatchedSection
+        label={label}
+        meta={meta.data}
+        hasheousOn={settingsData.data?.lookups.hasheous ?? false}
+        scanning={f.scan?.status === "running"}
+      />
       {f.others.length > 0 ? (
         <details className="rounded-lg border border-border bg-card">
           <summary className="cursor-pointer px-4 py-3 font-medium">

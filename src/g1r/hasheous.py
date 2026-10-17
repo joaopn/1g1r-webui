@@ -9,6 +9,7 @@ import json
 import sqlite3
 import urllib.error
 import urllib.request
+from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -16,6 +17,7 @@ from http import HTTPStatus
 
 from g1r.config import Settings
 from g1r.hashing import ContentHash
+from g1r.names import parse_name
 
 SERVICE = "hasheous"
 
@@ -23,6 +25,7 @@ FOUND = "found"
 NOT_FOUND = "not found"
 OTHER_PLATFORM = "other platform"
 ERROR = "error"
+SKIPPED = "skipped"
 
 
 # (url, json body, headers, timeout) -> (HTTP status, body bytes)
@@ -88,13 +91,36 @@ def _ask(settings: Settings, conn, h: ContentHash, post: Post, refresh: bool) ->
     return parsed
 
 
-def entry_name(entry: dict) -> str | None:
-    """The DAT name of a signature entry: the game's description, else the ROM's name."""
-    game = entry.get("game") or {}
-    if game.get("description"):
-        return game["description"]
+def _names(entry: dict) -> dict[str, str | None]:
+    """An entry's two readings of the DAT name: its game's description and its ROM's file
+    name without the extension."""
     rom_name = (entry.get("rom") or {}).get("name") or ""
-    return rom_name.rsplit(".", 1)[0] or None
+    return {
+        "game": (entry.get("game") or {}).get("description") or None,
+        "rom": rom_name.rsplit(".", 1)[0] or None,
+    }
+
+
+def best_name(settings: Settings, entries: list[dict], name_from: str) -> str | None:
+    """Hasheous's entries disagree (a stale description; a ROM name stripped of its tags), so
+    the name is a vote over every reading. Ties go to a name that carries a region (every
+    No-Intro and Redump name does), then to the source's configured reading."""
+    votes: Counter[str] = Counter()
+    preferred: set[str] = set()
+    for entry in entries:
+        for reading, name in _names(entry).items():
+            if name:
+                votes[name] += 1
+                if reading == name_from:
+                    preferred.add(name)
+    if not votes:
+        return None
+
+    def rank(name: str) -> tuple[int, bool, bool]:
+        has_region = bool(parse_name(name, settings.names).regions)
+        return votes[name], has_region, name in preferred
+
+    return max(sorted(votes), key=rank)
 
 
 def same_system(system: str, dat_name: str) -> bool:
@@ -105,15 +131,17 @@ def same_system(system: str, dat_name: str) -> bool:
 def read_answer(settings: Settings, answer: dict, dat_name: str) -> Answer:
     signatures = answer.get("signatures") or {}
     elsewhere: list[str] = []
-    for source, label in settings.lookups.hasheous.sources.items():
+    for source, config in settings.lookups.hasheous.sources.items():
+        mine = []
         for entry in signatures.get(source) or []:
             system = (entry.get("game") or {}).get("system") or ""
-            name = entry_name(entry)
-            if not name:
-                continue
             if same_system(system, dat_name):
-                return Answer(FOUND, name, label)
-            elsewhere.append(system)
+                mine.append(entry)
+            elif system:
+                elsewhere.append(system)
+        name = best_name(settings, mine, config.name_from)
+        if name:
+            return Answer(FOUND, name, config.label)
     if elsewhere:
         return Answer(OTHER_PLATFORM, None, f"known for {elsewhere[0]}")
     return Answer(NOT_FOUND)

@@ -395,7 +395,7 @@ def build_router(
             "hasheous": {
                 "site": settings.lookups.hasheous.site,
                 "url": settings.lookups.hasheous.url,
-                "sources": list(settings.lookups.hasheous.sources.values()),
+                "sources": [s.label for s in settings.lookups.hasheous.sources.values()],
                 "not_found_ttl_days": settings.lookups.hasheous.not_found_ttl_days,
             },
             "fuzzy": settings.fuzzy.model_dump(),

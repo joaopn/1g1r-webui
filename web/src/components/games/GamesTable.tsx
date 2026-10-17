@@ -8,9 +8,13 @@ import {
   Columns3,
   CornerDownRight,
   EyeOff,
+  Globe,
   ListFilter,
+  type LucideIcon,
   RotateCcw,
   Search,
+  Sparkles,
+  UserRound,
 } from "lucide-react";
 import { type CSSProperties, type KeyboardEvent, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -36,6 +40,7 @@ import {
   type GameFilter,
   loadColumns,
   loadWidths,
+  METHOD_LABELS,
   NO_FILTER,
   QUICK_VIEWS,
   quickView,
@@ -91,12 +96,14 @@ export function GamesTable({
   meta,
   onKeep,
   onLeave,
+  onUnassign,
 }: {
   label: string;
   games: Game[];
   meta: Meta;
   onKeep: (game: Game, relPath: string | null) => void;
   onLeave: (game: Game, left: boolean) => void;
+  onUnassign?: (version: Version) => void;
 }) {
   const [params, setParams] = useSearchParams();
   const filter = useMemo(() => readFilter(params), [params]);
@@ -166,6 +173,7 @@ export function GamesTable({
   const style = { "--games-grid": template(columns, sizes, widths) } as CSSProperties;
   const formatSize = (value: number | null) =>
     formatBytes(value, meta.ui.byte_unit_base, meta.ui.byte_units);
+  const ctx: CellContext = { formatSize, onUnassign };
 
   return (
     <div className="space-y-3">
@@ -244,7 +252,7 @@ export function GamesTable({
                 onToggle={() => toggleGame(game.key)}
                 onKeep={onKeep}
                 onLeave={onLeave}
-                formatSize={formatSize}
+                ctx={ctx}
               />
             ))
           )}
@@ -349,13 +357,24 @@ function Cell({
 
 const PERCENT = new Intl.NumberFormat("en-US", { style: "percent" });
 
-function MatchBar({ version }: { version: Version }) {
-  const method =
-    version.method === "dat-headerless"
-      ? "checksum match after removing a copier header"
-      : "checksum match in the DAT";
+const METHOD_ICONS: Record<string, LucideIcon> = {
+  hasheous: Globe,
+  fuzzy: Sparkles,
+  manual: UserRound,
+};
+
+function MatchBar({
+  version,
+  onUnassign,
+}: {
+  version: Version;
+  onUnassign?: (version: Version) => void;
+}) {
+  const label = METHOD_LABELS[version.method]?.long ?? version.method;
+  const Icon = METHOD_ICONS[version.method];
+  const manual = version.method === "manual" && onUnassign;
   return (
-    <span className="flex items-center gap-1.5" title={method}>
+    <span className="flex items-center gap-1.5" title={label}>
       <span className="h-1.5 w-10 shrink-0 overflow-hidden rounded-full bg-muted">
         <span
           className="block h-full w-[calc(var(--p)*100%)] rounded-full bg-primary"
@@ -365,15 +384,33 @@ function MatchBar({ version }: { version: Version }) {
       <span className="text-muted-foreground text-xs tabular-nums">
         {PERCENT.format(version.probability)}
       </span>
+      {manual ? (
+        <button
+          type="button"
+          className="rounded-sm text-primary hover:text-status-bad"
+          aria-label={`Unassign ${version.rel_path}`}
+          title={`${label} — click to unassign`}
+          onClick={(event) => {
+            event.stopPropagation();
+            onUnassign(version);
+          }}
+        >
+          <UserRound className="size-3" aria-hidden="true" />
+        </button>
+      ) : Icon ? (
+        <Icon className="size-3 shrink-0 text-primary" aria-label={label} />
+      ) : null}
     </span>
   );
 }
 
-function versionCell(
-  id: ColumnId,
-  version: Version | null,
-  formatSize: (v: number | null) => string,
-) {
+/** What a version's cells need from the table: formatting and the per-version actions. */
+type CellContext = {
+  formatSize: (v: number | null) => string;
+  onUnassign?: (version: Version) => void;
+};
+
+function versionCell(id: ColumnId, version: Version | null, ctx: CellContext) {
   if (version === null) return <Cell key={id} />;
   switch (id) {
     case "file":
@@ -415,13 +452,21 @@ function versionCell(
     case "size":
       return (
         <Cell key={id} className="text-right text-muted-foreground tabular-nums">
-          {formatSize(version.size)}
+          {ctx.formatSize(version.size)}
         </Cell>
       );
     case "match":
       return (
         <Cell key={id}>
-          <MatchBar version={version} />
+          <MatchBar version={version} onUnassign={ctx.onUnassign} />
+        </Cell>
+      );
+    case "method":
+      return (
+        <Cell key={id} title={METHOD_LABELS[version.method]?.long ?? version.method}>
+          <span className="text-muted-foreground">
+            {METHOD_LABELS[version.method]?.short ?? version.method}
+          </span>
         </Cell>
       );
     case "proposed":
@@ -448,7 +493,7 @@ function GameRows({
   onToggle,
   onKeep,
   onLeave,
-  formatSize,
+  ctx,
 }: {
   game: Game;
   columns: Column[];
@@ -456,7 +501,7 @@ function GameRows({
   onToggle: () => void;
   onKeep: (game: Game, relPath: string | null) => void;
   onLeave: (game: Game, left: boolean) => void;
-  formatSize: (v: number | null) => string;
+  ctx: CellContext;
 }) {
   const single = game.versions.length <= 1;
   const rep = representative(game);
@@ -516,10 +561,10 @@ function GameRows({
               choose a version
             </Cell>
           );
-        return versionCell(id, rep, formatSize);
+        return versionCell(id, rep, ctx);
       default:
         // Open, the versions below say it all; closed, the row is the kept version.
-        return versionCell(id, !single && open ? null : rep, formatSize);
+        return versionCell(id, !single && open ? null : rep, ctx);
     }
   };
 
@@ -595,7 +640,7 @@ function GameRows({
               disabled={left}
               candidate={game.status === "undecided" && game.candidates.includes(version.rel_path)}
               onKeep={onKeep}
-              formatSize={formatSize}
+              ctx={ctx}
             />
           ))
         : null}
@@ -610,7 +655,7 @@ function VersionRow({
   disabled,
   candidate,
   onKeep,
-  formatSize,
+  ctx,
 }: {
   game: Game;
   version: Version;
@@ -618,7 +663,7 @@ function VersionRow({
   disabled: boolean;
   candidate: boolean;
   onKeep: (game: Game, relPath: string | null) => void;
-  formatSize: (v: number | null) => string;
+  ctx: CellContext;
 }) {
   // Clicking a version keeps it; clicking your own pick again hands the choice back to the ranking.
   const choose = () => {
@@ -652,7 +697,7 @@ function VersionRow({
         </Cell>
       );
     if (id === "status" || id === "versions" || id === "source") return <Cell key={id} />;
-    return versionCell(id, version, formatSize);
+    return versionCell(id, version, ctx);
   };
   return (
     // biome-ignore lint/a11y/useSemanticElements: a grid row cannot be a <button> (it holds block cells); it is keyboard-operable.

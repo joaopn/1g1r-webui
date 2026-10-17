@@ -1,4 +1,5 @@
 import json
+import zipfile
 import zlib
 from http import HTTPStatus
 
@@ -10,8 +11,9 @@ from .test_scanner import BODY, NES_HEADER, env  # noqa: F401  (fixture)
 DAT = "Nintendo - Nintendo Entertainment System"
 
 
-def signature(system: str, description: str) -> dict:
-    return {"game": {"system": system, "description": description}, "rom": {"name": "x.nes"}}
+def signature(system: str, description: str, rom: str | None = None) -> dict:
+    rom_name = rom or f"{description}.nes"
+    return {"game": {"system": system, "description": description}, "rom": {"name": rom_name}}
 
 
 def answer(*entries, source="NoIntros") -> dict:
@@ -65,6 +67,23 @@ def test_answers_count_only_for_the_folders_platform(make_settings):
     )
 
 
+def test_the_name_comes_from_the_rom_for_no_intro_and_the_game_for_redump(make_settings):
+    settings = make_settings()
+    stale = signature(DAT, "Doraemon (Japan)", rom="Doraemon (Japan) (Rev 1).nes")
+    found = hasheous.read_answer(settings, answer(stale), DAT)
+    assert found.game_name == "Doraemon (Japan) (Rev 1)"
+    stripped = [
+        signature("Nintendo - Game Boy", "Aa Harimanada (Japan)", rom="Aa Harimanada.gb"),
+        signature("Nintendo - Game Boy (Parent-Clone)", "Aa Harimanada (Japan)"),
+    ]
+    for entries in (stripped, stripped[:1]):
+        found = hasheous.read_answer(settings, answer(*entries), "Nintendo - Game Boy")
+        assert found.game_name == "Aa Harimanada (Japan)"
+    disc = signature("Sony - PlayStation", "Game (USA)", rom="Game (USA) (Track 1).bin")
+    found = hasheous.read_answer(settings, answer(disc, source="Redump"), "Sony - PlayStation")
+    assert found.game_name == "Game (USA)"
+
+
 def test_answers_are_cached_and_not_found_is_asked_again_on_refresh(env):  # noqa: F811
     settings, _, _, conn, _ = env
     h = hashing.ContentHash("full", 1, "00000000", "0" * 32, "a" * 40)
@@ -75,6 +94,12 @@ def test_answers_are_cached_and_not_found_is_asked_again_on_refresh(env):  # noq
     hasheous.lookup(settings, conn, [h], DAT, post, refresh=True)
     assert len(post.asked) == 2
     assert post.asked[0] == {"crc": "00000000", "md5": "0" * 32, "sha1": "a" * 40}
+
+
+def test_suggestions_list_a_name_the_dat_repeats_once():
+    config = FuzzyConfig(min_score=0.5, max_suggestions=3, auto_match_threshold=None)
+    best = fuzzy.suggestions(config, "Tetris (USA).zip", ["Tetris (USA)", "Tetris (USA)"])
+    assert [name for name, _ in best] == ["Tetris (USA)"]
 
 
 def test_suggestions_best_first_above_the_minimum():
@@ -123,6 +148,21 @@ def test_hasheous_identifies_what_the_dat_missed(env):  # noqa: F811
     method = conn.execute("SELECT method FROM identity WHERE rel_path = ?", (LOOSE,)).fetchone()
     assert method[0] == scanner.METHOD_HASHEOUS
     assert unmatched.rows(conn, "nes", hasheous_on=True) == []
+
+
+def test_an_archive_with_several_roms_is_not_looked_up(env):  # noqa: F811
+    settings, *_ = env
+    with zipfile.ZipFile(settings.paths.roms_root / "nes" / "Pack.zip", "w") as pack:
+        pack.writestr("One (USA).nes", b"one")
+        pack.writestr("Two (USA).nes", b"two")
+    post = FakeHasheous()
+    conn, _ = scan(env, post, hasheous=True)
+    rows = {r["rel_path"]: r for r in unmatched.rows(conn, "nes", hasheous_on=True)}
+    assert rows["Pack.zip"]["hasheous"] == {
+        "status": hasheous.SKIPPED,
+        "detail": "several ROM files in one archive",
+    }
+    assert len(post.asked) == 1  # only the loose file
 
 
 def test_a_lookup_error_leaves_the_file_unmatched_and_says_so(env):  # noqa: F811

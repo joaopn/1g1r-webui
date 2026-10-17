@@ -78,6 +78,7 @@ export function navGroups(folders: FolderCard[], meta: Meta | undefined): NavGro
       children: [
         { to: "/settings/platforms", label: "Platforms & files", title: "Platforms & files" },
         { to: "/settings/dats", label: "DATs", title: "DATs" },
+        { to: "/settings/lookups", label: "Online lookups", title: "Online lookups" },
         { to: "/settings/advanced", label: "Advanced", title: "Advanced" },
       ],
     },

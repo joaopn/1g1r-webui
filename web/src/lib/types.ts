@@ -21,6 +21,7 @@ export type Meta = {
   app: { name: string; source_url: string };
   ui: {
     page_size: number;
+    dat_search_limit: number;
     poll_interval_ms: number;
     hash_display_length: number;
     byte_unit_base: number;
@@ -143,6 +144,9 @@ export type DatRow = {
 export type SettingsData = {
   targets: Record<string, string>;
   ignored_filenames: string[];
+  lookups: { hasheous: boolean };
+  hasheous: { site: string; url: string; sources: string[]; not_found_ttl_days: number };
+  fuzzy: { min_score: number; max_suggestions: number; auto_match_threshold: number | null };
   effective_yaml: string;
   config_file: string;
   library_file: string;
@@ -178,3 +182,13 @@ export type ConversionRow = {
 export type ConversionCounts = Record<ConversionStatus | "to_convert" | "all", number>;
 
 export type Conversion = { counts: ConversionCounts; rows: ConversionRow[] };
+
+export type LookupStatus = "off" | "found" | "not found" | "other platform" | "error" | "skipped";
+
+export type UnmatchedFile = {
+  rel_path: string;
+  size: number;
+  hash: { crc32: string; sha1: string } | null;
+  hasheous: { status: LookupStatus; detail: string } | null;
+  suggestions: { game_name: string; score: number }[];
+};

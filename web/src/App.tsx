@@ -7,6 +7,7 @@ import { HomePage } from "@/pages/HomePage";
 import {
   AdvancedSettingsPage,
   DatsSettingsPage,
+  LookupsSettingsPage,
   PlatformsSettingsPage,
 } from "@/pages/SettingsPages";
 
@@ -21,6 +22,7 @@ export function App() {
         <Route path="settings" element={<Navigate to="/settings/platforms" replace />} />
         <Route path="settings/platforms" element={<PlatformsSettingsPage />} />
         <Route path="settings/dats" element={<DatsSettingsPage />} />
+        <Route path="settings/lookups" element={<LookupsSettingsPage />} />
         <Route path="settings/advanced" element={<AdvancedSettingsPage />} />
         <Route path="*" element={<p className="text-muted-foreground">Page not found.</p>} />
       </Route>

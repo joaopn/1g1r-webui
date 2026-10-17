@@ -8,6 +8,7 @@ import type {
   Game,
   Meta,
   SettingsData,
+  UnmatchedFile,
 } from "@/lib/types";
 
 export const queryClient = new QueryClient({
@@ -20,6 +21,7 @@ export const keys = {
   folder: (label: string) => ["folder", label] as const,
   games: (label: string) => ["games", label] as const,
   conversion: (label: string) => ["conversion", label] as const,
+  unmatched: (label: string) => ["unmatched", label] as const,
   settings: ["settings"] as const,
   dats: ["dats"] as const,
 };
@@ -41,6 +43,12 @@ export const useConversion = (label: string) =>
     queryFn: () => api<Conversion>(`/folders/${label}/conversion`),
   });
 
+export const useUnmatched = (label: string) =>
+  useQuery({
+    queryKey: keys.unmatched(label),
+    queryFn: () => api<UnmatchedFile[]>(`/folders/${label}/unmatched`),
+  });
+
 export function useFolder(label: string, pollMs: number | false) {
   return useQuery({
     queryKey: keys.folder(label),
@@ -55,6 +63,7 @@ export function invalidateFolder(label: string) {
     queryClient.invalidateQueries({ queryKey: keys.folder(label) }),
     queryClient.invalidateQueries({ queryKey: keys.games(label) }),
     queryClient.invalidateQueries({ queryKey: keys.conversion(label) }),
+    queryClient.invalidateQueries({ queryKey: keys.unmatched(label) }),
     queryClient.invalidateQueries({ queryKey: keys.folders }),
   ]);
 }

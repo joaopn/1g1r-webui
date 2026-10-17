@@ -18,7 +18,7 @@ from g1r import archives, fuzzy, hasheous, igir, mounts
 from g1r.config import Settings
 from g1r.dat_registry import DatRegistry
 from g1r.dats import Dat
-from g1r.hashing import ContentHash, content_hashes, header_size, payloads
+from g1r.hashing import ContentHash, content_hashes, header_size, payload_count, payloads
 from g1r.library import FolderEntry, LibraryStore
 
 METHOD_CHECKSUM = "dat-checksum"
@@ -208,7 +208,14 @@ class Scanner:
         for f in unmatched:
             hashes = content_hashes(self.settings, platform, root / f.rel_path)
             found.hashes[f.rel_path] = hashes
-            if not library.lookups.hasheous or not hashes:
+            if not library.lookups.hasheous:
+                continue
+            if not hashes:
+                found.lookups[f.rel_path] = (hasheous.SKIPPED, "no ROM data to look up")
+                continue
+            if payload_count(hashes) > 1:
+                # One answer would name one game and hide the others in the archive.
+                found.lookups[f.rel_path] = (hasheous.SKIPPED, "several ROM files in one archive")
                 continue
             try:
                 answer = hasheous.lookup(
@@ -229,7 +236,8 @@ class Scanner:
             best = fuzzy.suggestions(config, f.rel_path, names)
             found.suggestions[f.rel_path] = best
             threshold = config.auto_match_threshold
-            if best and threshold is not None and best[0][1] >= threshold:
+            single = payload_count(found.hashes.get(f.rel_path, [])) <= 1
+            if best and single and threshold is not None and best[0][1] >= threshold:
                 found.identify(f.rel_path, {best[0][0]}, METHOD_FUZZY, best[0][1])
 
     def _apply_manual(self, conn, label, files, found: "Found") -> None:

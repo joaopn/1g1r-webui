@@ -102,3 +102,28 @@ test("the quick-view bar shows one-version or several-version games, with counts
   expect(screen.getByText("Arkanoid")).toBeInTheDocument();
   expect(screen.queryByText("Contra")).not.toBeInTheDocument();
 });
+
+test("a version you assigned by hand can be unassigned from its match cell", async () => {
+  const onUnassign = vi.fn();
+  const onKeep = vi.fn();
+  const games = GAMES.map((g) =>
+    g.name === "Arkanoid"
+      ? { ...g, versions: g.versions.map((v) => ({ ...v, method: "manual" })) }
+      : g,
+  );
+  render(
+    <MemoryRouter>
+      <GamesTable
+        label="nes"
+        games={games}
+        meta={META}
+        onKeep={onKeep}
+        onLeave={vi.fn()}
+        onUnassign={onUnassign}
+      />
+    </MemoryRouter>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Unassign Arkanoid (Japan).zip" }));
+  expect(onUnassign).toHaveBeenCalledWith(expect.objectContaining({ method: "manual" }));
+  expect(onKeep).not.toHaveBeenCalled();
+});

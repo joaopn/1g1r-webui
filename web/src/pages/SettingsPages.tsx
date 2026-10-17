@@ -379,6 +379,94 @@ export function DatsSettingsPage() {
   );
 }
 
+const SCORE = new Intl.NumberFormat("en-US", { style: "percent" });
+
+export function LookupsSettingsPage() {
+  const data = useSettingsData();
+  const save = useMutation({
+    mutationFn: (hasheous: boolean) => api("/settings/lookups", json("PUT", { hasheous })),
+    onSuccess: (_, hasheous) => {
+      toast.success(hasheous ? "Hasheous lookups on" : "Hasheous lookups off");
+      queryClient.invalidateQueries({ queryKey: keys.settings });
+    },
+    onError: (err) => toast.error(errorText(err)),
+  });
+  if (!data.data) return <p className="text-muted-foreground">Loading…</p>;
+  const { lookups, hasheous, fuzzy } = data.data;
+  return (
+    <Page
+      title="Online lookups"
+      intro="For files the local DAT does not identify. Off until you switch them on; they run during a folder scan."
+    >
+      <section className="max-w-3xl space-y-3 rounded-lg border border-border bg-card p-4 text-sm">
+        <label className="flex items-start gap-2">
+          <input
+            type="checkbox"
+            className="mt-0.5 size-4 accent-primary"
+            checked={lookups.hasheous}
+            disabled={save.isPending}
+            onChange={(event) => save.mutate(event.target.checked)}
+          />
+          <span>
+            <span className="font-medium">Hasheous</span>{" "}
+            <a
+              href={hasheous.site}
+              target="_blank"
+              rel="noreferrer"
+              className="text-muted-foreground underline underline-offset-2"
+            >
+              {hasheous.site}
+            </a>
+          </span>
+        </label>
+        <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1.5 text-muted-foreground">
+          <dt>Sends</dt>
+          <dd>
+            the CRC32, MD5 and SHA1 of each ROM file the local DAT did not identify; no file names,
+            no file contents, nothing else
+          </dd>
+          <dt>To</dt>
+          <dd>
+            <code className="break-all text-xs">{hasheous.url}</code>
+          </dd>
+          <dt>Trusts</dt>
+          <dd>
+            answers from {hasheous.sources.join(" and ")} for the folder's own platform; others are
+            shown, never used
+          </dd>
+          <dt>Caches</dt>
+          <dd>
+            every answer; a "not found" is asked again after {hasheous.not_found_ttl_days} days, or
+            when you click Look up again on a folder
+          </dd>
+        </dl>
+      </section>
+      <section className="max-w-3xl space-y-2 rounded-lg border border-border bg-card p-4 text-sm">
+        <h2 className="font-medium">Name suggestions</h2>
+        <p className="text-muted-foreground">
+          Files still unmatched get up to {fuzzy.max_suggestions} DAT names that look like theirs,
+          scoring at least {SCORE.format(fuzzy.min_score)}.{" "}
+          {fuzzy.auto_match_threshold === null ? (
+            <>
+              They never identify a file: auto-match is <strong>off</strong>.
+            </>
+          ) : (
+            <>
+              They identify a file only when the best scores at least{" "}
+              <strong>{SCORE.format(fuzzy.auto_match_threshold)}</strong> (auto-match).
+            </>
+          )}{" "}
+          These values are set in the config file (<code className="text-xs">fuzzy</code>, see
+          Advanced).
+        </p>
+      </section>
+      <p className="max-w-3xl text-muted-foreground text-xs">
+        ScreenScraper, the second fallback, needs an account and comes in a later build.
+      </p>
+    </Page>
+  );
+}
+
 export function AdvancedSettingsPage() {
   const data = useSettingsData();
   if (!data.data) return <p className="text-muted-foreground">Loading…</p>;

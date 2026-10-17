@@ -1,6 +1,6 @@
 import { useMutation } from "@tanstack/react-query";
 import { RefreshCw } from "lucide-react";
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { ApiError, api } from "@/lib/api";
@@ -24,6 +24,12 @@ export function ScanPanel({
     onError: (err) => toast.error(err instanceof ApiError ? err.message : String(err)),
   });
   const running = scan?.status === "running";
+  // When a scan ends, every table of the folder is stale.
+  const wasRunning = useRef(running);
+  useEffect(() => {
+    if (wasRunning.current && !running) invalidateFolder(label);
+    wasRunning.current = running;
+  }, [running, label]);
   return (
     <section className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3">
       <div className="space-y-1 text-sm">
