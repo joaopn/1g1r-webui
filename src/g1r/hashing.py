@@ -62,6 +62,16 @@ def _hash(variant: str, data: bytes) -> ContentHash:
     )
 
 
+def payload_sha1(path: Path, rom_extensions: set[str], limit: int) -> str | None:
+    """The SHA1 of the file's ROM data when it holds exactly one payload, else None."""
+    found = []
+    for data in payloads(path, rom_extensions, limit):
+        found.append(hashlib.sha1(data, usedforsecurity=False).hexdigest())
+        if len(found) > 1:
+            return None
+    return found[0] if found else None
+
+
 def payload_count(hashes: list[ContentHash]) -> int:
     """How many ROM payloads the hashes cover (a payload may also have a headerless hash)."""
     return sum(1 for h in hashes if h.variant.split(":")[0] == FULL)

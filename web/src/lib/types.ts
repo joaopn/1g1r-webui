@@ -144,6 +144,10 @@ export type Version = {
   operation: string | null;
   /** The apply operation that moved this version to discarded/, while it is there. */
   discarded: number | null;
+  /** The other versions with byte-identical ROM data. */
+  identical: string[];
+  /** Where the proposed move goes: 1g1r/, or duplicates/ for an identical copy. */
+  discard_reason: "1g1r" | "duplicates" | null;
 };
 
 export type GameStatus =

@@ -62,6 +62,10 @@ export const METHOD_LABELS: Record<string, { short: string; long: string }> = {
     short: "DAT, no header",
     long: "checksum match in the DAT after removing a copier header",
   },
+  duplicate: {
+    short: "copy",
+    long: "byte-identical to another file of this game, which the DAT identified",
+  },
   hasheous: { short: "Hasheous", long: "checksum match found by Hasheous" },
   fuzzy: { short: "name", long: "name match above your auto-match threshold" },
   manual: { short: "by you", long: "assigned by you" },

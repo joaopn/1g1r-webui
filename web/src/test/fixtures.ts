@@ -1,4 +1,4 @@
-import type { ConversionRow, Game, Meta } from "@/lib/types";
+import type { ConversionRow, Game, Meta, Version } from "@/lib/types";
 
 const size = (rem: number) => ({ rem, min: rem / 2, max: rem * 3 });
 
@@ -101,6 +101,8 @@ const version = (
   keep: false,
   operation: null,
   discarded: null,
+  identical: [] as string[],
+  discard_reason: null as Version["discard_reason"],
   ...extra,
 });
 

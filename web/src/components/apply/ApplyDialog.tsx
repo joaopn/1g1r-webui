@@ -66,7 +66,8 @@ export function ApplyDialog({
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>
-            These files move to <code className="text-xs">{discardedDir}1g1r/</code>. Nothing is
+            These files move to <code className="text-xs">{discardedDir}1g1r/</code> (identical
+            copies of a kept version to <code className="text-xs">duplicates/</code>). Nothing is
             deleted, and each move can be restored from the table or the Discarded page.
           </DialogDescription>
         </DialogHeader>

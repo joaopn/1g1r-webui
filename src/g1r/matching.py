@@ -9,7 +9,7 @@ from functools import cache
 from pathlib import Path, PurePosixPath
 
 from g1r import journal
-from g1r.config import RankingConfig, Settings
+from g1r.config import PLAIN, RankingConfig, Settings
 from g1r.dats import Dat, parse_dat
 from g1r.grouping import Group, Version, build_groups
 from g1r.ranking import Decision, decide
@@ -31,6 +31,10 @@ FILTERS = {
 }
 
 REASON_DISCARDED = journal.REASON_1G1R
+# Identical copies of the version kept go here instead of 1g1r/.
+REASON_DUPLICATES = journal.REASON_DUPLICATES
+# discarded/ subfolders whose files stay versions in the table.
+VERSION_REASONS = (REASON_DISCARDED, REASON_DUPLICATES)
 
 
 @dataclass
@@ -42,6 +46,10 @@ class Row:
     probability: float = 1.0
     # Set when an apply moved this version to discarded/: the journal operation's id.
     discarded: int | None = None
+    # The other versions with byte-identical ROM data.
+    identical: list[str] = field(default_factory=list)
+    # The discarded/ subfolder the proposed move goes to.
+    discard_reason: str = REASON_DISCARDED
 
 
 @dataclass
@@ -80,13 +88,51 @@ def load_dat(settings: Settings, conn: sqlite3.Connection, sha1: str) -> Dat | N
     return _dat(settings.paths.data_dir / row["file"], sha1)
 
 
-def discard_path(settings: Settings, label: str, rel_path: str) -> str:
-    return str(PurePosixPath(settings.paths.discarded_root, label, REASON_DISCARDED, rel_path))
+def discard_path(
+    settings: Settings, label: str, rel_path: str, reason: str = REASON_DISCARDED
+) -> str:
+    return str(PurePosixPath(settings.paths.discarded_root, label, reason, rel_path))
+
+
+def container_of_path(rel_path: str, archive_extensions: set[str]) -> str:
+    """A file's container as targets name them: its archive extension, else plain."""
+    suffix = PurePosixPath(rel_path).suffix.lower().lstrip(".")
+    return suffix if suffix in archive_extensions else PLAIN
+
+
+def _copies(
+    versions: list[Version],
+    payloads: dict[str, str],
+    prefer: str | None = None,
+    archive_extensions: set[str] = frozenset(),
+) -> list[list[Version]]:
+    """Versions grouped by identical ROM data; each list starts with the copy to rank.
+
+    Which identical copy stands for the others is cosmetic: the one named like its DAT
+    entry, then one already in the target container (`prefer`, e.g. "zip"), else the
+    first by path. Versions without a payload hash stand alone.
+    """
+    sets: dict[str, list[Version]] = {}
+    for v in sorted(versions, key=lambda v: v.rel_path):
+        sets.setdefault(payloads.get(v.rel_path) or f"\0{v.rel_path}", []).append(v)
+    for copies in sets.values():
+        copies.sort(
+            key=lambda v: (
+                PurePosixPath(v.rel_path).stem != v.game_name,
+                container_of_path(v.rel_path, archive_extensions) != prefer,
+            )
+        )
+    return list(sets.values())
 
 
 def game_rows(
-    settings: Settings, conn: sqlite3.Connection, label: str, ranking: RankingConfig
+    settings: Settings,
+    conn: sqlite3.Connection,
+    label: str,
+    ranking: RankingConfig,
+    prefer: str | None = None,
 ) -> list[GameRow]:
+    """`prefer`: the container the platform's target produces, kept among identical copies."""
     identities = conn.execute(
         "SELECT rel_path, game_name, method, dat_sha1, score FROM identity WHERE folder_label = ?",
         (label,),
@@ -102,8 +148,7 @@ def game_rows(
     gone = {
         op["rel_path"]: op["id"]
         for op in journal.active_discards(conn, label)
-        if places.get(op["rel_path"]) == journal.PLACE_DISCARDED
-        and op["reason"] == REASON_DISCARDED
+        if places.get(op["rel_path"]) == journal.PLACE_DISCARDED and op["reason"] in VERSION_REASONS
     }
     # Other discarded files (a conversion's originals) are no versions: their output is.
     identities = [
@@ -136,6 +181,12 @@ def game_rows(
         r[0]
         for r in conn.execute("SELECT group_key FROM game_flag WHERE folder_label = ?", (label,))
     }
+    archives = {e.lower() for e in settings.platforms.archive_extensions}
+    payloads = dict(
+        conn.execute(
+            "SELECT rel_path, sha1 FROM payload_hash WHERE folder_label = ?", (label,)
+        ).fetchall()
+    )
     groups = build_groups(
         settings, dat, [(r["rel_path"], r["game_name"], r["method"]) for r in identities]
     )
@@ -148,19 +199,39 @@ def game_rows(
             group.source,
             [v for v in group.versions if v.rel_path not in gone],
         )
-        status, reason, winner, candidates = _decide(present, ranking, picks, left)
+        # Identical copies are ranked once; the copy standing for them is the first.
+        copies = _copies(present.versions, payloads, prefer, archives)
+        ranked = Group(group.key, group.name, group.source, [c[0] for c in copies])
+        status, reason, winner, candidates = _decide(ranked, ranking, picks, left, present)
+        if len(ranked.versions) == 1 and len(present.versions) > 1 and status == STATUS_SINGLE:
+            status, reason = STATUS_DECIDED, "identical copies of one version"
         if status == STATUS_SINGLE and len(present.versions) < len(group.versions):
             status, reason = STATUS_APPLIED, "the other versions are in discarded/"
+        set_of = {v.rel_path: c for c in copies for v in c}
         rows = []
         for version in group.versions:
             keep = winner is not None and version.rel_path == winner.rel_path
             operation = None
-            if (
-                status in (STATUS_DECIDED, STATUS_PICKED)
-                and not keep
-                and version in present.versions
-            ):
-                operation = discard_path(settings, label, version.rel_path)
+            discard_reason = REASON_DISCARDED
+            mine = set_of.get(version.rel_path, [])
+            twin_of_kept = winner is not None and winner in mine
+            stands_in = bool(mine) and mine[0] is version
+            if version in present.versions and not keep and status != STATUS_LEFT:
+                if twin_of_kept:
+                    discard_reason = REASON_DUPLICATES
+                    operation = discard_path(settings, label, version.rel_path, discard_reason)
+                elif status in (STATUS_DECIDED, STATUS_PICKED):
+                    operation = discard_path(settings, label, version.rel_path)
+                elif status == STATUS_UNDECIDED and not stands_in:
+                    # Still undecided, but a second identical copy is never needed.
+                    discard_reason = REASON_DUPLICATES
+                    operation = discard_path(settings, label, version.rel_path, discard_reason)
+            sha1 = payloads.get(version.rel_path)
+            identical = sorted(
+                v.rel_path
+                for v in group.versions
+                if sha1 is not None and v is not version and payloads.get(v.rel_path) == sha1
+            )
             probability = scores.get((version.rel_path, version.game_name), 1.0)
             rows.append(
                 Row(
@@ -170,6 +241,8 @@ def game_rows(
                     operation,
                     probability,
                     gone.get(version.rel_path),
+                    identical,
+                    discard_reason,
                 )
             )
         kept = next((r for r in rows if r.keep), None)
@@ -177,14 +250,17 @@ def game_rows(
     return result
 
 
-def _decide(present: Group, ranking, picks, left) -> tuple[str, str, Version | None, set[str]]:
-    if not present.versions:
+def _decide(
+    ranked: Group, ranking, picks, left, present: Group
+) -> tuple[str, str, Version | None, set[str]]:
+    """Rank one copy per distinct ROM data (`ranked`); picks may name any present version."""
+    if not ranked.versions:
         return STATUS_APPLIED, "every version is in discarded/", None, set()
-    decision: Decision = decide(present, ranking)
+    decision: Decision = decide(ranked, ranking)
     winner = decision.winner
     status = (
         STATUS_SINGLE
-        if len(present.versions) == 1
+        if len(ranked.versions) == 1
         else (STATUS_DECIDED if winner else STATUS_UNDECIDED)
     )
     reason = decision.reason
@@ -206,8 +282,9 @@ def table(
     view: str = "all",
     query: str = "",
     page: int = 1,
+    prefer: str | None = None,
 ) -> Table:
-    games = game_rows(settings, conn, label, ranking)
+    games = game_rows(settings, conn, label, ranking, prefer)
     tests = {
         "all": lambda g: True,
         "several": lambda g: len(g.rows) > 1,
@@ -237,9 +314,10 @@ def table(
     return Table(selected[start : start + size], len(selected), page, pages, counts, reclaim)
 
 
-def find_game(settings, conn, label, ranking, group_key) -> GameRow | None:
+def find_game(settings, conn, label, ranking, group_key, prefer=None) -> GameRow | None:
     return next(
-        (g for g in game_rows(settings, conn, label, ranking) if g.group.key == group_key), None
+        (g for g in game_rows(settings, conn, label, ranking, prefer) if g.group.key == group_key),
+        None,
     )
 
 

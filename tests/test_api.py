@@ -31,7 +31,7 @@ def setup(make_settings, roms_root):
     folder = roms_root / "NES Set"
     folder.mkdir()
     for n in NAMES:
-        write_zip(folder / f"{n}.zip", f"{n}.nes", b"x")
+        write_zip(folder / f"{n}.zip", f"{n}.nes", n.encode())
     (folder / "odd.nes").write_bytes(b"?")
     (folder / "metadata.txt").write_text("x")
     (roms_root / "gb").mkdir()

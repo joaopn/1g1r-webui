@@ -12,10 +12,9 @@ from pathlib import Path
 
 from g1r.config import Settings
 from g1r.conversion import REASON_ORIGINALS
+from g1r.journal import REASON_DUPLICATES, REASON_MANUAL
 from g1r.matching import REASON_DISCARDED
 
-REASON_DUPLICATES = "duplicates"
-REASON_MANUAL = "manual"
 # Files directly in discarded/<label>/, outside any reason directory.
 REASON_NONE = ""
 TIMESTAMP = "%Y-%m-%dT%H:%M:%SZ"

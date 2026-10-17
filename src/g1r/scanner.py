@@ -10,19 +10,29 @@ import fnmatch
 import os
 import sqlite3
 import zlib
+from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
 from g1r import archives, fuzzy, hasheous, igir, journal, mounts
 from g1r.config import Settings
+from g1r.conversion import ZIP_SUFFIX
 from g1r.dat_registry import DatRegistry
 from g1r.dats import Dat
-from g1r.hashing import ContentHash, content_hashes, header_size, payload_count, payloads
+from g1r.hashing import (
+    ContentHash,
+    content_hashes,
+    header_size,
+    payload_count,
+    payload_sha1,
+    payloads,
+)
 from g1r.library import FolderEntry, LibraryStore
 
 METHOD_CHECKSUM = "dat-checksum"
 METHOD_HEADERLESS = "dat-headerless"
+METHOD_DUPLICATE = "duplicate"
 METHOD_HASHEOUS = "hasheous"
 METHOD_FUZZY = "fuzzy"
 METHOD_MANUAL = "manual"
@@ -182,6 +192,8 @@ class Scanner:
                 games = headerless_matches(self.settings, folder.platform, root / f.rel_path, dat)
                 found.identify(f.rel_path, games, METHOD_HEADERLESS)
         unmatched = [f for f in unmatched if f.rel_path not in found.identified]
+        self._duplicates(root, folder.platform, files, found)
+        unmatched = [f for f in unmatched if f.rel_path not in found.identified]
         notes = self._look_up(
             conn, library, folder.platform, root, unmatched, found, refresh_lookups
         )
@@ -226,6 +238,56 @@ class Scanner:
             if answer.status == hasheous.FOUND and answer.game_name:
                 found.identify(f.rel_path, {answer.game_name}, METHOD_HASHEOUS)
         return []
+
+    def _duplicates(self, root: Path, platform: str, files, found: "Found") -> None:
+        """Identification step 2: an unmatched file byte-identical to an identified one is
+        a version of that file's game. Also hashes identified files that may be identical
+        copies of each other (same game, same payload size), for the 1G1R table.
+        """
+        rom_extensions = {
+            e.lower() for e in self.settings.platforms.profiles[platform].rom_extensions
+        }
+        roms_inside: dict[str, list[archives.Member]] = {}
+        for rel, member in found.members:
+            if PurePosixPath(member.name).suffix.lower().lstrip(".") in rom_extensions:
+                roms_inside.setdefault(rel, []).append(member)
+
+        def payload_size(f: InventoryFile) -> int | None:
+            if f.kind == "rom":
+                return f.size
+            # Only zips are read for their data here (hashing.payloads); 7z is not compared.
+            inside = roms_inside.get(f.rel_path, [])
+            readable = f.kind == "archive" and f.rel_path.lower().endswith(ZIP_SUFFIX)
+            return inside[0].size if readable and len(inside) == 1 else None
+
+        games: dict[str, set[str]] = {}
+        for rel, game, _, _ in found.identities:
+            games.setdefault(rel, set()).add(game)
+        sized = [(f, payload_size(f)) for f in files if f.kind in ("rom", "archive")]
+        sized = [(f, size) for f, size in sized if size is not None]
+        identified = [(f, size) for f, size in sized if f.rel_path in games]
+        unmatched = [(f, size) for f, size in sized if f.rel_path not in games]
+        identified_sizes = {size for _, size in identified}
+        unmatched_sizes = {size for _, size in unmatched}
+        per_game = Counter((game, size) for f, size in identified for game in games[f.rel_path])
+        wanted = [
+            (f, size)
+            for f, size in identified
+            if size in unmatched_sizes or any(per_game[(g, size)] > 1 for g in games[f.rel_path])
+        ] + [(f, size) for f, size in unmatched if size in identified_sizes]
+        limit = self.settings.lookups.max_hash_bytes
+        for f, size in wanted:
+            sha1 = payload_sha1(root / f.rel_path, rom_extensions, limit)
+            if sha1 is not None:
+                found.payloads[f.rel_path] = (size, sha1)
+        originals: dict[str, str] = {}
+        for f, _ in sorted(identified, key=lambda pair: pair[0].rel_path):
+            if f.rel_path in found.payloads:
+                originals.setdefault(found.payloads[f.rel_path][1], f.rel_path)
+        for f, _ in unmatched:
+            original = originals.get(found.payloads.get(f.rel_path, (None, None))[1])
+            if original is not None:
+                found.identify(f.rel_path, games[original], METHOD_DUPLICATE)
 
     def _suggest(self, dat: Dat, unmatched: list[InventoryFile], found: "Found") -> None:
         config = self.settings.fuzzy
@@ -310,6 +372,10 @@ class Scanner:
                 ],
             )
             conn.executemany(
+                "INSERT INTO payload_hash VALUES (?, ?, ?, ?)",
+                [(label, rel, size, sha1) for rel, (size, sha1) in found.payloads.items()],
+            )
+            conn.executemany(
                 "INSERT INTO suggestion VALUES (?, ?, ?, ?)",
                 [
                     (label, rel, game, score)
@@ -336,6 +402,8 @@ class Found:
     hashes: dict[str, list[ContentHash]] = field(default_factory=dict)
     lookups: dict[str, tuple[str, str]] = field(default_factory=dict)
     suggestions: dict[str, list[tuple[str, float]]] = field(default_factory=dict)
+    # rel_path -> (payload size, payload SHA1), where a duplicate was possible
+    payloads: dict[str, tuple[int, str]] = field(default_factory=dict)
 
     def identify(self, rel_path, games, method, score=CHECKSUM_SCORE) -> None:
         for game in sorted(games):

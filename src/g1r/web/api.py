@@ -150,6 +150,8 @@ def game_dict(game: matching.GameRow) -> dict:
                 "keep": row.keep,
                 "operation": row.operation,
                 "discarded": row.discarded,
+                "identical": row.identical,
+                "discard_reason": row.discard_reason if row.operation else None,
             }
             for row in game.rows
         ],
@@ -189,6 +191,10 @@ def build_router(
             "discarded_to": f"{settings.paths.discarded_root}/{folder.label}/",
             "delete_originals": folder.delete_originals,
         }
+
+    def produces(library: Library, folder: FolderEntry) -> str:
+        """What the folder's platform target produces: kept among identical copies."""
+        return settings.platforms.targets[store.target_for(library, folder.platform)].produces
 
     def conversion_rows(library: Library, folder: FolderEntry, conn) -> list:
         target = settings.platforms.targets[store.target_for(library, folder.platform)]
@@ -238,7 +244,13 @@ def build_router(
         library = store.load()
         result = []
         for folder in library.folders:
-            table = matching.table(settings, conn, folder.label, store.ranking_for(folder))
+            table = matching.table(
+                settings,
+                conn,
+                folder.label,
+                store.ranking_for(folder),
+                prefer=produces(library, folder),
+            )
             info = folder_info(library, folder)
             scan = scanner.latest_scan(conn, folder.label)
             dat = registry.active_version(conn, library, folder.platform)
@@ -347,7 +359,9 @@ def build_router(
 
     def discard_plan(conn, label: str, group_key: str | None):
         folder = folder_or_404(label)
-        games = matching.game_rows(settings, conn, label, store.ranking_for(folder))
+        games = matching.game_rows(
+            settings, conn, label, store.ranking_for(folder), produces(store.load(), folder)
+        )
         if group_key is not None:
             games = [g for g in games if g.group.key == group_key]
             if not games:
@@ -585,14 +599,23 @@ def build_router(
     @router.get("/folders/{label}/games")
     def folder_games(label: str, conn: Conn):
         folder = folder_or_404(label)
-        games = matching.game_rows(settings, conn, label, store.ranking_for(folder))
+        games = matching.game_rows(
+            settings, conn, label, store.ranking_for(folder), produces(store.load(), folder)
+        )
         return [game_dict(g) for g in games]
 
     @router.put("/folders/{label}/keep")
     def keep(label: str, body: KeepChoice, conn: Conn):
         folder = folder_or_404(label)
         matching.set_keep(conn, label, body.group_key, body.rel_path)
-        game = matching.find_game(settings, conn, label, store.ranking_for(folder), body.group_key)
+        game = matching.find_game(
+            settings,
+            conn,
+            label,
+            store.ranking_for(folder),
+            body.group_key,
+            produces(store.load(), folder),
+        )
         if game is None:
             raise not_found("no such game")
         return game_dict(game)
@@ -601,7 +624,14 @@ def build_router(
     def leave(label: str, body: LeaveAlone, conn: Conn):
         folder = folder_or_404(label)
         matching.set_left_alone(conn, label, body.group_key, body.left)
-        game = matching.find_game(settings, conn, label, store.ranking_for(folder), body.group_key)
+        game = matching.find_game(
+            settings,
+            conn,
+            label,
+            store.ranking_for(folder),
+            body.group_key,
+            produces(store.load(), folder),
+        )
         if game is None:
             raise not_found("no such game")
         return game_dict(game)

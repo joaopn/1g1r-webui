@@ -22,6 +22,8 @@ from g1r.converter import CRC_FORMAT
 
 # The discarded/ subfolder of 1G1R moves (matching.REASON_DISCARDED names the same one).
 REASON_1G1R = "1g1r"
+# Identical copies of a kept version (discarded.REASON_DUPLICATES names the same one).
+REASON_DUPLICATES = "duplicates"
 
 PLACE_FOLDER = "folder"
 PLACE_DISCARDED = "discarded"
@@ -51,7 +53,14 @@ REASON_MANUAL = "manual"
 WRITES = (MOVE, CONVERT)
 
 # The per-file rows a conversion's output inherits from its original (same ROM data).
-CARRIED = ("identity", "content_hash", "lookup_result", "suggestion", "manual_identity")
+CARRIED = (
+    "identity",
+    "content_hash",
+    "lookup_result",
+    "suggestion",
+    "manual_identity",
+    "payload_hash",
+)
 
 
 class PlanError(RuntimeError):
@@ -136,7 +145,7 @@ def plan_discards(conn: sqlite3.Connection, label: str, root: Path, games) -> li
                 Move(
                     f["rel_path"],
                     game.group.key,
-                    REASON_1G1R,
+                    row.discard_reason,
                     root / f["rel_path"],
                     Path(row.operation),
                     f["size"],

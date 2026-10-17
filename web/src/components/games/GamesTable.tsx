@@ -8,6 +8,7 @@ import {
   CircleCheck,
   CircleDashed,
   Columns3,
+  Copy,
   CornerDownRight,
   EyeOff,
   Globe,
@@ -368,6 +369,7 @@ const PERCENT = new Intl.NumberFormat("en-US", { style: "percent" });
 
 const METHOD_ICONS: Record<string, LucideIcon> = {
   hasheous: Globe,
+  duplicate: Copy,
   fuzzy: Sparkles,
   manual: UserRound,
 };
@@ -379,7 +381,9 @@ function MatchBar({
   version: Version;
   onUnassign?: (version: Version) => void;
 }) {
-  const label = METHOD_LABELS[version.method]?.long ?? version.method;
+  const identical =
+    version.identical.length > 0 ? ` · identical to ${version.identical.join(", ")}` : "";
+  const label = (METHOD_LABELS[version.method]?.long ?? version.method) + identical;
   const Icon = METHOD_ICONS[version.method];
   const manual = version.method === "manual" && onUnassign;
   return (
@@ -502,7 +506,9 @@ function versionCell(id: ColumnId, version: Version | null, ctx: CellContext) {
               ) : null}
             </span>
           ) : version.operation ? (
-            <span className="text-status-warn">→ discard</span>
+            <span className="text-status-warn">
+              {version.discard_reason === "duplicates" ? "→ duplicates" : "→ discard"}
+            </span>
           ) : version.keep ? (
             <span className="font-medium text-status-good">keep</span>
           ) : (

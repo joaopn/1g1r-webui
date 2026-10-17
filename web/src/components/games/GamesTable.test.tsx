@@ -167,3 +167,33 @@ test("a game with proposed moves has an apply button; a discarded version restor
     game: expect.objectContaining({ name: "Contra 2" }),
   });
 });
+
+test("an identical copy shows where it goes", async () => {
+  const games = GAMES.map((g, i) =>
+    i === 0
+      ? {
+          ...g,
+          versions: g.versions.map((v, j) =>
+            j === 0
+              ? {
+                  ...v,
+                  method: "duplicate",
+                  identical: [g.versions[1].rel_path],
+                  operation: "/roms/discarded/nes/duplicates/x.zip",
+                  discard_reason: "duplicates" as const,
+                }
+              : v,
+          ),
+        }
+      : g,
+  );
+  render(
+    <MemoryRouter>
+      <GamesTable label="nes" games={games} meta={META} onKeep={vi.fn()} onLeave={vi.fn()} />
+    </MemoryRouter>,
+  );
+  expect(await screen.findByText("→ duplicates")).toBeInTheDocument();
+  expect(
+    screen.getByTitle(/^byte-identical .* · identical to Contra \(USA\)\.zip$/),
+  ).toBeInTheDocument();
+});

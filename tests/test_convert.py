@@ -145,7 +145,7 @@ def test_unwrap_carries_the_identity_and_the_pick(setup, roms_root):  # noqa: F8
         json={"rel_paths": ["Contra (Japan).zip"], "token": plan["token"]},
     )
     assert wait_run(client)["status"] == "done"
-    assert (roms_root / "NES Set" / "Contra (Japan).nes").read_bytes() == b"x"
+    assert (roms_root / "NES Set" / "Contra (Japan).nes").read_bytes() == b"Contra (Japan)"
 
     found = versions(client)
     assert "Contra (Japan).zip" not in found
