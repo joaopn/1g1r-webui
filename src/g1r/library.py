@@ -122,7 +122,15 @@ class LibraryStore:
         return chosen if chosen in profile.targets else profile.default_target
 
     def ranking_for(self, folder: FolderEntry) -> RankingConfig:
-        return folder.ranking or self.settings.ranking
+        """The folder's own ranking, else the default with the platform's criteria."""
+        if folder.ranking is not None:
+            return folder.ranking
+        profile = self.settings.platforms.profiles.get(folder.platform)
+        if profile is not None and profile.ranking_criteria is not None:
+            return self.settings.ranking.model_copy(
+                update={"criteria": list(profile.ranking_criteria)}
+            )
+        return self.settings.ranking
 
     def ignored_filenames(self, library: Library) -> list[str]:
         if library.ignored_filenames is None:

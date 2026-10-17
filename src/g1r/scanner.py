@@ -50,7 +50,8 @@ METHOD_FUZZY = "fuzzy"
 METHOD_MANUAL = "manual"
 CHECKSUM_SCORE = 1.0
 
-ReportRunner = Callable[[Settings, Path, Path], list[igir.ReportRow]]
+# (settings, dat file, folder[, merge=mode]) -> report rows
+ReportRunner = Callable[..., list[igir.ReportRow]]
 
 
 class ScanError(RuntimeError):
@@ -292,8 +293,18 @@ class Scanner:
                 "nothing was identified (add one in Settings → DATs)"
             )
         dat_file = self.settings.paths.data_dir / active["file"]
-        rows = self.report_runner(self.settings, dat_file, root)
-        by_path = igir.identified_files(rows)
+        modes = self.settings.platforms.profiles[folder.platform].igir_merge_modes
+        if modes:
+            # Arcade: each mode identifies the sets built its way; none misidentifies.
+            by_path: dict[str, set[str]] = {}
+            for mode in modes:
+                found_now = igir.identified_files(
+                    self.report_runner(self.settings, dat_file, root, merge=mode)
+                )
+                for path, games in found_now.items():
+                    by_path.setdefault(path, set()).update(games)
+        else:
+            by_path = igir.identified_files(self.report_runner(self.settings, dat_file, root))
         parts = {
             e.lower() for e in self.settings.platforms.profiles[folder.platform].part_extensions
         }

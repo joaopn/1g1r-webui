@@ -168,7 +168,7 @@ export function sortValue(game: Game, id: ColumnId): SortValue {
     case "file":
       return version.rel_path.toLowerCase();
     case "dat_name":
-      return version.game_name.toLowerCase();
+      return version.title.toLowerCase();
     case "region":
       return version.regions.join(", ");
     case "languages":
@@ -261,7 +261,9 @@ export function filterGames(games: Game[], filter: GameFilter): Game[] {
       game.name.toLowerCase().includes(needle) ||
       game.versions.some(
         (v) =>
-          v.rel_path.toLowerCase().includes(needle) || v.game_name.toLowerCase().includes(needle),
+          v.rel_path.toLowerCase().includes(needle) ||
+          v.game_name.toLowerCase().includes(needle) ||
+          v.title.toLowerCase().includes(needle),
       )
     );
   });

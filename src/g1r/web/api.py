@@ -149,6 +149,7 @@ def game_dict(game: matching.GameRow) -> dict:
             {
                 "rel_path": row.version.rel_path,
                 "game_name": row.version.game_name,
+                "title": row.version.title or row.version.game_name,
                 "method": row.version.method,
                 "probability": row.probability,
                 "regions": list(row.version.parsed.regions),
@@ -210,7 +211,9 @@ def build_router(
     def produces(library: Library, folder: FolderEntry) -> matching.FolderView:
         """The folder's platform as the 1G1R table sees it."""
         target = settings.platforms.targets[store.target_for(library, folder.platform)]
-        return matching.FolderView(target.produces, parts_of(folder))
+        return matching.FolderView(
+            target.produces, parts_of(folder), platforms[folder.platform].names_from
+        )
 
     def conversion_rows(library: Library, folder: FolderEntry, conn) -> list:
         target = settings.platforms.targets[store.target_for(library, folder.platform)]

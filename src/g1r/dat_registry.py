@@ -138,6 +138,8 @@ class DatRegistry:
                 continue
             if "{system}" in source.url_template and not profile.redump_system:
                 continue
+            if "{dat_file}" in source.url_template and not profile.dat_file:
+                continue
             found.append(source_id)
         return found
 
@@ -151,6 +153,7 @@ class DatRegistry:
             name=urllib.parse.quote(profile.dat_name),
             family=urllib.parse.quote(family.libretro_dir),
             system=urllib.parse.quote(profile.redump_system or ""),
+            dat_file=urllib.parse.quote(profile.dat_file or ""),
         )
         try:
             data = self.fetch(url)

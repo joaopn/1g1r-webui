@@ -1,4 +1,4 @@
-import { Gamepad, Gamepad2 } from "lucide-react";
+import { Gamepad, Gamepad2, Joystick } from "lucide-react";
 import type { Platform } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -17,7 +17,8 @@ export function PlatformIcon({
   widthRem?: number;
   className?: string;
 }) {
-  const Glyph = platform?.kind === "handheld" ? Gamepad : Gamepad2;
+  const Glyph =
+    platform?.kind === "handheld" ? Gamepad : platform?.kind === "arcade" ? Joystick : Gamepad2;
   return (
     <span
       aria-hidden="true"
@@ -26,7 +27,9 @@ export function PlatformIcon({
         "inline-flex h-5 shrink-0 items-center justify-center gap-0.5 rounded-sm border px-1 font-semibold text-[10px] leading-none tracking-tight",
         platform?.kind === "handheld"
           ? "border-status-info/40 bg-status-info/10 text-status-info"
-          : "border-primary/40 bg-primary/10 text-primary",
+          : platform?.kind === "arcade"
+            ? "border-status-good/40 bg-status-good/10 text-status-good"
+            : "border-primary/40 bg-primary/10 text-primary",
         className,
       )}
     >

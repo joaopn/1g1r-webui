@@ -363,8 +363,16 @@ function versionCell(id: ColumnId, version: Version | null, ctx: CellContext) {
       );
     case "dat_name":
       return (
-        <Cell key={id} title={version.game_name} className="text-muted-foreground">
-          {version.game_name}
+        <Cell
+          key={id}
+          title={
+            version.title === version.game_name
+              ? version.game_name
+              : `${version.title} (set ${version.game_name})`
+          }
+          className="text-muted-foreground"
+        >
+          {version.title}
         </Cell>
       );
     case "region":

@@ -129,6 +129,7 @@ platforms:
     - 3ds
     - nds
     - neo-geo-pocket
+    - neogeomvs
     - neo-geo-pocket-color
     - nes
     - ngc
@@ -312,6 +313,23 @@ platforms:
       targets: [zip, plain]
       default_target: zip
       screenscraper_id: 15
+    neogeomvs:
+      name: Neo Geo MVS
+      short: "MVS"
+      kind: arcade
+      dat_name: FinalBurn Neo - Neo Geo Games
+      dat_family: fbneo
+      dat_file: "FinalBurn Neo (ClrMame Pro XML, Neogeo only)"
+      # Loose chip files; the games are the romset zips.
+      rom_extensions: [bin, rom]
+      romsets: true
+      names_from: description
+      igir_merge_modes: [split, nonmerged]
+      # Clones are hacks, bootlegs and other releases of the parent: parent first.
+      ranking_criteria: [parent, prerelease, region]
+      targets: [zip]
+      default_target: zip
+      screenscraper_id: 142
     neo-geo-pocket:
       name: Neo Geo Pocket
       short: "NGP"
@@ -518,6 +536,7 @@ dats:
   families:
     nointro: {label: No-Intro, libretro_dir: no-intro, clonelist_suffix: (No-Intro)}
     redump: {label: Redump, libretro_dir: redump, clonelist_suffix: (Redump)}
+    fbneo: {label: FinalBurn Neo, libretro_dir: fbneo-split, clonelist_suffix: (FBNeo)}
   sources:
     libretro:
       label: libretro-database mirror
@@ -526,6 +545,7 @@ dats:
       # The mirror has no parent/clone data and lists headered and headerless NES
       # entries separately: good for identifying files, not for grouping versions.
       identification_only: true
+      families: [nointro, redump]
     nointro:
       label: No-Intro (DAT-o-MATIC)
       website: "https://datomatic.no-intro.org/index.php?page=download&s=64&op=daily"
@@ -539,6 +559,13 @@ dats:
       website: "https://redump.info/downloads.php"
       identification_only: false
       families: [redump]
+    fbneo:
+      label: FinalBurn Neo (GitHub)
+      # {dat_file} is the platform's dat_file. Parent/clone and BIOS data included.
+      url_template: "https://raw.githubusercontent.com/libretro/FBNeo/master/dats/{dat_file}.dat"
+      website: "https://github.com/libretro/FBNeo/tree/master/dats"
+      identification_only: false
+      families: [fbneo]
     upload:
       label: Uploaded file
       identification_only: false

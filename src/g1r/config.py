@@ -6,7 +6,7 @@ Unknown keys are rejected so a typo in config.yaml fails loudly instead of being
 import os
 from importlib import resources
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -125,10 +125,10 @@ class TargetConfig(_Strict):
         return self
 
 
-PLATFORM_KINDS = ("console", "handheld")
+PLATFORM_KINDS = ("console", "handheld", "arcade")
 
 
-DAT_FAMILIES = ("nointro", "redump")
+DAT_FAMILIES = ("nointro", "redump", "fbneo")
 
 
 class PlatformProfile(_Strict):
@@ -153,6 +153,18 @@ class PlatformProfile(_Strict):
     screenscraper_id: int | None = None
     # A card image header the scan reads (a key of `card_images`), or None.
     card_image: str | None = None
+    # Arcade: each archive is a romset (many chip ROMs, one game), never split or unpacked.
+    romsets: bool = False
+    # Where a game's readable title is: its DAT name (No-Intro, Redump) or its description
+    # (arcade DATs name games by short set names such as "mslug").
+    names_from: Literal["name", "description"] = "name"
+    # The DAT's file name at a source whose URL takes {dat_file} (FBNeo).
+    dat_file: str | None = None
+    # igir --merge-roms modes to identify with, each in its own run; a file is identified by
+    # any of them (arcade sets are split or non-merged, and igir must be told which).
+    igir_merge_modes: list[str] = Field(default_factory=list)
+    # The default ranking criteria for this platform's folders (None: the global default).
+    ranking_criteria: list[str] | None = None
 
 
 class PlatformsConfig(_Strict):
@@ -182,6 +194,11 @@ class PlatformsConfig(_Strict):
                 raise ValueError(f"platform {platform_id}: unknown targets {unknown}")
             if profile.default_target not in profile.targets:
                 raise ValueError(f"platform {platform_id}: default_target not in its targets")
+            unknown_criteria = set(profile.ranking_criteria or []) - set(RANKING_CRITERIA)
+            if unknown_criteria:
+                raise ValueError(
+                    f"platform {platform_id}: unknown ranking criteria {sorted(unknown_criteria)}"
+                )
             if profile.dat_family not in DAT_FAMILIES:
                 raise ValueError(
                     f"platform {platform_id}: dat_family must be one of {DAT_FAMILIES}"
@@ -401,7 +418,7 @@ class GroupingConfig(_Strict):
     retool_clonelists_dir: Path
 
 
-RANKING_CRITERIA = ("prerelease", "region", "language", "revision", "original")
+RANKING_CRITERIA = ("prerelease", "region", "language", "revision", "original", "parent")
 
 
 class RankingConfig(_Strict):

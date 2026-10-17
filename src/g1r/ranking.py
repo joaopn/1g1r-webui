@@ -18,6 +18,7 @@ LABELS = {
     "language": "language priority",
     "revision": "newest revision",
     "original": "original over re-release",
+    "parent": "the DAT's parent over its clones",
 }
 
 
@@ -72,6 +73,8 @@ def criterion_key(name: str, version: Version, ranking: RankingConfig):
         return _Newest(revision_key(parsed.revision))
     if name == "original":
         return int(parsed.rerelease)
+    if name == "parent":
+        return int(version.clone)
     raise ValueError(name)
 
 

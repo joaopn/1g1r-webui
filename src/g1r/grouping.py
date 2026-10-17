@@ -26,6 +26,11 @@ class Version:
     game_name: str
     method: str
     parsed: ParsedName
+    # The readable title (the DAT description for arcade sets, else the DAT name).
+    title: str = ""
+    # A clone in the DAT's parent/clone data; a BIOS set (arcade).
+    clone: bool = False
+    bios: bool = False
 
 
 @dataclass
@@ -96,31 +101,54 @@ def parent_names(dat: Dat) -> dict[str, str]:
 
 
 def build_groups(
-    settings: Settings, dat: Dat, identities: list[tuple[str, str, str]]
+    settings: Settings,
+    dat: Dat,
+    identities: list[tuple[str, str, str]],
+    names_from: str = "name",
 ) -> list[Group]:
     """identities: (rel_path, game_name, method). A file identified as several DAT games
-    (identical data listed twice) is placed once, by its first game name."""
+    (identical data listed twice) is placed once, by its first game name. `names_from`
+    "description": titles and name parsing use the DAT descriptions (arcade set names)."""
     parents = parent_names(dat)
+    by_name = {g.name: g for g in dat.games}
+
+    def title(game: str) -> str:
+        found = by_name.get(game)
+        if names_from == "description" and found is not None and found.description:
+            return found.description
+        return game
+
     retool = retool_index(settings, dat)
     first_name: dict[str, tuple[str, str]] = {}
     for rel_path, game, method in sorted(identities):
         first_name.setdefault(rel_path, (game, method))
     groups: dict[str, Group] = {}
     for rel_path, (game, method) in first_name.items():
-        parsed = parse_name(game, settings.names)
+        parsed = parse_name(title(game), settings.names)
         if game in parents:
-            key, source, label = "dat:" + parents[game], SOURCE_DAT, parents[game]
+            key, source, label = "dat:" + parents[game], SOURCE_DAT, title(parents[game])
         elif any(child_parent == game for child_parent in parents.values()):
-            key, source, label = "dat:" + game, SOURCE_DAT, game
+            key, source, label = "dat:" + game, SOURCE_DAT, title(game)
         elif (label := retool_group(retool, parsed, settings)) is not None:
             key, source = "retool:" + label, SOURCE_RETOOL
         elif settings.grouping.infer_from_dat_names:
             label = name_key(parsed, settings)
             key, source = "name:" + label, SOURCE_NAME
         else:
-            key, source, label = "game:" + game, SOURCE_SINGLE, game
+            key, source, label = "game:" + game, SOURCE_SINGLE, title(game)
         group = groups.setdefault(key, Group(key=key, name=label, source=source))
-        group.versions.append(Version(rel_path, game, method, parsed))
+        known = by_name.get(game)
+        group.versions.append(
+            Version(
+                rel_path,
+                game,
+                method,
+                parsed,
+                title(game),
+                game in parents,
+                known is not None and known.bios,
+            )
+        )
     for group in groups.values():
         group.versions.sort(key=lambda v: v.game_name)
         if len(group.versions) == 1 and group.source == SOURCE_NAME:

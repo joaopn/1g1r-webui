@@ -135,6 +135,8 @@ class FolderView:
     prefer: str | None = None
     # Extensions of files that are only part of a game (cue sheets, tracks): not versions.
     parts: frozenset[str] = frozenset()
+    # Where titles come from: DAT names, or descriptions (arcade sets).
+    names_from: str = "name"
 
 
 def is_part(rel_path: str, parts: frozenset[str]) -> bool:
@@ -215,7 +217,10 @@ def game_rows(
     ):
         file_notes.setdefault(rel, []).append(note)
     groups = build_groups(
-        settings, dat, [(r["rel_path"], r["game_name"], r["method"]) for r in identities]
+        settings,
+        dat,
+        [(r["rel_path"], r["game_name"], r["method"]) for r in identities],
+        view.names_from,
     )
     result = []
     for group in groups:
@@ -230,6 +235,14 @@ def game_rows(
         copies = _copies(present.versions, payloads, prefer, archives)
         ranked = Group(group.key, group.name, group.source, [c[0] for c in copies])
         status, reason, winner, candidates = _decide(ranked, ranking, picks, left, present)
+        if group.versions and all(v.bios for v in group.versions):
+            # Every arcade game needs its BIOS set: never proposed for discarding.
+            status, reason, winner, candidates = (
+                STATUS_LEFT,
+                "a BIOS: every game needs it",
+                None,
+                set(),
+            )
         if len(ranked.versions) == 1 and len(present.versions) > 1 and status == STATUS_SINGLE:
             status, reason = STATUS_DECIDED, "identical copies of one version"
         if status == STATUS_SINGLE and len(present.versions) < len(group.versions):

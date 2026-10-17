@@ -44,7 +44,10 @@ def identified_files(rows: list[ReportRow]) -> dict[str, set[str]]:
     return found
 
 
-def run_report(settings: Settings, dat_file: Path, input_dir: Path) -> list[ReportRow]:
+def run_report(
+    settings: Settings, dat_file: Path, input_dir: Path, merge: str | None = None
+) -> list[ReportRow]:
+    """`merge`: igir's --merge-roms mode, for arcade sets."""
     data_dir = settings.paths.data_dir
     work = data_dir / settings.igir.work_dir
     work.mkdir(parents=True, exist_ok=True)
@@ -63,6 +66,7 @@ def run_report(settings: Settings, dat_file: Path, input_dir: Path) -> list[Repo
             str(cache),
             "--report-output",
             str(report),
+            *(["--merge-roms", merge] if merge else []),
         ]
         try:
             result = subprocess.run(

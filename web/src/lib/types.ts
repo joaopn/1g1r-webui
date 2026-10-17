@@ -3,7 +3,7 @@ export type ColumnSize = { rem: number; min: number; max: number };
 export type Platform = {
   name: string;
   short: string;
-  kind: "console" | "handheld";
+  kind: "console" | "handheld" | "arcade";
   dat_name: string;
   rom_extensions: string[];
   targets: string[];
@@ -137,6 +137,8 @@ export type FolderDetail = FolderInfo & {
 export type Version = {
   rel_path: string;
   game_name: string;
+  /** The readable title: the DAT description for arcade sets, else the DAT name. */
+  title: string;
   method: string;
   probability: number;
   regions: string[];

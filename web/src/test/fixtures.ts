@@ -115,6 +115,7 @@ const version = (
 ) => ({
   rel_path: rel,
   game_name: rel.replace(/\.zip$/, ""),
+  title: rel.replace(/\.zip$/, ""),
   method: "dat-checksum",
   probability: 1,
   regions,

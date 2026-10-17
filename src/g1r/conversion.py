@@ -210,6 +210,19 @@ def rows(
                 target,
                 delete_originals,
             )
+        elif profile.romsets:
+            # Arcade: an archive is a romset, kept whole; a loose chip file is not a game.
+            if f["kind"] != "archive":
+                row.status, row.note = FLAGGED, "a loose chip ROM: arcade games are romset zips"
+            elif row.container == target.produces:
+                row.status = DONE
+            elif row.container in target.accepts:
+                row.status, row.note = ACCEPTED, f"{row.container} is accepted as it is"
+            else:
+                row.status, row.note = (
+                    FLAGGED,
+                    f"a {row.container} romset: the app makes no romsets",
+                )
         elif row.container not in (PLAIN, *disc_formats) and len(roms) != 1:
             row.status = FLAGGED
             row.note = (

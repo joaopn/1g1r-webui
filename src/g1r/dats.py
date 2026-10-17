@@ -32,6 +32,8 @@ class DatGame:
     category: str | None = None
     description: str | None = None
     roms: list[DatRom] = field(default_factory=list)
+    # A BIOS set (arcade): every game needs it.
+    bios: bool = False
 
 
 @dataclass
@@ -91,6 +93,7 @@ def _parse_xml(data: bytes) -> Dat:
             cloneofid=game_el.get("cloneofid"),
             category=game_el.findtext("category"),
             description=game_el.findtext("description"),
+            bios=game_el.get("isbios") == "yes",
         )
         for rom in game_el.iter("rom"):
             game.roms.append(
