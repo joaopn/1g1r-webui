@@ -108,6 +108,10 @@ platforms:
     - neo-geo-pocket
     - neo-geo-pocket-color
     - nes
+    - ngc
+    - ps2
+    - psp
+    - wii
     - neo-geo-cd
     - psx
     - saturn
@@ -124,6 +128,8 @@ platforms:
   archive_extensions: [zip, 7z]
   # Disc image formats that are a container of their own (what a disc target produces).
   disc_formats: [chd, rvz]
+  # Images already stripped of data are never converted further (design §4), only flagged.
+  lossy_patterns: ["*.nkit.*", "*.wbfs", "*.ciso"]
 
   # Target formats (the format the conversion part produces). Chosen once per platform.
   # `produces` is the container a conversion writes ("plain" = the bare ROM file);
@@ -139,6 +145,11 @@ platforms:
       description: The bare ROM file, no archive.
       produces: plain
       accepts: [plain]
+    rvz:
+      label: RVZ (Dolphin)
+      description: Dolphin's lossless compressed disc format, made with dolphin-tool.
+      produces: rvz
+      accepts: [rvz]
     chd:
       label: CHD (compressed disc image)
       description: One lossless compressed file per disc, made with chdman. Read by DuckStation, Beetle, Flycast, PCSX2 and PPSSPP.
@@ -376,6 +387,53 @@ platforms:
       targets: [chd]
       default_target: chd
       screenscraper_id: 70
+    ngc:
+      name: GameCube
+      short: "GC"
+      kind: console
+      dat_name: Nintendo - GameCube
+      dat_family: redump
+      redump_system: gc
+      rom_extensions: [rvz, iso, gcm]
+      targets: [rvz]
+      default_target: rvz
+      screenscraper_id: 13
+    wii:
+      name: Wii
+      short: "Wii"
+      kind: console
+      dat_name: Nintendo - Wii
+      dat_family: redump
+      redump_system: wii
+      rom_extensions: [rvz, iso, wbfs]
+      targets: [rvz]
+      default_target: rvz
+      screenscraper_id: 16
+    ps2:
+      name: PlayStation 2
+      short: "PS2"
+      kind: console
+      dat_name: Sony - PlayStation 2
+      dat_family: redump
+      redump_system: ps2
+      rom_extensions: [chd, cue, bin, iso]
+      part_extensions: [cue, bin]
+      iso_mode: dvd
+      targets: [chd]
+      default_target: chd
+      screenscraper_id: 58
+    psp:
+      name: PlayStation Portable
+      short: "PSP"
+      kind: handheld
+      dat_name: Sony - PlayStation Portable
+      dat_family: redump
+      redump_system: psp
+      rom_extensions: [chd, iso, cso]
+      iso_mode: dvd
+      targets: [chd]
+      default_target: chd
+      screenscraper_id: 61
     wonderswan:
       name: WonderSwan
       short: "WS"
@@ -502,6 +560,14 @@ chdman:
   # Extra options for createcd/createdvd, e.g. ["--numprocessors", "4"]; empty: chdman's
   # own defaults (its standard codecs and hunk size).
   create_args: []
+
+dolphin:
+  binary: dolphin-tool
+  user_dir: cache/dolphin
+  # One convert or verify run must finish within this many seconds.
+  timeout_seconds: 7200
+  # Dolphin's suggested RVZ settings: 128 KiB blocks, zstd level 5.
+  convert_args: ["-f", "rvz", "-b", "131072", "-c", "zstd", "-l", "5"]
 
 jobs:
   # Folder scans run in the background, this many at a time.

@@ -1,4 +1,5 @@
-"""Disc images: reading cue sheets, and the chdman runs that make and check a CHD.
+"""Disc images: reading cue sheets, the chdman runs that make and check a CHD, and the
+dolphin-tool runs that make and check an RVZ.
 
 A cue sheet names the files holding the disc's tracks (`FILE "name" BINARY`). chdman makes
 the CHD from the cue sheet (or from an ISO, a single data track), checks the CHD's own
@@ -10,13 +11,20 @@ import re
 import subprocess
 from pathlib import Path, PurePosixPath
 
-from g1r.config import ChdmanConfig
+from g1r.config import ChdmanConfig, DolphinConfig
 
 CUE = "cue"
 ISO = "iso"
+GCM = "gcm"
+# Single-file disc images a CHD or RVZ is made from.
+IMAGES = (ISO, GCM)
 # chdman's modes for making a CHD.
 CREATECD = "createcd"
 CREATEDVD = "createdvd"
+# dolphin-tool convert, for GameCube and Wii.
+RVZ = "rvz"
+
+_SHA1_LINE = re.compile(r"^[0-9a-f]{40}$")
 # The extracted copy's names inside a work directory; %t is chdman's track number.
 EXTRACTED_CUE = "disc.cue"
 EXTRACTED_TRACKS = "track%t.bin"
@@ -61,7 +69,8 @@ def cue_paths(cue: Path) -> list[Path]:
     return paths
 
 
-def _run(config: ChdmanConfig, args: list[str]) -> None:
+def _run(config: ChdmanConfig | DolphinConfig, args: list[str]) -> str:
+    tool = Path(config.binary).name
     try:
         result = subprocess.run(
             [config.binary, *args],
@@ -71,10 +80,11 @@ def _run(config: ChdmanConfig, args: list[str]) -> None:
             check=False,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
-        raise DiscError(f"chdman could not run: {exc}") from exc
+        raise DiscError(f"{tool} could not run: {exc}") from exc
     if result.returncode != 0:
         lines = (result.stderr or result.stdout).strip().splitlines()
-        raise DiscError(f"chdman {args[0]} failed: {lines[-1] if lines else result.returncode}")
+        raise DiscError(f"{tool} {args[0]} failed: {lines[-1] if lines else result.returncode}")
+    return result.stdout
 
 
 def create(config: ChdmanConfig, mode: str, source: Path, output: Path) -> None:
@@ -107,3 +117,21 @@ def extract_cd(config: ChdmanConfig, chd: Path, work: Path) -> list[Path]:
 
 def extract_dvd(config: ChdmanConfig, chd: Path, output: Path) -> None:
     _run(config, ["extractdvd", "-i", str(chd), "-o", str(output)])
+
+
+def make_rvz(config: DolphinConfig, user_dir: Path, image: Path, output: Path) -> None:
+    """dolphin-tool replaces an existing output, so the caller claims `output` first."""
+    user_dir.mkdir(parents=True, exist_ok=True)
+    _run(
+        config,
+        ["convert", "-u", str(user_dir), "-i", str(image), "-o", str(output), *config.convert_args],
+    )
+
+
+def rvz_sha1(config: DolphinConfig, user_dir: Path, rvz: Path) -> str:
+    """The SHA1 of the disc an RVZ holds (that of the ISO it was made from)."""
+    out = _run(config, ["verify", "-u", str(user_dir), "-i", str(rvz), "-a", "sha1"])
+    found = [line.strip() for line in out.splitlines() if _SHA1_LINE.match(line.strip())]
+    if not found:
+        raise DiscError("dolphin-tool verify gave no SHA1")
+    return found[-1]

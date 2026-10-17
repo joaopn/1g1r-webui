@@ -124,7 +124,8 @@ class Converter:
 
     def _disc(self, step, temp: Path) -> None:
         """chdman makes the CHD; it must pass `verify`, and its tracks extracted back must
-        equal the originals: the same data in order, and per file when there are several."""
+        equal the originals: the same data in order, and per file when there are several.
+        For GameCube and Wii, dolphin-tool makes an RVZ instead (`_rvz`)."""
         chdman = self.settings.chdman
         work = moves.work_path(self.config, step.destination)
         try:
@@ -140,6 +141,9 @@ class Converter:
             cue = disc.suffix.lower().lstrip(".") == discs.CUE
             originals = discs.cue_paths(disc) if cue else [disc]
             each, whole = self._digests(originals)
+            if step.disc_mode == discs.RVZ:
+                self._rvz(step, disc, whole, temp)
+                return
             discs.create(chdman, step.disc_mode, disc, temp)
             discs.verify(chdman, temp)
             back = work / "back"
@@ -161,6 +165,16 @@ class Converter:
         finally:
             shutil.rmtree(work, ignore_errors=True)
 
+    def _rvz(self, step, image: Path, sha1: str, temp: Path) -> None:
+        """dolphin-tool makes the RVZ; the disc it holds must have the image's SHA1."""
+        dolphin = self.settings.dolphin
+        user_dir = self.settings.paths.data_dir / dolphin.user_dir
+        # dolphin-tool would replace an existing file: claim the temporary name first.
+        temp.open("xb").close()
+        discs.make_rvz(dolphin, user_dir, image, temp)
+        if discs.rvz_sha1(dolphin, user_dir, temp) != sha1:
+            raise moves.MoveError(f"the RVZ of {step.source.name} does not hold the same disc")
+
     def _unpack(self, step, work: Path) -> Path:
         """Extract an archive's disc files to `work/source`, each checked against the CRC32
         and size the scan listed; return the cue sheet or ISO among them."""
@@ -177,10 +191,10 @@ class Converter:
                 raise moves.MoveError(f"the scan listed no CRC32 for {name}")
             if crc_and_size(self.config.copy_chunk_bytes, path) != (crc.lower(), size):
                 raise moves.MoveError(f"{name} did not extract as the archive lists it")
-            if relative.suffix.lower().lstrip(".") in (discs.CUE, discs.ISO):
+            if relative.suffix.lower().lstrip(".") in (discs.CUE, *discs.IMAGES):
                 found = path
         if found is None:
-            raise moves.MoveError(f"{step.source.name} holds no cue sheet or ISO")
+            raise moves.MoveError(f"{step.source.name} holds no cue sheet or disc image")
         return found
 
     def _digests(self, paths: list[Path]) -> tuple[list[str], str]:

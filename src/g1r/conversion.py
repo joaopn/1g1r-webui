@@ -4,6 +4,7 @@ Proposals only: nothing here touches a file. Every proposal is lossless by const
 (wrap a ROM in a zip, or take it out of one) and names the check that would prove it.
 """
 
+import fnmatch
 import sqlite3
 from collections import Counter
 from dataclasses import dataclass, field
@@ -19,11 +20,12 @@ ACCEPTED = "accepted"
 WRAP = "wrap"
 UNWRAP = "unwrap"
 MAKE_CHD = "make chd"
+MAKE_RVZ = "make rvz"
 # A track file a cue sheet's conversion takes along.
 PART = "part"
 FLAGGED = "flagged"
-STATUSES = (WRAP, UNWRAP, MAKE_CHD, FLAGGED, PART, ACCEPTED, DONE)
-CONVERTING = (WRAP, UNWRAP, MAKE_CHD)
+STATUSES = (WRAP, UNWRAP, MAKE_CHD, MAKE_RVZ, FLAGGED, PART, ACCEPTED, DONE)
+CONVERTING = (WRAP, UNWRAP, MAKE_CHD, MAKE_RVZ)
 # The only archive the app writes; other targets are listed but never produced here.
 ZIP = "zip"
 ZIP_SUFFIX = f".{ZIP}"
@@ -123,6 +125,10 @@ def rows(
         for r in conn.execute("SELECT rel_path FROM folder_file WHERE folder_label = ?", (label,))
     }
     sheets, taken = _cue_sheets(files, root) if to_disc else ({}, {})
+    patterns = [p.lower() for p in settings.platforms.lossy_patterns]
+
+    def lossy(name: str) -> bool:
+        return any(fnmatch.fnmatchcase(name.lower(), p) for p in patterns)
 
     def is_rom(name: str) -> bool:
         return _ext(name) in rom_extensions
@@ -138,6 +144,9 @@ def rows(
         ext = _ext(rel)
         if rel in problems:
             row.status, row.note = FLAGGED, problems[rel]
+        elif lossy(PurePosixPath(rel).name):
+            row.status = FLAGGED
+            row.note = "already stripped of data (scrubbed or trimmed): never converted further"
         elif to_disc and f["kind"] == "rom" and ext == discs.CUE:
             sheet = sheets.get(rel)
             if isinstance(sheet, str):
@@ -145,14 +154,16 @@ def rows(
             else:
                 row.parts = sheet
                 row.members = [{"name": PurePosixPath(p).name} for p in sheet]
-                _disc(settings, label, row, RECIPE_DISC, discs.CUE, profile, delete_originals)
+                _disc(
+                    settings, label, row, RECIPE_DISC, discs.CUE, profile, target, delete_originals
+                )
         elif to_disc and f["kind"] == "rom" and ext in profile.part_extensions:
             if rel in taken:
-                row.status, row.note = PART, f"made into a CHD with {taken[rel]}"
+                row.status, row.note = PART, f"converted with {taken[rel]}"
             else:
                 row.status, row.note = FLAGGED, "a track no cue sheet in the folder refers to"
-        elif to_disc and f["kind"] == "rom" and ext == discs.ISO:
-            _disc(settings, label, row, RECIPE_DISC, discs.ISO, profile, delete_originals)
+        elif to_disc and f["kind"] == "rom" and ext in discs.IMAGES:
+            _disc(settings, label, row, RECIPE_DISC, ext, profile, target, delete_originals)
         elif to_disc and f["kind"] == "archive" and _disc_inside(roms):
             _disc(
                 settings,
@@ -161,6 +172,7 @@ def rows(
                 RECIPE_ARCHIVE_DISC,
                 _disc_inside(roms),
                 profile,
+                target,
                 delete_originals,
             )
         elif row.container not in (PLAIN, *disc_formats) and len(roms) != 1:
@@ -186,7 +198,7 @@ def rows(
                 planned.add(row.output.lower())
         result.append(row)
     # A track whose cue sheet could not be converted is not taken along after all.
-    converting = {p for r in result if r.status == MAKE_CHD for p in r.parts}
+    converting = {p for r in result if r.status in CONVERTING for p in r.parts}
     for row in result:
         if row.status == PART and row.rel_path not in converting:
             row.status, row.note = FLAGGED, "its cue sheet cannot be converted (see the cue)"
@@ -230,29 +242,35 @@ def _cue_sheets(files, root: Path | None) -> tuple[dict, dict]:
 
 
 def _disc_inside(roms: list[dict]) -> str | None:
-    """An archive holding one disc: a cue sheet with its tracks, or a single ISO."""
+    """An archive holding one disc: a cue sheet with its tracks, or a single image."""
     kinds = Counter(_ext(m["name"]) for m in roms)
     if kinds.get(discs.CUE) == 1 and set(kinds) <= {discs.CUE, "bin"} and len(roms) > 1:
         return discs.CUE
-    if len(roms) == 1 and kinds.get(discs.ISO) == 1:
-        return discs.ISO
+    if len(roms) == 1 and _ext(roms[0]["name"]) in discs.IMAGES:
+        return _ext(roms[0]["name"])
     return None
 
 
-def _disc(settings, label, row, recipe, source, profile, delete_originals) -> None:
+def _disc(settings, label, row, recipe, source, profile, target, delete_originals) -> None:
     parent = PurePosixPath(row.rel_path).parent
-    row.status, row.recipe = MAKE_CHD, recipe
-    dvd = source == discs.ISO and profile.iso_mode == ISO_MODE_DVD
-    row.disc_mode = discs.CREATEDVD if dvd else discs.CREATECD
+    produces = target.produces
+    row.recipe = recipe
+    if produces == discs.RVZ:
+        row.status, row.disc_mode = MAKE_RVZ, discs.RVZ
+        row.verify = "dolphin-tool verify: the RVZ's disc SHA1 must equal the image's"
+    else:
+        row.status = MAKE_CHD
+        dvd = source in discs.IMAGES and profile.iso_mode == ISO_MODE_DVD
+        row.disc_mode = discs.CREATEDVD if dvd else discs.CREATECD
+        row.verify = "chdman verify, then the data extracted back must equal the originals (SHA1)"
     if recipe == RECIPE_ARCHIVE_DISC:
         inner = next(m["name"] for m in row.members if _ext(m["name"]) == source)
-        row.output = str(parent / f"{PurePosixPath(inner).stem}.{CHD}")
+        row.output = str(parent / f"{PurePosixPath(inner).stem}.{produces}")
         row.note = "unpacked to a work folder first, each file checked against its CRC32"
     else:
-        row.output = str(parent / f"{PurePosixPath(row.rel_path).stem}.{CHD}")
+        row.output = str(parent / f"{PurePosixPath(row.rel_path).stem}.{produces}")
         if row.parts:
             row.note = f"with its {len(row.parts)} track file(s)"
-    row.verify = "chdman verify, then the tracks extracted back must equal the originals (SHA1)"
     if delete_originals:
         row.reversible = False
     else:

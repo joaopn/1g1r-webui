@@ -24,6 +24,7 @@ const STATUS_STYLE: Record<ConversionStatus, string> = {
   wrap: "border-primary text-primary",
   unwrap: "border-primary text-primary",
   "make chd": "border-primary text-primary",
+  "make rvz": "border-primary text-primary",
   part: "border-border text-muted-foreground",
   flagged: "border-status-warn text-status-warn",
   accepted: "border-border text-muted-foreground",

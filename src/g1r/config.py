@@ -152,6 +152,9 @@ class PlatformsConfig(_Strict):
     archive_extensions: list[str]
     # Disc image formats that are a container of their own (a target can produce them).
     disc_formats: list[str]
+    # Images already stripped of data (scrubbed, trimmed): never converted further, only
+    # flagged. Shell patterns on the file name, case-insensitive.
+    lossy_patterns: list[str] = Field(default_factory=list)
     targets: dict[str, TargetConfig]
     profiles: dict[str, PlatformProfile]
 
@@ -301,6 +304,15 @@ class ChdmanConfig(_Strict):
     create_args: list[str] = Field(default_factory=list)
 
 
+class DolphinConfig(_Strict):
+    binary: str
+    # Dolphin's user folder for its temporary files, relative to the data directory.
+    user_dir: str
+    timeout_seconds: float = Field(gt=0)
+    # Options for `dolphin-tool convert` (format, block size, codec, level).
+    convert_args: list[str]
+
+
 class ApplyConfig(_Strict):
     copy_chunk_bytes: int = Field(gt=0)
     temp_suffix: str = Field(min_length=1)
@@ -374,6 +386,7 @@ class Settings(_Strict):
     igir: IgirConfig
     archives: ArchivesConfig
     chdman: ChdmanConfig
+    dolphin: DolphinConfig
     lookups: LookupsConfig
     fuzzy: FuzzyConfig
     jobs: JobsConfig

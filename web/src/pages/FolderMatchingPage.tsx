@@ -134,7 +134,7 @@ export function FolderMatchingPage() {
       {(f.summary.waiting ?? 0) > 0 ? (
         <p className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-muted-foreground text-sm">
           {formatCount(f.summary.waiting ?? 0)} cue sheet and track file(s) wait for conversion:
-          each disc becomes one version here once it is a CHD (Conversion page).
+          each disc becomes one version here once converted to one file (Conversion page).
         </p>
       ) : null}
       {(f.summary.counts.other ?? 0) > 0 ? (

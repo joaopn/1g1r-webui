@@ -8,6 +8,7 @@ import hashlib
 import struct
 import zipfile
 import zlib
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
@@ -87,12 +88,48 @@ def chd_identity(path: Path) -> tuple[int, str] | None:
     return logical, sha1.hex()
 
 
-def payload_sha1(path: Path, rom_extensions: set[str], limit: int) -> str | None:
+# An RVZ (WIA family) starts with header 1: magic, version, compatible version, header 2's
+# size and SHA1, the disc's size, the file's size, header 1's SHA1. Header 2 follows: disc
+# type, compression, level, chunk size, then the disc's own header (game ID, disc number,
+# revision first).
+RVZ_TAG = b"RVZ\x01"
+RVZ_HEADERS = ">4sIII20sQQ20sIIII6sBB"
+RVZ_SUFFIX = ".rvz"
+
+
+def rvz_identity(path: Path) -> str | None:
+    """Which disc an RVZ holds, cheaply (no hashing): its size, game ID, disc and revision.
+    Equal identities are only candidates; `payload_sha1` decides."""
+    size = struct.calcsize(RVZ_HEADERS)
+    try:
+        with path.open("rb") as handle:
+            header = handle.read(size)
+    except OSError:
+        return None
+    if len(header) < size:
+        return None
+    tag, *_, disc_size, _, _, _, _, _, _, game_id, disc, revision = struct.unpack(
+        RVZ_HEADERS, header
+    )
+    if tag != RVZ_TAG:
+        return None
+    return f"{disc_size}:{game_id.hex()}:{disc}:{revision}"
+
+
+def payload_sha1(
+    path: Path,
+    rom_extensions: set[str],
+    limit: int,
+    rvz_sha1: Callable[[Path], str | None] | None = None,
+) -> str | None:
     """The SHA1 of the file's ROM data when it holds exactly one payload, else None. A CHD's
     is the disc's own SHA1 from its header, so two compressions of one disc are equal."""
     if path.suffix.lower() == CHD_SUFFIX:
         identity = chd_identity(path)
         return identity[1] if identity else None
+    if path.suffix.lower() == RVZ_SUFFIX:
+        # The disc's SHA1, which only dolphin-tool can tell (it decompresses the disc).
+        return rvz_sha1(path) if rvz_sha1 is not None else None
     found = []
     for data in payloads(path, rom_extensions, limit):
         found.append(hashlib.sha1(data, usedforsecurity=False).hexdigest())

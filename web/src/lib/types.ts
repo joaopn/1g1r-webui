@@ -275,6 +275,7 @@ export type ConversionStatus =
   | "wrap"
   | "unwrap"
   | "make chd"
+  | "make rvz"
   | "flagged"
   | "part"
   | "accepted"

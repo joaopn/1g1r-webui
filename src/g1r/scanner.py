@@ -15,13 +15,14 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
-from g1r import archives, fuzzy, hasheous, igir, journal, mounts, screenscraper
+from g1r import archives, discs, fuzzy, hasheous, igir, journal, mounts, screenscraper
 from g1r.config import Settings
 from g1r.conversion import ZIP_SUFFIX
 from g1r.dat_registry import DatRegistry
 from g1r.dats import Dat
 from g1r.hashing import (
     CHD_SUFFIX,
+    RVZ_SUFFIX,
     ContentHash,
     chd_identity,
     content_hashes,
@@ -29,6 +30,7 @@ from g1r.hashing import (
     payload_count,
     payload_sha1,
     payloads,
+    rvz_identity,
 )
 from g1r.library import FolderEntry, LibraryStore
 
@@ -322,6 +324,9 @@ class Scanner:
             if f.kind == "rom" and f.rel_path.lower().endswith(CHD_SUFFIX):
                 identity = chd_identity(root / f.rel_path)
                 return identity[0] if identity else None
+            if f.kind == "rom" and f.rel_path.lower().endswith(RVZ_SUFFIX):
+                # Not a size: a key equal only for the same disc of the same game.
+                return rvz_identity(root / f.rel_path)
             if f.kind == "rom":
                 return f.size
             # Only zips are read for their data here (hashing.payloads); 7z is not compared.
@@ -346,9 +351,11 @@ class Scanner:
         ] + [(f, size) for f, size in unmatched if size in identified_sizes]
         limit = self.settings.lookups.max_hash_bytes
         for f, size in wanted:
-            sha1 = payload_sha1(root / f.rel_path, rom_extensions, limit)
+            sha1 = payload_sha1(root / f.rel_path, rom_extensions, limit, self._rvz_sha1)
             if sha1 is not None:
-                found.payloads[f.rel_path] = (size, sha1)
+                # An RVZ's key starts with the disc's size, which is what is stored.
+                stored = int(size.split(":")[0]) if isinstance(size, str) else size
+                found.payloads[f.rel_path] = (stored, sha1)
         originals: dict[str, str] = {}
         for f, _ in sorted(identified, key=lambda pair: pair[0].rel_path):
             if f.rel_path in found.payloads:
@@ -357,6 +364,13 @@ class Scanner:
             original = originals.get(found.payloads.get(f.rel_path, (None, None))[1])
             if original is not None:
                 found.identify(f.rel_path, games[original], METHOD_DUPLICATE)
+
+    def _rvz_sha1(self, path: Path) -> str | None:
+        dolphin = self.settings.dolphin
+        try:
+            return discs.rvz_sha1(dolphin, self.settings.paths.data_dir / dolphin.user_dir, path)
+        except discs.DiscError:
+            return None
 
     def _suggest(self, dat: Dat, unmatched: list[InventoryFile], found: "Found") -> None:
         config = self.settings.fuzzy
