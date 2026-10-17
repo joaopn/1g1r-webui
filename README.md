@@ -10,14 +10,14 @@ A folder holds one platform. The app reads the formats listed, bare or inside a 
 
 | Platform | Formats read | Becomes | DAT download | Tested on real files |
 |---|---|---|---|---|
-| Amiga | `ipf` | zip | libretro (No-Intro) | `ipf` in zip, multi-disk |
+| Amiga | `ipf`; with a TOSEC DAT also `adf`, `adz`, `dms`, `lha`, `exe`, `hdf` | zip | libretro (No-Intro) or TOSEC | `ipf` in zip, multi-disk |
 | Atari 2600 | `a26`, `bin` | zip | libretro (No-Intro) | — |
 | Atari 5200 | `a52`, `bin` | zip | libretro (No-Intro) | — |
 | Atari 7800 | `a78`, `bin` | zip | libretro (No-Intro) | — |
 | Atari Jaguar | `j64`, `jag`, `rom`, `abs`, `cof` | zip | libretro (No-Intro) | `rom` in zip |
 | Atari Lynx | `lnx`, `lyx` | zip | libretro (No-Intro) | — |
 | ColecoVision | `col`, `rom`, `bin` | zip | libretro (No-Intro) | — |
-| Commodore 64 | `crt`, `d64` | zip | libretro (No-Intro) | `crt` and `d64` in zip |
+| Commodore 64 | `crt`, `d64`; with a TOSEC DAT also `d71`, `d81`, `g64`, `nib`, `t64`, `tap`, `prg`, `p00`, `lnx` | zip | libretro (No-Intro) or TOSEC | `crt` and `d64` in zip |
 | Dreamcast | `chd`, `cue`/`bin`, `gdi`/`bin`/`raw` | chd | redump.info | cue/bin in 7z |
 | Game Boy | `gb` | zip | libretro (No-Intro) | `gb` in zip |
 | Game Boy Advance | `gba` | zip | libretro (No-Intro) | — |
@@ -47,6 +47,8 @@ A folder holds one platform. The app reads the formats listed, bare or inside a 
 | Wii | `rvz`, `iso`, `wbfs` | rvz | redump.info | `rvz` in zip |
 | WonderSwan | `ws` | zip | libretro (No-Intro) | — |
 | WonderSwan Color | `wsc` | zip | libretro (No-Intro) | — |
+
+TOSEC is published as one pack of every system's DATs (about 100 MB); the TOSEC download takes the newest pack from tosecdev.org and merges the Amiga or C64 DATs in it into one (uploading the pack works too). With a TOSEC DAT active, names are read the TOSEC way and versions also rank by dump quality (verified, then clean, then alternate, cracked, trained, bad).
 
 Every platform's target can be changed in Settings → Platforms; the table shows the default. A DAT can always be uploaded instead of downloaded (DAT-o-MATIC's No-Intro DATs, for instance).
 

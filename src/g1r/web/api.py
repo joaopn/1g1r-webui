@@ -23,7 +23,7 @@ from g1r import (
     unmatched,
 )
 from g1r.config import RANKING_CRITERIA, RankingConfig, Settings
-from g1r.dat_registry import DatRegistry, RegistryError
+from g1r.dat_registry import DatRegistry, RegistryError, name_style
 from g1r.library import FolderEntry, Library, LibraryStore
 from g1r.ranking import LABELS as RANKING_LABELS
 
@@ -209,8 +209,9 @@ def build_router(
     def parts_of(folder: FolderEntry) -> frozenset[str]:
         return frozenset(e.lower() for e in platforms[folder.platform].part_extensions)
 
-    def produces(library: Library, folder: FolderEntry) -> matching.FolderView:
-        """The folder's platform as the 1G1R table sees it."""
+    def produces(library: Library, folder: FolderEntry, conn) -> matching.FolderView:
+        """The folder's platform as the 1G1R table sees it; names read as its active DAT's."""
+        style = name_style(registry.active_version(conn, library, folder.platform))
         target = settings.platforms.targets[store.target_for(library, folder.platform)]
         profile = platforms[folder.platform]
         return matching.FolderView(
@@ -218,6 +219,7 @@ def build_router(
             parts_of(folder),
             profile.names_from,
             profile.title_ids,
+            style,
         )
 
     def conversion_rows(library: Library, folder: FolderEntry, conn) -> list:
@@ -279,7 +281,7 @@ def build_router(
                 conn,
                 folder.label,
                 store.ranking_for(folder),
-                folder_view=produces(library, folder),
+                folder_view=produces(library, folder, conn),
             )
             info = folder_info(library, folder)
             scan = scanner.latest_scan(conn, folder.label)
@@ -396,7 +398,7 @@ def build_router(
     def discard_plan(conn, label: str, group_key: str | None):
         folder = folder_or_404(label)
         games = matching.game_rows(
-            settings, conn, label, store.ranking_for(folder), produces(store.load(), folder)
+            settings, conn, label, store.ranking_for(folder), produces(store.load(), folder, conn)
         )
         if group_key is not None:
             games = [g for g in games if g.group.key == group_key]
@@ -638,7 +640,7 @@ def build_router(
     def folder_games(label: str, conn: Conn):
         folder = folder_or_404(label)
         games = matching.game_rows(
-            settings, conn, label, store.ranking_for(folder), produces(store.load(), folder)
+            settings, conn, label, store.ranking_for(folder), produces(store.load(), folder, conn)
         )
         return [game_dict(g) for g in games]
 
@@ -652,7 +654,7 @@ def build_router(
             label,
             store.ranking_for(folder),
             body.group_key,
-            produces(store.load(), folder),
+            produces(store.load(), folder, conn),
         )
         if game is None:
             raise not_found("no such game")
@@ -668,7 +670,7 @@ def build_router(
             label,
             store.ranking_for(folder),
             body.group_key,
-            produces(store.load(), folder),
+            produces(store.load(), folder, conn),
         )
         if game is None:
             raise not_found("no such game")

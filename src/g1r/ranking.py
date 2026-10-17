@@ -19,6 +19,7 @@ LABELS = {
     "revision": "newest revision",
     "original": "original over re-release",
     "parent": "the DAT's parent over its clones",
+    "dump": "clean dump over alternate, cracked, trained or bad (TOSEC flags)",
 }
 
 
@@ -75,6 +76,8 @@ def criterion_key(name: str, version: Version, ranking: RankingConfig):
         return int(parsed.rerelease)
     if name == "parent":
         return int(version.clone)
+    if name == "dump":
+        return parsed.dump
     raise ValueError(name)
 
 

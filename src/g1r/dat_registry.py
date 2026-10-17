@@ -14,6 +14,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 
+from g1r import tosec
 from g1r.config import PlatformProfile, Settings
 from g1r.dats import Dat, DatError, parse_dat_bytes
 from g1r.library import ActiveDat, Library, LibraryStore
@@ -38,6 +39,22 @@ class PackResult:
     message: str
 
 
+# TOSEC DATs carry it in their header name; the merged DAT is "<dat_name> (TOSEC)".
+TOSEC_MARK = "(TOSEC)"
+TOSEC_STYLE = "tosec"
+NOINTRO_STYLE = "nointro"
+
+
+def name_style(version: sqlite3.Row | None) -> str:
+    """How the active DAT's names read: TOSEC style for a TOSEC DAT (downloaded, from a
+    pack, or uploaded on its own), No-Intro/Redump style otherwise."""
+    if version is None:
+        return NOINTRO_STYLE
+    header = version["header_name"] or ""
+    tosec_dat = version["source"] == TOSEC_STYLE or TOSEC_STYLE in header.lower()
+    return TOSEC_STYLE if tosec_dat else NOINTRO_STYLE
+
+
 def header_matches(profile: PlatformProfile, header_name: str) -> bool:
     """No-Intro names some DATs with a suffix, e.g. 'Nintendo - ... (Headered)'."""
     return header_name == profile.dat_name or header_name.startswith(profile.dat_name + " (")
@@ -49,10 +66,10 @@ class DatRegistry:
         self.store = store
         self.fetch = fetch or self._http_fetch
 
-    def _http_fetch(self, url: str) -> bytes:
+    def _http_fetch(self, url: str, timeout: float | None = None) -> bytes:
         request = urllib.request.Request(url, headers={"User-Agent": self.settings.dats.user_agent})
         with urllib.request.urlopen(
-            request, timeout=self.settings.dats.download_timeout_seconds
+            request, timeout=timeout or self.settings.dats.download_timeout_seconds
         ) as r:
             return r.read(self.settings.dats.max_upload_bytes + 1)
 
@@ -134,6 +151,11 @@ class DatRegistry:
         if not profile.dat_download:
             return found
         for source_id, source in self.settings.dats.sources.items():
+            if source.index_url:
+                # TOSEC: a second source beside the platform's own (No-Intro) DAT.
+                if profile.tosec_prefixes:
+                    found.append(source_id)
+                continue
             if not source.url_template:
                 continue
             if source.families and profile.dat_family not in source.families:
@@ -150,6 +172,8 @@ class DatRegistry:
         if source_id not in self.downloads(platform):
             raise RegistryError(f"{platform} cannot be downloaded from {source_id}")
         source = self.settings.dats.sources[source_id]
+        if source.index_url:
+            return self._download_tosec(conn, platform, source_id)
         family = self.settings.dats.families[profile.dat_family]
         url = source.url_template.format(
             name=urllib.parse.quote(profile.dat_name),
@@ -169,6 +193,43 @@ class DatRegistry:
             name, data = members[0]
         return self.add(conn, platform, data, source=source_id, origin=url, original_name=name)
 
+    def _download_tosec(self, conn, platform: str, source_id: str) -> int:
+        """The newest TOSEC pack (kept for the next platform), this platform's DATs merged."""
+        source = self.settings.dats.sources[source_id]
+        try:
+            url = tosec.latest_pack_url(self.fetch, source)
+            cache = self.settings.paths.data_dir / (source.cache_dir or "")
+            cached = cache / urllib.parse.quote(url, safe="")
+            if cached.is_file():
+                data = cached.read_bytes()
+            else:
+                data = self._fetch_long(url, source.timeout_seconds)
+                cache.mkdir(parents=True, exist_ok=True)
+                for old in cache.iterdir():
+                    old.unlink()
+                cached.write_bytes(data)
+            merged = self._tosec_merged(platform, tosec.open_pack(data), source.member_dir or "")
+        except OSError as exc:
+            raise RegistryError(f"download failed: {exc}") from exc
+        except tosec.TosecError as exc:
+            raise RegistryError(str(exc)) from exc
+        profile = self._profile(platform)
+        return self.add(
+            conn, platform, merged, source=source_id, origin=url, original_name=profile.dat_name
+        )
+
+    def _fetch_long(self, url: str, timeout: float | None) -> bytes:
+        if self.fetch == self._http_fetch:
+            return self._http_fetch(url, timeout)
+        return self.fetch(url)
+
+    def _tosec_merged(self, platform: str, archive: zipfile.ZipFile, member_dir: str) -> bytes:
+        profile = self._profile(platform)
+        dats = tosec.platform_dats(
+            archive, member_dir, profile.tosec_prefixes, self.settings.dats.max_upload_bytes
+        )
+        return tosec.merge(dats, f"{profile.dat_name} {TOSEC_MARK}")
+
     def add_upload(self, conn, platform: str, data: bytes, filename: str) -> int:
         """One uploaded .dat/.xml, or a .zip holding exactly one."""
         source = "nointro" if self._looks_nointro(data) else "upload"
@@ -183,7 +244,19 @@ class DatRegistry:
         return self.add(conn, platform, data, source=source, origin=None, original_name=filename)
 
     def add_pack(self, conn: sqlite3.Connection, data: bytes) -> list[PackResult]:
-        """A DAT-o-MATIC daily pack: each DAT goes to the enabled platform it names."""
+        """A DAT-o-MATIC daily pack: each DAT goes to the enabled platform it names. A TOSEC
+        pack: each TOSEC platform gets its DATs merged into one."""
+        tosec_dirs = {
+            s.member_dir
+            for s in self.settings.dats.sources.values()
+            if s.index_url and s.member_dir
+        }
+        archive = tosec.open_pack(data) if data[: len(ZIP_MAGIC)] == ZIP_MAGIC else None
+        member_dir = next(
+            (d for d in sorted(tosec_dirs) if archive and tosec.is_pack(archive, d)), None
+        )
+        if archive is not None and member_dir is not None:
+            return self._add_tosec_pack(conn, archive, member_dir)
         results = []
         profiles = self.settings.platforms.enabled_profiles()
         for name, member in self._zip_dats(data):
@@ -205,6 +278,27 @@ class DatRegistry:
                 results.append(PackResult(name, platform, version_id, "added"))
             except RegistryError as exc:
                 results.append(PackResult(name, platform, None, f"skipped: {exc}"))
+        return results
+
+    def _add_tosec_pack(self, conn, archive: zipfile.ZipFile, member_dir: str) -> list[PackResult]:
+        results = []
+        for platform, profile in self.settings.platforms.enabled_profiles().items():
+            if not profile.tosec_prefixes:
+                continue
+            try:
+                merged = self._tosec_merged(platform, archive, member_dir)
+                version_id = self.add(
+                    conn,
+                    platform,
+                    merged,
+                    source="tosec",
+                    origin=None,
+                    original_name=profile.dat_name,
+                )
+            except (tosec.TosecError, RegistryError) as exc:
+                results.append(PackResult(profile.dat_name, platform, None, f"skipped: {exc}"))
+                continue
+            results.append(PackResult(profile.dat_name, platform, version_id, "added"))
         return results
 
     def _zip_dats(self, data: bytes) -> list[tuple[str, bytes]]:

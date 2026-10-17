@@ -143,6 +143,8 @@ class FolderView:
     names_from: str = "name"
     # Identified and grouped by title ID (Switch), no DAT needed.
     title_ids: bool = False
+    # How names read: No-Intro/Redump style or TOSEC style (follows the active DAT).
+    name_style: str = "nointro"
 
 
 def is_part(rel_path: str, parts: frozenset[str]) -> bool:
@@ -227,7 +229,7 @@ def game_rows(
     groups = (
         build_title_groups(settings, triples)
         if view.title_ids
-        else build_groups(settings, dat, triples, view.names_from)
+        else build_groups(settings, dat, triples, view.names_from, view.name_style)
     )
     result = []
     for group in groups:

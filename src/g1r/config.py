@@ -128,7 +128,7 @@ class TargetConfig(_Strict):
 PLATFORM_KINDS = ("console", "handheld", "arcade", "computer")
 
 
-DAT_FAMILIES = ("nointro", "redump", "fbneo")
+DAT_FAMILIES = ("nointro", "redump", "fbneo", "tosec")
 
 
 class PlatformProfile(_Strict):
@@ -168,6 +168,9 @@ class PlatformProfile(_Strict):
     # Identified by title ID (Switch, `title_ids`), with or without a DAT: a base game, its
     # update and its DLC are one game; the base is ranked, DLC kept, updates proposed.
     title_ids: bool = False
+    # TOSEC: the pack's DATs merged into this platform's DAT, by the start of their names
+    # (the TOSEC download is offered when set).
+    tosec_prefixes: list[str] = Field(default_factory=list)
     # The default ranking criteria for this platform's folders (None: the global default).
     ranking_criteria: list[str] | None = None
 
@@ -223,6 +226,16 @@ class DatSourceConfig(_Strict):
     website: str | None = None
     # The DAT families this source has (empty: every family).
     families: list[str] = Field(default_factory=list)
+    # A pack found through a release index (TOSEC): the index page, the regex of release
+    # page links on it, the regex of the pack link on a release page, the pack's DAT folder,
+    # and where the downloaded pack is kept (relative to the data directory) for the next
+    # platform.
+    index_url: str | None = None
+    release_pattern: str | None = None
+    pack_pattern: str | None = None
+    member_dir: str | None = None
+    cache_dir: str | None = None
+    timeout_seconds: float | None = Field(default=None, gt=0)
 
 
 class DatFamilyConfig(_Strict):
@@ -446,11 +459,24 @@ class TitleIdConfig(_Strict):
     pfs0_extensions: list[str]
 
 
+class TosecConfig(_Strict):
+    # Country codes -> the region names ranking uses.
+    countries: dict[str, str]
+    # Development status tags that mark a pre-release.
+    prerelease: list[str]
+    # Tags that never keep games apart (video standard, copyright status).
+    neutral: list[str]
+    # Dump flag code -> rank (lower is better); a name with no flag ranks clean_rank.
+    dump_flag_rank: dict[str, int]
+    clean_rank: int
+
+
 class NamesConfig(_Strict):
     regions: list[str]
     prerelease_tags: list[str]
     rerelease_tags: list[str]
     neutral_tags: list[str]
+    tosec: TosecConfig
 
 
 class GroupingConfig(_Strict):
@@ -458,7 +484,15 @@ class GroupingConfig(_Strict):
     retool_clonelists_dir: Path
 
 
-RANKING_CRITERIA = ("prerelease", "region", "language", "revision", "original", "parent")
+RANKING_CRITERIA = (
+    "prerelease",
+    "region",
+    "language",
+    "revision",
+    "original",
+    "parent",
+    "dump",
+)
 
 
 class RankingConfig(_Strict):

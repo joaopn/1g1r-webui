@@ -193,9 +193,14 @@ platforms:
       kind: computer
       # No-Intro's Amiga set is floppy images in IPF (SPS) form.
       dat_name: Commodore - Amiga
-      rom_extensions: [ipf]
+      # No-Intro formats first; the rest are TOSEC formats (synthetic tests only).
+      rom_extensions: [ipf, adf, adz, dms, lha, exe, hdf]
       targets: [zip, plain]
       default_target: zip
+      # The TOSEC download merges the pack's DATs whose names start with these.
+      tosec_prefixes: ["Commodore Amiga - Games - "]
+      # TOSEC names carry dump flags ([cr], [a], [b]); No-Intro names rank the same without.
+      ranking_criteria: [prerelease, dump, region]
       screenscraper_id: 64
     c64:
       name: Commodore 64
@@ -203,9 +208,14 @@ platforms:
       kind: computer
       # No-Intro's C64 set: cartridges (.crt) and disk images (.d64).
       dat_name: Commodore - 64
-      rom_extensions: [crt, d64]
+      # No-Intro formats first; the rest are TOSEC formats (synthetic tests only).
+      rom_extensions: [crt, d64, d71, d81, g64, nib, t64, tap, prg, p00, lnx]
       targets: [zip, plain]
       default_target: zip
+      # The TOSEC download merges the pack's DATs whose names start with these.
+      tosec_prefixes: ["Commodore C64 - Games - "]
+      # TOSEC names carry dump flags ([cr], [a], [b]); No-Intro names rank the same without.
+      ranking_criteria: [prerelease, dump, region]
       screenscraper_id: 66
     atari2600:
       name: Atari 2600
@@ -573,6 +583,7 @@ dats:
     nointro: {label: No-Intro, libretro_dir: no-intro, clonelist_suffix: (No-Intro)}
     redump: {label: Redump, libretro_dir: redump, clonelist_suffix: (Redump)}
     fbneo: {label: FinalBurn Neo, libretro_dir: fbneo-split, clonelist_suffix: (FBNeo)}
+    tosec: {label: TOSEC, libretro_dir: tosec, clonelist_suffix: (TOSEC)}
   sources:
     libretro:
       label: libretro-database mirror
@@ -605,6 +616,18 @@ dats:
       website: "https://github.com/libretro/FBNeo/tree/master/dats"
       identification_only: false
       families: [fbneo]
+    tosec:
+      label: TOSEC (tosecdev.org)
+      website: "https://www.tosecdev.org/downloads"
+      # The newest release page, then its complete DAT pack (about 100 MB, every system).
+      index_url: "https://www.tosecdev.org/downloads"
+      release_pattern: 'href="(/downloads/category/[0-9]+-[0-9]{4}-[0-9]{2}-[0-9]{2})"'
+      pack_pattern: 'href="([^"]*download=[^"]*tosec-dat-pack-complete[^"]*)"'
+      member_dir: "TOSEC/"
+      cache_dir: cache/tosec
+      timeout_seconds: 600
+      identification_only: false
+      families: [tosec]
     upload:
       label: Uploaded file
       identification_only: false
@@ -813,6 +836,21 @@ names:
   # Tags that never separate two versions into different games when grouping by name
   # (a tag matches when it equals one of these or starts with it plus a space: "Alt 2").
   neutral_tags: [Alt, SGB Enhanced, GB Compatible, Rumble Version, NP]
+  # TOSEC names (platforms.profiles.<id>.name_style: tosec).
+  tosec:
+    countries: {US: USA, EU: Europe, JP: Japan, GB: UK, DE: Germany, FR: France, IT: Italy,
+                ES: Spain, NL: Netherlands, SE: Sweden, "NO": Norway, DK: Denmark, FI: Finland,
+                AU: Australia, CA: Canada, BR: Brazil, KR: Korea, CN: China, TW: Taiwan,
+                AT: Austria, BE: Belgium, CH: Switzerland, PL: Poland, PT: Portugal,
+                RU: Russia, CZ: Czech Republic, HU: Hungary, GR: Greece, IE: Ireland}
+    prerelease: [demo, demo-playable, demo-rolling, demo-slideshow, alpha, beta, preview,
+                 pre-release, proto]
+    neutral: [PAL, NTSC, PAL-NTSC, NTSC-PAL, CW, CW-R, FW, GW, GW-R, LW, PD, SW, SW-R]
+    # [!] verified, then no flag, then alternate, cracked/fixed, trained/hacked/modified/
+    # pirated/translated, and bad, over- or underdumped or virus-infected last.
+    dump_flag_rank: {"!": 0, a: 2, cr: 3, f: 3, t: 4, h: 4, m: 4, p: 4, tr: 4, b: 5, o: 5,
+                     u: 5, v: 5}
+    clean_rank: 1
 
 grouping:
   # When a DAT has no parent/clone data and Retool has no entry, versions are grouped by

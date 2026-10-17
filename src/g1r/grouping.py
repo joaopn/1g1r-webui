@@ -13,7 +13,7 @@ from pathlib import Path
 from g1r import titles
 from g1r.config import Settings
 from g1r.dats import Dat
-from g1r.names import ParsedName, parse_name
+from g1r.names import ParsedName, parse_name, parse_tosec
 
 SOURCE_DAT = "dat-parent-clone"
 SOURCE_RETOOL = "retool-clone-list"
@@ -109,6 +109,7 @@ def build_groups(
     dat: Dat,
     identities: list[tuple[str, str, str]],
     names_from: str = "name",
+    name_style: str = "nointro",
 ) -> list[Group]:
     """identities: (rel_path, game_name, method). A file identified as several DAT games
     (identical data listed twice) is placed once, by its first game name. `names_from`
@@ -128,7 +129,11 @@ def build_groups(
         first_name.setdefault(rel_path, (game, method))
     groups: dict[str, Group] = {}
     for rel_path, (game, method) in first_name.items():
-        parsed = parse_name(title(game), settings.names)
+        parsed = (
+            parse_tosec(title(game), settings.names.tosec)
+            if name_style == "tosec"
+            else parse_name(title(game), settings.names)
+        )
         if game in parents:
             key, source, label = "dat:" + parents[game], SOURCE_DAT, title(parents[game])
         elif any(child_parent == game for child_parent in parents.values()):

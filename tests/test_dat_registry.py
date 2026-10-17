@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from g1r import db
-from g1r.dat_registry import DatRegistry, RegistryError
+from g1r.dat_registry import DatRegistry, RegistryError, name_style
 from g1r.library import LibraryStore
 
 DATA = Path(__file__).parent / "data"
@@ -138,6 +138,9 @@ def test_download_failure_is_reported(make_settings):
 def test_where_each_platform_downloads_from(env):
     _, _, registry, _, _ = env
     assert registry.downloads("nes") == ["libretro"]
+    # Amiga and C64: No-Intro from the mirror, or the TOSEC pack.
+    assert registry.downloads("amiga") == ["libretro", "tosec"]
+    assert registry.downloads("c64") == ["libretro", "tosec"]
     # The libretro mirror keeps a disc's data track only: archived sets would not match it.
     assert registry.downloads("dc") == ["redump"]
     assert registry.downloads("psx") == ["redump"]
@@ -145,3 +148,18 @@ def test_where_each_platform_downloads_from(env):
     assert registry.downloads("switch") == []
     with pytest.raises(RegistryError):
         registry.download(env[3], "switch", "libretro")
+
+
+@pytest.mark.parametrize(
+    ("source", "header", "style"),
+    [
+        ("libretro", "Commodore - Amiga", "nointro"),
+        ("tosec", "Commodore - Amiga (TOSEC)", "tosec"),
+        # A single TOSEC DAT uploaded on its own.
+        ("upload", "Commodore Amiga - Games - [ADF] (TOSEC-v2025-03-13)", "tosec"),
+        ("nointro", "Nintendo - Game Boy", "nointro"),
+    ],
+)
+def test_names_read_as_the_active_dat_writes_them(source, header, style):
+    assert name_style({"source": source, "header_name": header}) == style
+    assert name_style(None) == "nointro"
