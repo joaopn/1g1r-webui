@@ -226,6 +226,18 @@ def test_web_app_served_with_fallback(make_settings, tmp_path):
         assert client.get("/api/meta").status_code == HTTPStatus.OK
 
 
+def test_index_is_revalidated_so_a_new_build_is_picked_up(make_settings, tmp_path):
+    # A cached index.html keeps loading the previous build's hashed assets.
+    dist = tmp_path / "dist"
+    (dist / "assets").mkdir(parents=True)
+    (dist / "index.html").write_text("<!doctype html><div id=root></div>")
+    settings = make_settings({"paths": {"web_dist": str(dist)}})
+    with TestClient(create_app(settings)) as client:
+        for path in ("/", "/folders/nes/conversion", "/index.html"):
+            page = client.get(path, headers={"accept": "text/html"})
+            assert page.headers.get("cache-control") == "no-cache", path
+
+
 def test_conversion_proposals_and_delete_originals(setup):
     client, _, _ = setup
     scanned(client)

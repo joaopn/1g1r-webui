@@ -68,6 +68,11 @@ def create_app(
     return app
 
 
+# The page names the build's hashed assets, so the browser must ask again for it each time
+# (a cached copy keeps running the previous build); the assets themselves never change.
+INDEX_HEADERS = {"Cache-Control": "no-cache"}
+
+
 def mount_web(app: FastAPI, settings: Settings) -> bool:
     """Serve the built web app with an index.html fallback. Call after the API routes."""
     dist = settings.paths.web_dist
@@ -85,9 +90,9 @@ def mount_web(app: FastAPI, settings: Settings) -> bool:
             return JSONResponse({"detail": "not found"}, status_code=HTTPStatus.NOT_FOUND)
         candidate = (dist / path).resolve()
         if path and candidate.is_file() and dist.resolve() in candidate.parents:
-            return FileResponse(candidate)
+            return FileResponse(candidate, headers=INDEX_HEADERS)
         if "text/html" not in request.headers.get("accept", "text/html"):
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND)
-        return FileResponse(index)
+        return FileResponse(index, headers=INDEX_HEADERS)
 
     return True
