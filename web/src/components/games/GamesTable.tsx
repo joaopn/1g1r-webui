@@ -1,4 +1,6 @@
 import {
+  Archive,
+  ArchiveRestore,
   ArrowDown,
   ArrowUp,
   ChevronRight,
@@ -63,6 +65,7 @@ const STATUS_STYLE: Record<GameStatus, string> = {
   decided: "border-status-good/60 text-status-good",
   "left alone": "border-dashed border-muted-foreground text-muted-foreground",
   single: "border-border text-muted-foreground",
+  applied: "border-status-good/60 bg-status-good/10 text-status-good",
 };
 
 function readFilter(params: URLSearchParams): GameFilter {
@@ -97,6 +100,8 @@ export function GamesTable({
   onKeep,
   onLeave,
   onUnassign,
+  onApplyGame,
+  onRestore,
 }: {
   label: string;
   games: Game[];
@@ -104,6 +109,10 @@ export function GamesTable({
   onKeep: (game: Game, relPath: string | null) => void;
   onLeave: (game: Game, left: boolean) => void;
   onUnassign?: (version: Version) => void;
+  /** Review and apply this game's proposed moves. */
+  onApplyGame?: (game: Game) => void;
+  /** Move discarded versions back: one version, or every one of a game. */
+  onRestore?: (target: { version: Version } | { game: Game }) => void;
 }) {
   const [params, setParams] = useSearchParams();
   const filter = useMemo(() => readFilter(params), [params]);
@@ -173,7 +182,7 @@ export function GamesTable({
   const style = { "--games-grid": template(columns, sizes, widths) } as CSSProperties;
   const formatSize = (value: number | null) =>
     formatBytes(value, meta.ui.byte_unit_base, meta.ui.byte_units);
-  const ctx: CellContext = { formatSize, onUnassign };
+  const ctx: CellContext = { formatSize, onUnassign, onRestore, onApplyGame };
 
   return (
     <div className="space-y-3">
@@ -217,8 +226,8 @@ export function GamesTable({
         {moves > 0
           ? ` · ${formatCount(moves)} proposed moves would free ${formatSize(reclaim)}`
           : ""}{" "}
-        · click a version to keep it · moves would go to discarded/{label}/1g1r/ · nothing is moved
-        in this build
+        · click a version to keep it · applying moves the others to discarded/{label}/1g1r/, and
+        each move can be restored
       </p>
 
       <div className="overflow-x-auto rounded-md border border-border bg-card">
@@ -238,7 +247,7 @@ export function GamesTable({
                 />
               ))}
             </div>
-            <span className="w-16 shrink-0" aria-hidden="true" />
+            <span className="w-20 shrink-0" aria-hidden="true" />
           </div>
           {visible.length === 0 ? (
             <p className="px-3 py-6 text-center text-muted-foreground text-sm">No games match.</p>
@@ -408,6 +417,8 @@ function MatchBar({
 type CellContext = {
   formatSize: (v: number | null) => string;
   onUnassign?: (version: Version) => void;
+  onRestore?: (target: { version: Version } | { game: Game }) => void;
+  onApplyGame?: (game: Game) => void;
 };
 
 function versionCell(id: ColumnId, version: Version | null, ctx: CellContext) {
@@ -472,7 +483,25 @@ function versionCell(id: ColumnId, version: Version | null, ctx: CellContext) {
     case "proposed":
       return (
         <Cell key={id} title={version.operation ?? undefined}>
-          {version.operation ? (
+          {version.discarded ? (
+            <span className="inline-flex items-center gap-1 text-muted-foreground">
+              in discarded/
+              {ctx.onRestore ? (
+                <button
+                  type="button"
+                  className="rounded-sm text-primary hover:underline"
+                  aria-label={`Restore ${version.rel_path}`}
+                  title="Move it back into the folder"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    ctx.onRestore?.({ version });
+                  }}
+                >
+                  <ArchiveRestore className="size-3.5" aria-hidden="true" />
+                </button>
+              ) : null}
+            </span>
+          ) : version.operation ? (
             <span className="text-status-warn">→ discard</span>
           ) : version.keep ? (
             <span className="font-medium text-status-good">keep</span>
@@ -600,7 +629,31 @@ function GameRows({
             {columns.map((c) => gameCell(c.id))}
           </div>
         )}
-        <div className="flex w-16 shrink-0 items-center justify-end gap-1">
+        <div className="sticky right-0 flex w-20 shrink-0 items-center justify-end gap-1 bg-card">
+          {ctx.onApplyGame && game.versions.some((v) => v.operation) ? (
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              onClick={() => ctx.onApplyGame?.(game)}
+              title="Apply this game: review its moves to discarded/"
+              className="text-status-warn"
+            >
+              <Archive className="size-3.5" aria-hidden="true" />
+              <span className="sr-only">Apply {game.name}</span>
+            </Button>
+          ) : null}
+          {ctx.onRestore && game.versions.some((v) => v.discarded) ? (
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              onClick={() => ctx.onRestore?.({ game })}
+              title="Restore this game: move its discarded versions back"
+              className="text-primary"
+            >
+              <ArchiveRestore className="size-3.5" aria-hidden="true" />
+              <span className="sr-only">Restore {game.name}</span>
+            </Button>
+          ) : null}
           {game.status === "your pick" ? (
             <Button
               variant="ghost"
@@ -637,7 +690,7 @@ function GameRows({
               game={game}
               version={version}
               columns={columns}
-              disabled={left}
+              disabled={left || version.discarded !== null}
               candidate={game.status === "undecided" && game.candidates.includes(version.rel_path)}
               onKeep={onKeep}
               ctx={ctx}
@@ -681,7 +734,9 @@ function VersionRow({
     if (id === "keep")
       return (
         <Cell key={id}>
-          {version.keep ? (
+          {version.discarded ? (
+            <Archive className="size-4 text-muted-foreground" aria-hidden="true" />
+          ) : version.keep ? (
             <CircleCheck className="size-4 text-status-good" aria-hidden="true" />
           ) : candidate ? (
             <CircleDashed className="size-4 text-status-warn" aria-hidden="true" />
@@ -710,16 +765,23 @@ function VersionRow({
       onKeyDown={onKeyDown}
       data-testid={`version-${version.rel_path}`}
       title={
-        disabled ? "This game is left alone" : version.keep ? "Kept" : "Click to keep this version"
+        version.discarded
+          ? "In discarded/: restore it to keep it"
+          : disabled
+            ? "This game is left alone"
+            : version.keep
+              ? "Kept"
+              : "Click to keep this version"
       }
       className={cn(
         "flex items-center px-3 py-1 text-sm transition-colors",
         version.keep ? "bg-status-good/10" : "",
+        version.discarded ? "text-muted-foreground" : "",
         disabled ? "opacity-60" : "cursor-pointer hover:bg-accent/60",
       )}
     >
       <div className={GRID}>{columns.map((c) => cell(c.id))}</div>
-      <span className="w-16 shrink-0" aria-hidden="true" />
+      <span className="w-20 shrink-0" aria-hidden="true" />
     </div>
   );
 }

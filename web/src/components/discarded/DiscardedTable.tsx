@@ -1,8 +1,9 @@
-import { Search, TriangleAlert } from "lucide-react";
+import { ArchiveRestore, Search, TriangleAlert } from "lucide-react";
 import { useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Pager } from "@/components/Pager";
 import { QuickViewBar } from "@/components/QuickViewBar";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatBytes, formatCount, formatWhen } from "@/lib/format";
 import type { Discarded, DiscardedFile, Meta } from "@/lib/types";
@@ -15,7 +16,18 @@ type Row = DiscardedFile & { reason: string; reasonView: string };
 const HEADERS = ["Reason", "File", "Size", "File date", "Restores to"];
 
 /** Read-only listing of discarded/<label>/: one row per file, a quick view per reason. */
-export function DiscardedTable({ data, meta }: { data: Discarded; meta: Meta }) {
+export function DiscardedTable({
+  data,
+  meta,
+  onRestore,
+  busy = false,
+}: {
+  data: Discarded;
+  meta: Meta;
+  /** Move one file back (by the apply operation that moved it); absent = read-only. */
+  onRestore?: (operationId: number) => void;
+  busy?: boolean;
+}) {
   const [params, setParams] = useSearchParams();
   const q = params.get("q") ?? "";
   const rows = useMemo<Row[]>(
@@ -144,6 +156,19 @@ export function DiscardedTable({ data, meta }: { data: Discarded; meta: Meta }) 
                         <TriangleAlert className="size-3 shrink-0" aria-hidden="true" />a file is
                         already there
                       </span>
+                    ) : row.operation_id === null ? (
+                      <span className="text-muted-foreground">not moved here by this app</span>
+                    ) : onRestore ? (
+                      <Button
+                        variant="outline"
+                        size="xs"
+                        disabled={busy}
+                        onClick={() => row.operation_id !== null && onRestore(row.operation_id)}
+                        aria-label={`Restore ${row.rel_path}`}
+                      >
+                        <ArchiveRestore aria-hidden="true" />
+                        Restore
+                      </Button>
                     ) : (
                       <span className="text-muted-foreground">
                         its old place in the folder (free)

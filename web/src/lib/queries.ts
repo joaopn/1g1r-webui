@@ -8,6 +8,7 @@ import type {
   FolderDetail,
   Game,
   Meta,
+  Run,
   SettingsData,
   UnmatchedFile,
 } from "@/lib/types";
@@ -24,6 +25,7 @@ export const keys = {
   conversion: (label: string) => ["conversion", label] as const,
   unmatched: (label: string) => ["unmatched", label] as const,
   discarded: (label: string) => ["discarded", label] as const,
+  run: (label: string) => ["run", label] as const,
   settings: ["settings"] as const,
   dats: ["dats"] as const,
 };
@@ -57,6 +59,15 @@ export const useDiscarded = (label: string) =>
     queryFn: () => api<Discarded>(`/folders/${label}/discarded`),
   });
 
+/** The folder's latest apply or restore; polled while it runs. */
+export function useRun(label: string, pollMs: number | false) {
+  return useQuery({
+    queryKey: keys.run(label),
+    queryFn: () => api<Run | null>(`/folders/${label}/run`),
+    refetchInterval: (query) => (query.state.data?.status === "running" ? pollMs : false),
+  });
+}
+
 export function useFolder(label: string, pollMs: number | false) {
   return useQuery({
     queryKey: keys.folder(label),
@@ -73,6 +84,7 @@ export function invalidateFolder(label: string) {
     queryClient.invalidateQueries({ queryKey: keys.conversion(label) }),
     queryClient.invalidateQueries({ queryKey: keys.unmatched(label) }),
     queryClient.invalidateQueries({ queryKey: keys.discarded(label) }),
+    queryClient.invalidateQueries({ queryKey: keys.run(label) }),
     queryClient.invalidateQueries({ queryKey: keys.folders }),
   ]);
 }

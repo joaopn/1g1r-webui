@@ -1,6 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
+import type { Game } from "@/lib/types";
 import { GAMES, META } from "@/test/fixtures";
 import { COLUMNS_KEY } from "./columns";
 import { GamesTable } from "./GamesTable";
@@ -126,4 +127,43 @@ test("a version you assigned by hand can be unassigned from its match cell", asy
   await userEvent.click(screen.getByRole("button", { name: "Unassign Arkanoid (Japan).zip" }));
   expect(onUnassign).toHaveBeenCalledWith(expect.objectContaining({ method: "manual" }));
   expect(onKeep).not.toHaveBeenCalled();
+});
+
+test("a game with proposed moves has an apply button; a discarded version restores", async () => {
+  const onApplyGame = vi.fn();
+  const onRestore = vi.fn();
+  const applied: Game = {
+    ...GAMES[0],
+    status: "applied",
+    reason: "the other versions are in discarded/",
+    versions: GAMES[0].versions.map((v) =>
+      v.operation ? { ...v, operation: null, discarded: 7 } : v,
+    ),
+  };
+  render(
+    <MemoryRouter>
+      <GamesTable
+        label="nes"
+        games={[GAMES[0], { ...applied, key: "name:Contra2", name: "Contra 2" }]}
+        meta={META}
+        onKeep={vi.fn()}
+        onLeave={vi.fn()}
+        onApplyGame={onApplyGame}
+        onRestore={onRestore}
+      />
+    </MemoryRouter>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Apply Contra" }));
+  expect(onApplyGame).toHaveBeenCalledWith(GAMES[0]);
+  expect(screen.queryByRole("button", { name: "Restore Contra" })).not.toBeInTheDocument();
+
+  const versions = screen.getAllByTestId("version-Contra (Japan).zip");
+  const gone = versions[1];
+  expect(gone).toHaveAttribute("aria-disabled", "true");
+  await userEvent.click(within(gone).getByRole("button", { name: /Restore Contra \(Japan\)/ }));
+  expect(onRestore).toHaveBeenCalledWith({ version: expect.objectContaining({ discarded: 7 }) });
+  await userEvent.click(screen.getByRole("button", { name: "Restore Contra 2" }));
+  expect(onRestore).toHaveBeenLastCalledWith({
+    game: expect.objectContaining({ name: "Contra 2" }),
+  });
 });

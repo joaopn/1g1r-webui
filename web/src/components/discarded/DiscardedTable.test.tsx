@@ -11,6 +11,7 @@ const file = (rel_path: string, extra = {}) => ({
   modified: "2026-10-17T10:00:00Z",
   restore_to: `/roms/nes/${rel_path}`,
   occupied: false,
+  operation_id: null,
   ...extra,
 });
 
@@ -64,4 +65,27 @@ test("a quick view per reason narrows the list", async () => {
   expect(screen.getAllByTestId(/^discarded-/)).toHaveLength(1);
   await userEvent.type(screen.getByLabelText("Search files"), "zzz");
   expect(screen.getByText("No files match.")).toBeInTheDocument();
+});
+
+test("files the app moved have a Restore button; others say who put them there", async () => {
+  const onRestore = vi.fn();
+  const data: Discarded = {
+    ...DATA,
+    reasons: [
+      {
+        ...DATA.reasons[0],
+        files: [file("Gradius (USA).zip", { operation_id: 4 }), file("Other.zip")],
+      },
+    ],
+  };
+  render(
+    <MemoryRouter>
+      <DiscardedTable data={data} meta={META} onRestore={onRestore} />
+    </MemoryRouter>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Restore Gradius (USA).zip" }));
+  expect(onRestore).toHaveBeenCalledWith(4);
+  expect(
+    within(screen.getByTestId("discarded-Other.zip")).getByText("not moved here by this app"),
+  ).toBeInTheDocument();
 });

@@ -73,6 +73,7 @@ export const STATUS_ORDER: GameStatus[] = [
   "your pick",
   "decided",
   "left alone",
+  "applied",
   "single",
 ];
 
@@ -193,6 +194,8 @@ export const QUICK_VIEWS: QuickView[] = [
   { id: "all", label: "All", test: () => true },
   { id: "one", label: "One version", test: (g) => g.versions.length === 1 },
   { id: "several", label: "Several versions", test: (g) => g.versions.length > 1 },
+  { id: "to-apply", label: "To apply", test: (g) => g.versions.some((v) => v.operation) },
+  { id: "applied", label: "Applied", test: (g) => g.versions.some((v) => v.discarded) },
 ];
 
 export const DEFAULT_VIEW = QUICK_VIEWS[0].id;

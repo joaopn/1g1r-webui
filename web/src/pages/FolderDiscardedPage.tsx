@@ -1,6 +1,8 @@
 import { useMutation } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
+import { RunPanel } from "@/components/apply/RunPanel";
+import { useRestore } from "@/components/apply/useRestore";
 import { DiscardedTable } from "@/components/discarded/DiscardedTable";
 import { StatCard } from "@/components/StatCard";
 import { Button } from "@/components/ui/button";
@@ -9,13 +11,14 @@ import { formatBytes, formatCount, formatFiles } from "@/lib/format";
 import { keys, queryClient, useDiscarded, useFolder, useMeta } from "@/lib/queries";
 import { FolderHeader } from "@/pages/FolderHeader";
 
-/** Discarded: what is in discarded/<label>/, by reason. Read-only in this build. */
+/** Discarded: what is in discarded/<label>/, by reason, with Restore for the app's own moves. */
 export function FolderDiscardedPage() {
   const { label = "" } = useParams();
   const meta = useMeta();
   const folder = useFolder(label, false);
   const discarded = useDiscarded(label);
   const navigate = useNavigate();
+  const restore = useRestore(label);
   const remove = useMutation({
     mutationFn: () => api(`/folders/${label}`, { method: "DELETE" }),
     onSuccess: async () => {
@@ -43,10 +46,11 @@ export function FolderDiscardedPage() {
           ) : null}
         </p>
         <p className="text-muted-foreground">
-          Restoring a file and emptying this folder's discarded files come with the apply build.
-          Nothing here is changed yet.
+          Restore moves a file back to its old place, if that place is still free and the file is as
+          the app left it. Emptying this folder's discarded files comes in a later build.
         </p>
       </section>
+      <RunPanel label={label} meta={meta.data} />
       {data ? (
         data.files === 0 ? (
           <p className="text-muted-foreground">Nothing has been discarded from this folder.</p>
@@ -70,7 +74,12 @@ export function FolderDiscardedPage() {
                 </li>
               ))}
             </ul>
-            <DiscardedTable data={data} meta={meta.data} />
+            <DiscardedTable
+              data={data}
+              meta={meta.data}
+              busy={restore.isPending}
+              onRestore={(id) => restore.mutate({ operation_ids: [id] })}
+            />
           </>
         )
       ) : (

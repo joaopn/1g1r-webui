@@ -1,15 +1,20 @@
 import { useMutation } from "@tanstack/react-query";
-import { TriangleAlert } from "lucide-react";
+import { Archive, TriangleAlert } from "lucide-react";
+import { useState } from "react";
 import { useParams } from "react-router-dom";
 import { toast } from "sonner";
+import { ApplyDialog } from "@/components/apply/ApplyDialog";
+import { RunPanel } from "@/components/apply/RunPanel";
+import { useRestore } from "@/components/apply/useRestore";
 import { GamesTable } from "@/components/games/GamesTable";
 import { RankingEditor } from "@/components/RankingEditor";
 import { ScanPanel } from "@/components/ScanPanel";
 import { StatCard } from "@/components/StatCard";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { UnmatchedSection } from "@/components/unmatched/UnmatchedSection";
 import { ApiError, api, json } from "@/lib/api";
-import { formatCount } from "@/lib/format";
+import { formatCount, formatFiles } from "@/lib/format";
 import {
   invalidateFolder,
   keys,
@@ -30,6 +35,9 @@ export function FolderMatchingPage() {
   const folder = useFolder(label, meta.data?.ui.poll_interval_ms ?? false);
   const games = useGames(label);
   const settingsData = useSettingsData();
+  // What the apply dialog is open for: the whole folder (null) or one game.
+  const [applying, setApplying] = useState<{ game: Game | null } | null>(null);
+  const restore = useRestore(label);
 
   const updateGame = (game: Game) =>
     queryClient.setQueryData<Game[]>(keys.games(label), (current) =>
@@ -77,6 +85,10 @@ export function FolderMatchingPage() {
   const f = folder.data;
   const source = f.dat ? meta.data.dat_sources[f.dat.source] : null;
   const other = (f.summary.counts.other ?? 0) + (f.summary.counts.ignored ?? 0);
+  const proposed = (games.data ?? []).reduce(
+    (n, g) => n + g.versions.filter((v) => v.operation).length,
+    0,
+  );
 
   return (
     <div className="space-y-6">
@@ -105,6 +117,8 @@ export function FolderMatchingPage() {
         )}
       </ScanPanel>
 
+      <RunPanel label={label} meta={meta.data} />
+
       {f.summary.roms > 0 ? (
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           <StatCard value={formatCount(f.summary.roms)} label="ROM files" />
@@ -128,12 +142,24 @@ export function FolderMatchingPage() {
       <section className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="font-semibold text-lg">Games</h2>
-          <RankingEditor
-            meta={meta.data}
-            ranking={f.ranking}
-            isDefault={f.ranking_is_default}
-            onSave={(value) => ranking.mutate(value)}
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            <RankingEditor
+              meta={meta.data}
+              ranking={f.ranking}
+              isDefault={f.ranking_is_default}
+              onSave={(value) => ranking.mutate(value)}
+            />
+            <Button
+              disabled={proposed === 0 || f.scan?.status === "running"}
+              onClick={() => setApplying({ game: null })}
+              title={
+                proposed === 0 ? "No proposed moves" : "Review every proposed move, then apply"
+              }
+            >
+              <Archive className="size-4" aria-hidden="true" />
+              Apply 1G1R{proposed > 0 ? ` (${formatFiles(proposed)})` : ""}
+            </Button>
+          </div>
         </div>
         {games.data ? (
           <GamesTable
@@ -143,11 +169,32 @@ export function FolderMatchingPage() {
             onKeep={(game, relPath) => keep.mutate({ game, relPath })}
             onLeave={(game, left) => leave.mutate({ game, left })}
             onUnassign={(version) => unassign.mutate(version)}
+            onApplyGame={(game) => setApplying({ game })}
+            onRestore={(target) =>
+              restore.mutate(
+                "game" in target
+                  ? { group_key: target.game.key }
+                  : { operation_ids: target.version.discarded ? [target.version.discarded] : [] },
+              )
+            }
           />
         ) : (
           <p className="text-muted-foreground">Loading games…</p>
         )}
       </section>
+
+      {applying ? (
+        <ApplyDialog
+          label={label}
+          groupKey={applying.game?.key ?? null}
+          title={applying.game ? `Apply 1G1R to ${applying.game.name}` : `Apply 1G1R to ${label}`}
+          meta={meta.data}
+          open
+          onOpenChange={(open) => {
+            if (!open) setApplying(null);
+          }}
+        />
+      ) : null}
 
       <UnmatchedSection
         label={label}

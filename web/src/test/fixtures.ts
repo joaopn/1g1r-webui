@@ -100,6 +100,7 @@ const version = (
   size: 2048,
   keep: false,
   operation: null,
+  discarded: null,
   ...extra,
 });
 

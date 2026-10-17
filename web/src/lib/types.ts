@@ -102,6 +102,7 @@ export type DiscardedFile = {
   modified: string;
   restore_to: string | null;
   occupied: boolean;
+  operation_id: number | null;
 };
 
 export type DiscardedReason = {
@@ -141,9 +142,47 @@ export type Version = {
   size: number | null;
   keep: boolean;
   operation: string | null;
+  /** The apply operation that moved this version to discarded/, while it is there. */
+  discarded: number | null;
 };
 
-export type GameStatus = "single" | "decided" | "undecided" | "your pick" | "left alone";
+export type GameStatus =
+  | "single"
+  | "decided"
+  | "undecided"
+  | "your pick"
+  | "left alone"
+  | "applied";
+
+export type PlannedMove = {
+  rel_path: string;
+  group_key: string;
+  source: string;
+  destination: string;
+  size: number;
+};
+
+export type ApplyPreview = {
+  token: string;
+  moves: PlannedMove[];
+  bytes: number;
+  problems: { rel_path: string; problem: string }[];
+  busy: string | null;
+};
+
+export type Run = {
+  id: number;
+  folder_label: string;
+  kind: "apply" | "restore";
+  scope: string;
+  status: "running" | "done" | "failed";
+  total: number;
+  done: number;
+  message: string;
+  started_at: string;
+  finished_at: string | null;
+  failed: { rel_path: string; error: string }[];
+};
 
 export type Game = {
   key: string;
