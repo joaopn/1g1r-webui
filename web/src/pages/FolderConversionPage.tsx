@@ -95,8 +95,8 @@ export function FolderConversionPage() {
           </p>
         ) : (
           <p className="text-muted-foreground">
-            Every conversion is lossless and checked (CRC32 and size) before the original is moved,
-            so it can be undone.
+            Every conversion is lossless and checked before the original is moved (each row's
+            tooltip on "Becomes" says how), so it can be undone.
           </p>
         )}
       </section>

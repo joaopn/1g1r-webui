@@ -187,13 +187,17 @@ export function ConversionTable({
                     className="truncate px-3 py-1.5 text-muted-foreground"
                     title={row.members.map((m) => m.name).join("\n")}
                   >
-                    {row.container === "plain"
-                      ? "bare ROM"
-                      : row.members.length === 0
-                        ? "—"
-                        : row.members.length === 1
-                          ? row.members[0].name
-                          : `${formatCount(row.members.length)} files`}
+                    {row.parts.length > 0
+                      ? `cue sheet, ${formatCount(row.parts.length)} track file(s)`
+                      : row.status === "part"
+                        ? "disc track"
+                        : row.container === "plain"
+                          ? "bare ROM"
+                          : row.members.length === 0
+                            ? "—"
+                            : row.members.length === 1
+                              ? row.members[0].name
+                              : `${formatCount(row.members.length)} files`}
                   </td>
                   <td className="px-3 py-1.5">
                     <Badge variant="outline" className={STATUS_STYLE[row.status]}>
