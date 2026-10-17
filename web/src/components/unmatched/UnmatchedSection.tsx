@@ -1,14 +1,15 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Globe, RefreshCw, Search } from "lucide-react";
+import { Archive, Globe, RefreshCw, Search, Trash2 } from "lucide-react";
 import { type CSSProperties, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
+import { GuardedDialog } from "@/components/apply/GuardedDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ApiError, api, json } from "@/lib/api";
-import { formatBytes, formatCount } from "@/lib/format";
+import { formatBytes, formatCount, formatFiles } from "@/lib/format";
 import { invalidateFolder, useUnmatched } from "@/lib/queries";
 import type { LookupStatus, Meta, UnmatchedFile } from "@/lib/types";
 
@@ -50,6 +51,8 @@ export function UnmatchedSection({
   scanning: boolean;
 }) {
   const files = useUnmatched(label);
+  // The files under review and whether they are deleted (guarded) or moved to discarded/.
+  const [acting, setActing] = useState<{ relPaths: string[]; remove: boolean } | null>(null);
   const assign = useMutation({
     mutationFn: ({ relPath, game }: { relPath: string; game: string }) =>
       api(`/folders/${label}/assign`, json("PUT", { rel_path: relPath, game_name: game })),
@@ -75,28 +78,54 @@ export function UnmatchedSection({
           Unmatched content{" "}
           <span className="font-normal text-muted-foreground">({formatCount(rows.length)})</span>
         </h2>
-        {hasheousOn ? (
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={scanning || retry.isPending || rows.length === 0}
-            onClick={() => retry.mutate()}
-            title="Rescan, asking Hasheous again about files it did not know"
-          >
-            <RefreshCw className="size-3.5" aria-hidden="true" /> Look up again
-          </Button>
-        ) : (
-          <Link
-            to="/settings/lookups"
-            className="inline-flex items-center gap-1 text-muted-foreground text-sm underline underline-offset-2"
-          >
-            <Globe className="size-3.5" aria-hidden="true" /> Online lookups are off
-          </Link>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {rows.length > 0 ? (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={scanning}
+                onClick={() => setActing({ relPaths: rows.map((r) => r.rel_path), remove: false })}
+                title="Review, then move every unmatched file to discarded/ (can be restored)"
+              >
+                <Archive className="size-3.5" aria-hidden="true" /> Move all to discarded/
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={scanning}
+                className="text-status-bad"
+                onClick={() => setActing({ relPaths: rows.map((r) => r.rel_path), remove: true })}
+                title="Review, then delete every unmatched file for good"
+              >
+                <Trash2 className="size-3.5" aria-hidden="true" /> Delete all
+              </Button>
+            </>
+          ) : null}
+          {hasheousOn ? (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={scanning || retry.isPending || rows.length === 0}
+              onClick={() => retry.mutate()}
+              title="Rescan, asking Hasheous again about files it did not know"
+            >
+              <RefreshCw className="size-3.5" aria-hidden="true" /> Look up again
+            </Button>
+          ) : (
+            <Link
+              to="/settings/lookups"
+              className="inline-flex items-center gap-1 text-muted-foreground text-sm underline underline-offset-2"
+            >
+              <Globe className="size-3.5" aria-hidden="true" /> Online lookups are off
+            </Link>
+          )}
+        </div>
       </div>
       <p className="text-muted-foreground text-xs">
         Nothing identified these files, so they are kept as they are. Click a suggestion, or search
-        the DAT, to tell the app what a file is; your choice is kept across scans.
+        the DAT, to tell the app what a file is; your choice is kept across scans. Or move a file
+        out to discarded/ (it can be restored), or delete it for good.
       </p>
       {rows.length === 0 ? (
         <p className="rounded-lg border border-border bg-card px-4 py-3 text-muted-foreground text-sm">
@@ -111,12 +140,36 @@ export function UnmatchedSection({
               label={label}
               hashLength={meta.ui.hash_display_length}
               formatSize={formatSize}
-              busy={assign.isPending}
+              busy={assign.isPending || scanning}
               onAssign={(game) => assign.mutate({ relPath: file.rel_path, game })}
+              onMove={(remove) => setActing({ relPaths: [file.rel_path], remove })}
             />
           ))}
         </ul>
       )}
+      {acting ? (
+        <GuardedDialog
+          label={label}
+          path="unmatched"
+          body={{ rel_paths: acting.relPaths, delete: acting.remove }}
+          title={
+            acting.remove
+              ? `Delete ${acting.relPaths.length === 1 ? acting.relPaths[0] : formatFiles(acting.relPaths.length)}`
+              : `Move ${acting.relPaths.length === 1 ? acting.relPaths[0] : formatFiles(acting.relPaths.length)} to discarded/`
+          }
+          description={
+            acting.remove
+              ? "These files are deleted for good; nothing identified them, so check them first."
+              : `These files move to ${meta.discarded_root}/${label}/manual/, and can be restored from the Discarded page.`
+          }
+          action={(n) => (acting.remove ? `Delete ${formatFiles(n)}` : `Move ${formatFiles(n)}`)}
+          meta={meta}
+          open
+          onOpenChange={(open) => {
+            if (!open) setActing(null);
+          }}
+        />
+      ) : null}
     </section>
   );
 }
@@ -128,6 +181,7 @@ function UnmatchedRow({
   formatSize,
   busy,
   onAssign,
+  onMove,
 }: {
   file: UnmatchedFile;
   label: string;
@@ -135,6 +189,8 @@ function UnmatchedRow({
   formatSize: (value: number) => string;
   busy: boolean;
   onAssign: (game: string) => void;
+  /** Review moving the file to discarded/, or deleting it (true). */
+  onMove: (remove: boolean) => void;
 }) {
   const lookup = file.hasheous;
   return (
@@ -186,6 +242,30 @@ function UnmatchedRow({
           </button>
         ))}
         <DatSearch label={label} busy={busy} onAssign={onAssign} />
+        <span className="ml-auto flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            disabled={busy}
+            onClick={() => onMove(false)}
+            title="Move to discarded/ (can be restored)"
+            className="text-status-warn"
+          >
+            <Archive className="size-3.5" aria-hidden="true" />
+            <span className="sr-only">Move {file.rel_path} to discarded</span>
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            disabled={busy}
+            onClick={() => onMove(true)}
+            title="Delete for good"
+            className="text-status-bad"
+          >
+            <Trash2 className="size-3.5" aria-hidden="true" />
+            <span className="sr-only">Delete {file.rel_path}</span>
+          </Button>
+        </span>
       </div>
     </li>
   );

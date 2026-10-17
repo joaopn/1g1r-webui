@@ -1,6 +1,9 @@
 import { useMutation } from "@tanstack/react-query";
+import { Trash2 } from "lucide-react";
+import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
+import { GuardedDialog } from "@/components/apply/GuardedDialog";
 import { RunPanel } from "@/components/apply/RunPanel";
 import { useRestore } from "@/components/apply/useRestore";
 import { DiscardedTable } from "@/components/discarded/DiscardedTable";
@@ -19,6 +22,7 @@ export function FolderDiscardedPage() {
   const discarded = useDiscarded(label);
   const navigate = useNavigate();
   const restore = useRestore(label);
+  const [emptying, setEmptying] = useState(false);
   const remove = useMutation({
     mutationFn: () => api(`/folders/${label}`, { method: "DELETE" }),
     onSuccess: async () => {
@@ -47,7 +51,8 @@ export function FolderDiscardedPage() {
         </p>
         <p className="text-muted-foreground">
           Restore moves a file back to its old place, if that place is still free and the file is as
-          the app left it. Emptying this folder's discarded files comes in a later build.
+          the app left it. Emptying deletes everything in this folder's discarded/ for good, and its
+          discarded versions leave the 1G1R table.
         </p>
       </section>
       <RunPanel label={label} meta={meta.data} />
@@ -74,6 +79,12 @@ export function FolderDiscardedPage() {
                 </li>
               ))}
             </ul>
+            <div className="flex justify-end">
+              <Button variant="destructive" onClick={() => setEmptying(true)}>
+                <Trash2 className="size-4" aria-hidden="true" />
+                Empty discarded/ ({formatFiles(data.files)})
+              </Button>
+            </div>
             <DiscardedTable
               data={data}
               meta={meta.data}
@@ -85,6 +96,24 @@ export function FolderDiscardedPage() {
       ) : (
         <p className="text-muted-foreground">Loading files…</p>
       )}
+      {emptying ? (
+        <GuardedDialog
+          label={label}
+          path="discarded/empty"
+          body={{}}
+          title={`Empty discarded/ of ${label}`}
+          description={
+            <>
+              Every file in <code className="text-xs">{f.discarded_to}</code> is deleted for good,
+              including files this app did not put there.
+            </>
+          }
+          action={(n) => `Delete ${formatFiles(n)}`}
+          meta={meta.data}
+          open
+          onOpenChange={setEmptying}
+        />
+      ) : null}
       <Button variant="ghost" className="text-muted-foreground" onClick={() => remove.mutate()}>
         Remove from the app (files are not touched)
       </Button>

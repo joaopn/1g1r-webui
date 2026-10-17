@@ -4,6 +4,12 @@ import { invalidateFolder, useRun } from "@/lib/queries";
 import type { Meta } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
+const SCOPE_VERBS: Record<string, string> = {
+  convert: "Conversion",
+  unmatched: "Unmatched files",
+  empty: "Emptying discarded/",
+};
+
 /** The folder's latest apply or restore: progress while it runs, its outcome after. */
 export function RunPanel({ label, meta }: { label: string; meta: Meta }) {
   const run = useRun(label, meta.ui.poll_interval_ms).data;
@@ -15,7 +21,7 @@ export function RunPanel({ label, meta }: { label: string; meta: Meta }) {
     wasRunning.current = running;
   }, [running, label]);
   if (!run) return null;
-  const verb = run.scope === "convert" ? "Conversion" : run.kind === "apply" ? "Apply" : "Restore";
+  const verb = run.kind === "restore" ? "Restore" : (SCOPE_VERBS[run.scope] ?? "Apply");
   return (
     <section
       data-testid="run-panel"

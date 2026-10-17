@@ -189,6 +189,16 @@ export type ConvertPreview = {
   busy: string | null;
 };
 
+export type GuardedPreview = {
+  token: string;
+  /** destination null: the file is deleted. */
+  files: { rel_path: string; size: number; destination: string | null }[];
+  irreversible: number;
+  bytes: number;
+  problems: { rel_path: string; problem: string }[];
+  busy: string | null;
+};
+
 export type Run = {
   id: number;
   folder_label: string;
