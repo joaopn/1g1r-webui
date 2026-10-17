@@ -47,9 +47,18 @@ class ActiveDat(BaseModel):
     pinned: bool = False
 
 
+class LookupSwitches(BaseModel):
+    """Which online lookups the user switched on; all off until they do."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    hasheous: bool = False
+
+
 class Library(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    lookups: LookupSwitches = Field(default_factory=LookupSwitches)
     platform_targets: dict[str, str] = Field(default_factory=dict)
     dats: dict[str, ActiveDat] = Field(default_factory=dict)
     ignored_filenames: list[str] | None = None

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from g1r import db, igir, scanner
+from g1r import db, hashing, igir, scanner
 from g1r.config import HeaderRule
 from g1r.dat_registry import DatRegistry
 from g1r.library import FolderEntry, LibraryStore
@@ -92,11 +92,11 @@ def test_inventory_kinds(env, roms_root):
 
 def test_header_rules():
     nes = HeaderRule(magic_hex="4e45531a", magic_offset=0, header_size=16)
-    assert scanner.header_size(nes, NES_HEADER + BODY) == 16
-    assert scanner.header_size(nes, BODY) is None
+    assert hashing.header_size(nes, NES_HEADER + BODY) == 16
+    assert hashing.header_size(nes, BODY) is None
     snes = HeaderRule(size_modulus=1024, header_size=512)
-    assert scanner.header_size(snes, bytes(1024 + 512)) == 512
-    assert scanner.header_size(snes, bytes(2048)) is None
+    assert hashing.header_size(snes, bytes(1024 + 512)) == 512
+    assert hashing.header_size(snes, bytes(2048)) is None
     with pytest.raises(ValueError):
         HeaderRule(header_size=16)
 

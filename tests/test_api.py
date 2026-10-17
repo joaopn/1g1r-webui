@@ -241,3 +241,30 @@ def test_conversion_proposals_and_delete_originals(setup):
     assert saved.json()["delete_originals"] is True
     wrap = next(r for r in client.get("/api/folders/nes/conversion").json()["rows"] if r["output"])
     assert wrap["originals_to"] is None and wrap["reversible"] is False
+
+
+def test_unmatched_assign_and_lookup_settings(setup):
+    client, _, _ = setup
+    scanned(client)
+    (row,) = client.get("/api/folders/nes/unmatched").json()
+    assert row["rel_path"] == "odd.nes" and row["hasheous"]["status"] == "off"
+    assert row["hash"]["crc32"]
+    assert client.get("/api/folders/nes/dat-search", params={"q": "contra"}).json() == [
+        "Contra (Japan)",
+        "Contra (USA)",
+    ]
+    bad = client.put("/api/folders/nes/assign", json={"rel_path": "odd.nes", "game_name": "Nope"})
+    assert bad.status_code == HTTPStatus.BAD_REQUEST
+    ok = client.put(
+        "/api/folders/nes/assign", json={"rel_path": "odd.nes", "game_name": "Solo (Japan)"}
+    )
+    assert ok.status_code == HTTPStatus.OK
+    assert client.get("/api/folders/nes/unmatched").json() == []
+    versions = [v for g in client.get("/api/folders/nes/games").json() for v in g["versions"]]
+    assigned = next(v for v in versions if v["rel_path"] == "odd.nes")
+    assert (assigned["method"], assigned["probability"]) == ("manual", 1)
+    client.put("/api/folders/nes/assign", json={"rel_path": "odd.nes", "game_name": None})
+    assert len(client.get("/api/folders/nes/unmatched").json()) == 1
+
+    assert client.get("/api/settings").json()["lookups"] == {"hasheous": False}
+    assert client.put("/api/settings/lookups", json={"hasheous": True}).json() == {"hasheous": True}

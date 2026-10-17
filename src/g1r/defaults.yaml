@@ -32,6 +32,8 @@ database:
 ui:
   # Games shown per page of the Matching table.
   page_size: 100
+  # Most DAT entries listed when searching the DAT to assign a file by hand.
+  dat_search_limit: 25
   # How often a running scan's status is refreshed in the browser.
   poll_interval_ms: 1000
   # Characters of a hash shown in tables (the full value is in the tooltip).
@@ -343,6 +345,31 @@ igir:
   # Scratch space for igir's report files, relative to the data directory.
   work_dir: cache/igir-work
   timeout_seconds: 3600
+
+# Online identification for files the local DAT misses. Off until switched on in
+# Settings -> Online lookups; only content hashes (CRC32, MD5, SHA1) are sent.
+lookups:
+  # Files larger than this are not hashed for a lookup (bytes).
+  max_hash_bytes: 268435456
+  hasheous:
+    url: https://hasheous.org/api/v1/Lookup/ByHash?returnAllSources=true&returnFields=Signatures
+    site: https://hasheous.org
+    timeout_seconds: 30
+    user_agent: 1g1r-webui
+    # Hasheous sources that may identify a file, in order of preference, with their label.
+    # An answer counts only when its system name starts with the platform's DAT name.
+    sources:
+      NoIntros: No-Intro
+      Redump: Redump
+    # A "not found" answer is asked again after this many days; found answers are kept.
+    not_found_ttl_days: 30
+
+# Name suggestions for unmatched files. They never identify anything unless
+# auto_match_threshold is set (a score from 0 to 1).
+fuzzy:
+  min_score: 0.6
+  max_suggestions: 3
+  auto_match_threshold: null
 
 archives:
   # Zip members are read directly; 7z archives are listed with 7-Zip.

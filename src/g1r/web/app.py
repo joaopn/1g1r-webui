@@ -15,7 +15,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from g1r import db, scanner
+from g1r import db, hasheous, scanner
 from g1r.config import Settings, load_settings
 from g1r.dat_registry import DatRegistry, Fetch
 from g1r.jobs import Jobs
@@ -27,11 +27,14 @@ def create_app(
     settings: Settings | None = None,
     fetch: Fetch | None = None,
     report_runner: scanner.ReportRunner | None = None,
+    lookup_post: hasheous.Post = hasheous.http_post,
 ) -> FastAPI:
     settings = settings or load_settings()
     store = LibraryStore(settings)
     registry = DatRegistry(settings, store, fetch)
-    folder_scanner = scanner.Scanner(settings, store, registry, report_runner)
+    folder_scanner = scanner.Scanner(
+        settings, store, registry, report_runner, lookup_post=lookup_post
+    )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):

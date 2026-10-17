@@ -11,7 +11,7 @@ import yaml
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel
 
-from g1r import conversion, matching, mounts, scanner
+from g1r import conversion, matching, mounts, scanner, unmatched
 from g1r.config import RANKING_CRITERIA, RankingConfig, Settings
 from g1r.dat_registry import DatRegistry, RegistryError
 from g1r.library import FolderEntry, Library, LibraryStore
@@ -57,6 +57,15 @@ class ConversionOptions(BaseModel):
     delete_originals: bool
 
 
+class Assignment(BaseModel):
+    rel_path: str
+    game_name: str | None
+
+
+class Lookups(BaseModel):
+    hasheous: bool
+
+
 class Targets(BaseModel):
     targets: dict[str, str]
 
@@ -98,7 +107,7 @@ def game_dict(game: matching.GameRow) -> dict:
                 "rel_path": row.version.rel_path,
                 "game_name": row.version.game_name,
                 "method": row.version.method,
-                "probability": 1,
+                "probability": row.probability,
                 "regions": list(row.version.parsed.regions),
                 "languages": list(row.version.parsed.languages),
                 "revision": row.version.parsed.revision,
@@ -305,13 +314,44 @@ def build_router(
         )
         return folder_info(store.load(), store.load().folder(label))
 
+    # Unmatched content -------------------------------------------------------------
+
+    @router.get("/folders/{label}/unmatched")
+    def folder_unmatched(label: str, conn: Conn):
+        folder_or_404(label)
+        return unmatched.rows(conn, label, store.load().lookups.hasheous)
+
+    @router.put("/folders/{label}/assign")
+    def assign(label: str, body: Assignment, conn: Conn):
+        folder = folder_or_404(label)
+        if body.game_name is not None:
+            dat = registry.load_active(conn, store.load(), folder.platform)
+            if dat is None or not any(g.name == body.game_name for g in dat.games):
+                raise bad_request("That is not an entry of this platform's active DAT.")
+            if scanner.latest_scan(conn, label) is None:
+                raise bad_request("Scan the folder first.")
+        known = conn.execute(
+            "SELECT 1 FROM folder_file WHERE folder_label = ? AND rel_path = ?",
+            (label, body.rel_path),
+        ).fetchone()
+        if not known:
+            raise not_found("no such file in this folder's last scan")
+        unmatched.assign(conn, label, body.rel_path, body.game_name)
+        return {"rel_path": body.rel_path, "game_name": body.game_name}
+
+    @router.get("/folders/{label}/dat-search")
+    def dat_search(label: str, conn: Conn, q: str = ""):
+        folder = folder_or_404(label)
+        dat = registry.load_active(conn, store.load(), folder.platform)
+        return [] if dat is None else unmatched.search(dat, q, settings.ui.dat_search_limit)
+
     # Scans -------------------------------------------------------------------------
 
     @router.post("/folders/{label}/scan", status_code=HTTPStatus.ACCEPTED)
-    def start_scan(label: str, request: Request, conn: Conn):
+    def start_scan(label: str, request: Request, conn: Conn, refresh_lookups: bool = False):
         folder_or_404(label)
         try:
-            request.app.state.jobs.scan(conn, label)
+            request.app.state.jobs.scan(conn, label, refresh_lookups)
         except scanner.ScanError as exc:
             raise HTTPException(status_code=HTTPStatus.CONFLICT, detail=str(exc)) from exc
         return row_dict(scanner.latest_scan(conn, label))
@@ -351,10 +391,23 @@ def build_router(
         return {
             "targets": {p: store.target_for(library, p) for p in platforms},
             "ignored_filenames": store.ignored_filenames(library),
+            "lookups": library.lookups.model_dump(),
+            "hasheous": {
+                "site": settings.lookups.hasheous.site,
+                "url": settings.lookups.hasheous.url,
+                "sources": list(settings.lookups.hasheous.sources.values()),
+                "not_found_ttl_days": settings.lookups.hasheous.not_found_ttl_days,
+            },
+            "fuzzy": settings.fuzzy.model_dump(),
             "effective_yaml": yaml.safe_dump(settings.model_dump(mode="json"), sort_keys=False),
             "config_file": str(settings.paths.data_dir / settings.paths.user_config_file),
             "library_file": str(settings.paths.library_path),
         }
+
+    @router.put("/settings/lookups")
+    def save_lookups(body: Lookups):
+        store.update(lambda lib: setattr(lib.lookups, "hasheous", body.hasheous))
+        return store.load().lookups.model_dump()
 
     @router.put("/settings/targets")
     def save_targets(body: Targets):

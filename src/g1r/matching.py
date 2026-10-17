@@ -36,6 +36,7 @@ class Row:
     size: int | None
     keep: bool
     operation: str | None  # None = nothing happens to this file
+    probability: float = 1.0
 
 
 @dataclass
@@ -82,7 +83,7 @@ def game_rows(
     settings: Settings, conn: sqlite3.Connection, label: str, ranking: RankingConfig
 ) -> list[GameRow]:
     identities = conn.execute(
-        "SELECT rel_path, game_name, method, dat_sha1 FROM identity WHERE folder_label = ?",
+        "SELECT rel_path, game_name, method, dat_sha1, score FROM identity WHERE folder_label = ?",
         (label,),
     ).fetchall()
     if not identities:
@@ -90,6 +91,7 @@ def game_rows(
     dat = load_dat(settings, conn, identities[0]["dat_sha1"])
     if dat is None:
         return []
+    scores = {(r["rel_path"], r["game_name"]): r["score"] for r in identities}
     sizes = dict(
         conn.execute(
             "SELECT rel_path, size FROM folder_file WHERE folder_label = ?", (label,)
@@ -129,7 +131,8 @@ def game_rows(
             operation = None
             if status in (STATUS_DECIDED, STATUS_PICKED) and not keep:
                 operation = discard_path(settings, label, version.rel_path)
-            rows.append(Row(version, sizes.get(version.rel_path), keep, operation))
+            probability = scores.get((version.rel_path, version.game_name), 1.0)
+            rows.append(Row(version, sizes.get(version.rel_path), keep, operation, probability))
         kept = next((r for r in rows if r.keep), None)
         result.append(
             GameRow(group, status, reason, rows, kept, {v.rel_path for v in decision.candidates})

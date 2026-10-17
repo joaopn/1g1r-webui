@@ -9,20 +9,24 @@ Without an active DAT the scan still takes the inventory, which is all conversio
 import fnmatch
 import os
 import sqlite3
-import zipfile
 import zlib
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
-from g1r import archives, igir, mounts
-from g1r.config import HeaderRule, Settings
+from g1r import archives, fuzzy, hasheous, igir, mounts
+from g1r.config import Settings
 from g1r.dat_registry import DatRegistry
 from g1r.dats import Dat
+from g1r.hashing import ContentHash, content_hashes, header_size, payloads
 from g1r.library import FolderEntry, LibraryStore
 
 METHOD_CHECKSUM = "dat-checksum"
 METHOD_HEADERLESS = "dat-headerless"
+METHOD_HASHEOUS = "hasheous"
+METHOD_FUZZY = "fuzzy"
+METHOD_MANUAL = "manual"
+CHECKSUM_SCORE = 1.0
 
 ReportRunner = Callable[[Settings, Path, Path], list[igir.ReportRow]]
 
@@ -71,33 +75,6 @@ def inventory(settings: Settings, root: Path, platform: str, ignored: list[str])
 # Header-stripped fallback -------------------------------------------------------
 
 
-def header_size(rule: HeaderRule, data: bytes) -> int | None:
-    if rule.magic_hex is not None:
-        magic = bytes.fromhex(rule.magic_hex)
-        end = rule.magic_offset + len(magic)
-        if data[rule.magic_offset : end] == magic and len(data) > rule.header_size:
-            return rule.header_size
-        return None
-    if len(data) % rule.size_modulus == rule.header_size:
-        return rule.header_size
-    return None
-
-
-def _payloads(path: Path, rom_extensions: set[str], limit: int):
-    """The ROM data inside a file: the file itself, or each ROM member of a zip."""
-    if path.suffix.lower() == ".zip":
-        try:
-            with zipfile.ZipFile(path) as archive:
-                for info in archive.infolist():
-                    ext = PurePosixPath(info.filename).suffix.lower().lstrip(".")
-                    if ext in rom_extensions and info.file_size <= limit:
-                        yield archive.read(info)
-        except zipfile.BadZipFile:
-            return
-    elif path.stat().st_size <= limit:
-        yield path.read_bytes()
-
-
 def headerless_matches(settings: Settings, platform: str, path: Path, dat: Dat) -> set[str]:
     rules = settings.headers.get(platform, [])
     if not rules:
@@ -110,7 +87,7 @@ def headerless_matches(settings: Settings, platform: str, path: Path, dat: Dat) 
     profile = settings.platforms.profiles[platform]
     exts = {e.lower() for e in profile.rom_extensions}
     found: set[str] = set()
-    for data in _payloads(path, exts, settings.dats.max_upload_bytes):
+    for data in payloads(path, exts, settings.dats.max_upload_bytes):
         for rule in rules:
             size = header_size(rule, data)
             if size is None:
@@ -132,12 +109,14 @@ class Scanner:
         registry: DatRegistry,
         report_runner: ReportRunner | None = None,
         seven_zip: archives.SevenZipRunner = archives.run_seven_zip,
+        lookup_post: hasheous.Post = hasheous.http_post,
     ):
         self.settings = settings
         self.store = store
         self.registry = registry
         self.report_runner = report_runner or igir.run_report
         self.seven_zip = seven_zip
+        self.lookup_post = lookup_post
 
     def start(self, conn: sqlite3.Connection, label: str) -> int:
         running = conn.execute(
@@ -149,9 +128,11 @@ class Scanner:
             "INSERT INTO scan (folder_label, status) VALUES (?, 'running')", (label,)
         ).lastrowid
 
-    def run(self, conn: sqlite3.Connection, scan_id: int, label: str) -> None:
+    def run(
+        self, conn: sqlite3.Connection, scan_id: int, label: str, refresh_lookups: bool = False
+    ) -> None:
         try:
-            message = self._scan(conn, label)
+            message = self._scan(conn, label, refresh_lookups)
             self._finish(conn, scan_id, "done", message)
         except (ScanError, igir.IgirError, mounts.FolderPathError, OSError) as exc:
             self._finish(conn, scan_id, "failed", str(exc))
@@ -166,7 +147,7 @@ class Scanner:
             (status, message, scan_id),
         )
 
-    def _scan(self, conn: sqlite3.Connection, label: str) -> str:
+    def _scan(self, conn: sqlite3.Connection, label: str, refresh_lookups: bool) -> str:
         library = self.store.load()
         folder: FolderEntry | None = library.folder(label)
         if folder is None:
@@ -177,10 +158,10 @@ class Scanner:
         files = inventory(
             self.settings, root, folder.platform, self.store.ignored_filenames(library)
         )
-        members, problems = self._members(root, files)
+        found = Found(*self._members(root, files))
         active = self.registry.active_version(conn, library, folder.platform)
         if active is None:
-            self._store(conn, label, files, [], None, members, problems)
+            self._store(conn, label, files, None, found)
             return (
                 f"inventory only, {len(files)} files: this platform has no active DAT, so "
                 "nothing was identified (add one in Settings → DATs)"
@@ -188,31 +169,77 @@ class Scanner:
         dat_file = self.settings.paths.data_dir / active["file"]
         rows = self.report_runner(self.settings, dat_file, root)
         by_path = igir.identified_files(rows)
-        identities: list[tuple[str, str, str]] = []
         unmatched = []
         for f in files:
             if f.kind not in ("rom", "archive"):
                 continue
             games = by_path.get(str(root / f.rel_path), set())
             if games:
-                identities += [(f.rel_path, g, METHOD_CHECKSUM) for g in games]
+                found.identify(f.rel_path, games, METHOD_CHECKSUM)
             else:
                 unmatched.append(f)
+        dat = self.registry.load_active(conn, library, folder.platform)
         if unmatched and self.settings.headers.get(folder.platform):
-            dat = self.registry.load_active(conn, library, folder.platform)
             for f in unmatched:
-                for game in headerless_matches(
-                    self.settings, folder.platform, root / f.rel_path, dat
-                ):
-                    identities.append((f.rel_path, game, METHOD_HEADERLESS))
-        self._store(conn, label, files, identities, active["sha1"], members, problems)
+                games = headerless_matches(self.settings, folder.platform, root / f.rel_path, dat)
+                found.identify(f.rel_path, games, METHOD_HEADERLESS)
+        unmatched = [f for f in unmatched if f.rel_path not in found.identified]
+        notes = self._look_up(
+            conn, library, folder.platform, root, unmatched, found, refresh_lookups
+        )
+        unmatched = [f for f in unmatched if f.rel_path not in found.identified]
+        self._suggest(dat, unmatched, found)
+        self._apply_manual(conn, label, files, found)
+        self._store(conn, label, files, active["sha1"], found)
         conn.execute(
             "UPDATE scan SET dat_sha1 = ? WHERE folder_label = ? AND status = 'running'",
             (active["sha1"], label),
         )
-        identified = len({rel for rel, _, _ in identities})
         candidates = sum(1 for f in files if f.kind in ("rom", "archive"))
-        return f"{identified} of {candidates} ROM files identified"
+        parts = [f"{len(found.identified)} of {candidates} ROM files identified"]
+        online = sum(1 for m in found.identified.values() if m == METHOD_HASHEOUS)
+        if online:
+            parts.append(f"{online} of them via Hasheous")
+        return "; ".join(parts + notes)
+
+    def _look_up(self, conn, library, platform, root, unmatched, found, refresh) -> list[str]:
+        """Identification step 3: hash what the DAT missed; ask Hasheous when it is on."""
+        dat_name = self.settings.platforms.profiles[platform].nointro_dat
+        for f in unmatched:
+            hashes = content_hashes(self.settings, platform, root / f.rel_path)
+            found.hashes[f.rel_path] = hashes
+            if not library.lookups.hasheous or not hashes:
+                continue
+            try:
+                answer = hasheous.lookup(
+                    self.settings, conn, hashes, dat_name, self.lookup_post, refresh=refresh
+                )
+            except hasheous.LookupError_ as exc:
+                found.lookups[f.rel_path] = (hasheous.ERROR, str(exc))
+                return [f"online lookups stopped: {exc}"]
+            found.lookups[f.rel_path] = (answer.status, answer.detail)
+            if answer.status == hasheous.FOUND and answer.game_name:
+                found.identify(f.rel_path, {answer.game_name}, METHOD_HASHEOUS)
+        return []
+
+    def _suggest(self, dat: Dat, unmatched: list[InventoryFile], found: "Found") -> None:
+        config = self.settings.fuzzy
+        names = [g.name for g in dat.games]
+        for f in unmatched:
+            best = fuzzy.suggestions(config, f.rel_path, names)
+            found.suggestions[f.rel_path] = best
+            threshold = config.auto_match_threshold
+            if best and threshold is not None and best[0][1] >= threshold:
+                found.identify(f.rel_path, {best[0][0]}, METHOD_FUZZY, best[0][1])
+
+    def _apply_manual(self, conn, label, files, found: "Found") -> None:
+        present = {f.rel_path for f in files}
+        for rel_path, game in conn.execute(
+            "SELECT rel_path, game_name FROM manual_identity WHERE folder_label = ?", (label,)
+        ):
+            if rel_path in present:
+                found.forget(rel_path)
+                found.identify(rel_path, {game}, METHOD_MANUAL)
 
     def _members(self, root: Path, files: list[InventoryFile]):
         members: list[tuple[str, archives.Member]] = []
@@ -228,7 +255,7 @@ class Scanner:
             members += [(f.rel_path, m) for m in found]
         return members, problems
 
-    def _store(self, conn, label, files, identities, dat_sha1, members, problems) -> None:
+    def _store(self, conn, label, files, dat_sha1, found: "Found") -> None:
         conn.execute("BEGIN")
         try:
             conn.execute("DELETE FROM identity WHERE folder_label = ?", (label,))
@@ -238,21 +265,72 @@ class Scanner:
                 [(label, f.rel_path, f.size, f.mtime_ns, f.kind) for f in files],
             )
             conn.executemany(
-                "INSERT OR IGNORE INTO identity VALUES (?, ?, ?, ?, ?)",
-                [(label, rel, game, method, dat_sha1) for rel, game, method in identities],
+                "INSERT OR IGNORE INTO identity (folder_label, rel_path, game_name, method, "
+                "dat_sha1, score) VALUES (?, ?, ?, ?, ?, ?)",
+                [
+                    (label, rel, game, method, dat_sha1, score)
+                    for rel, game, method, score in found.identities
+                ],
             )
             conn.executemany(
                 "INSERT OR IGNORE INTO archive_member VALUES (?, ?, ?, ?, ?)",
-                [(label, rel, m.name, m.size, m.crc32) for rel, m in members],
+                [(label, rel, m.name, m.size, m.crc32) for rel, m in found.members],
             )
             conn.executemany(
                 "INSERT INTO archive_problem VALUES (?, ?, ?)",
-                [(label, rel, message) for rel, message in problems],
+                [(label, rel, message) for rel, message in found.problems],
+            )
+            conn.executemany(
+                "INSERT INTO content_hash VALUES (?, ?, ?, ?, ?, ?, ?)",
+                [
+                    (label, rel, h.variant, h.size, h.crc32, h.md5, h.sha1)
+                    for rel, hashes in found.hashes.items()
+                    for h in hashes
+                ],
+            )
+            conn.executemany(
+                "INSERT INTO lookup_result VALUES (?, ?, ?, ?, ?)",
+                [
+                    (label, rel, hasheous.SERVICE, status, detail)
+                    for rel, (status, detail) in found.lookups.items()
+                ],
+            )
+            conn.executemany(
+                "INSERT INTO suggestion VALUES (?, ?, ?, ?)",
+                [
+                    (label, rel, game, score)
+                    for rel, best in found.suggestions.items()
+                    for game, score in best
+                ],
             )
             conn.execute("COMMIT")
         except sqlite3.Error:
             conn.execute("ROLLBACK")
             raise
+
+
+@dataclass
+class Found:
+    """What a scan learned about a folder's files, stored together at the end."""
+
+    members: list[tuple[str, archives.Member]]
+    problems: list[tuple[str, str]]
+    # (rel_path, game_name, method, score)
+    identities: list[tuple[str, str, str, float]] = field(default_factory=list)
+    # rel_path -> the method that identified it first
+    identified: dict[str, str] = field(default_factory=dict)
+    hashes: dict[str, list[ContentHash]] = field(default_factory=dict)
+    lookups: dict[str, tuple[str, str]] = field(default_factory=dict)
+    suggestions: dict[str, list[tuple[str, float]]] = field(default_factory=dict)
+
+    def identify(self, rel_path, games, method, score=CHECKSUM_SCORE) -> None:
+        for game in sorted(games):
+            self.identities.append((rel_path, game, method, score))
+            self.identified.setdefault(rel_path, method)
+
+    def forget(self, rel_path: str) -> None:
+        self.identities = [i for i in self.identities if i[0] != rel_path]
+        self.identified.pop(rel_path, None)
 
 
 def fail_interrupted(conn: sqlite3.Connection) -> None:

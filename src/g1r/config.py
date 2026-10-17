@@ -77,6 +77,7 @@ class SidebarConfig(_Strict):
 
 class UiConfig(_Strict):
     page_size: int = Field(gt=0)
+    dat_search_limit: int = Field(gt=0)
     poll_interval_ms: int = Field(gt=0)
     hash_display_length: int = Field(gt=0)
     byte_unit_base: int = Field(gt=1)
@@ -194,6 +195,26 @@ class IgirConfig(_Strict):
     timeout_seconds: float = Field(gt=0)
 
 
+class HasheousConfig(_Strict):
+    url: str
+    site: str
+    timeout_seconds: float = Field(gt=0)
+    user_agent: str
+    sources: dict[str, str]
+    not_found_ttl_days: float = Field(ge=0)
+
+
+class LookupsConfig(_Strict):
+    max_hash_bytes: int = Field(gt=0)
+    hasheous: HasheousConfig
+
+
+class FuzzyConfig(_Strict):
+    min_score: float = Field(ge=0, le=1)
+    max_suggestions: int = Field(ge=0)
+    auto_match_threshold: float | None = Field(default=None, ge=0, le=1)
+
+
 class ArchivesConfig(_Strict):
     seven_zip_binary: str
     list_timeout_seconds: float = Field(gt=0)
@@ -263,6 +284,8 @@ class Settings(_Strict):
     dats: DatsConfig
     igir: IgirConfig
     archives: ArchivesConfig
+    lookups: LookupsConfig
+    fuzzy: FuzzyConfig
     jobs: JobsConfig
     headers: dict[str, list[HeaderRule]]
     names: NamesConfig
