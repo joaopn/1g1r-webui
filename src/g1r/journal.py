@@ -104,6 +104,10 @@ class Move:
     disc_mode: str | None = None
     inner: tuple = ()
     space: int | None = None
+    # Byteswap only: the word length whose bytes are reversed, and the ROM's name in the
+    # output zip (None: the output is the bare ROM).
+    word_bytes: int | None = None
+    output_member: str | None = None
 
 
 def token(plan: list[Move]) -> str:
@@ -188,7 +192,11 @@ def plan_conversions(
             (m for m in row.members if PurePosixPath(m["name"]).name == Path(row.output).name),
             None,
         )
-        unwrap = row.recipe == conversion.RECIPE_UNWRAP
+        if row.recipe == conversion.RECIPE_BYTESWAP:
+            member = row.source_member
+        # Unwrap, and a byteswap from an archive, read one member as the scan listed it.
+        reads = (conversion.RECIPE_UNWRAP, conversion.RECIPE_BYTESWAP)
+        unwrap = member is not None and row.recipe in reads
         sources = [f, *parts]
         plan.append(
             Move(
@@ -212,6 +220,8 @@ def plan_conversions(
                     if row.recipe == conversion.RECIPE_ARCHIVE_DISC
                 ),
                 space=_conversion_space(row, sources, member),
+                word_bytes=row.word_bytes,
+                output_member=row.output_member,
             )
         )
         for source in sources:
@@ -232,7 +242,7 @@ def _conversion_space(row: conversion.ConversionRow, sources, member) -> int:
     """Bytes the conversion needs free: the output (at most its data's size), and for a
     disc the tracks extracted back for the check (plus, from an archive, the unpacked copy)."""
     total = sum(s["size"] for s in sources)
-    if row.recipe == conversion.RECIPE_UNWRAP and member is not None:
+    if row.recipe in (conversion.RECIPE_UNWRAP, conversion.RECIPE_BYTESWAP) and member:
         return member["size"]
     if row.recipe == conversion.RECIPE_ARCHIVE_DISC:
         unpacked = sum(m.get("size") or 0 for m in row.members)

@@ -340,6 +340,31 @@ class HeaderRule(_Strict):
         return self
 
 
+class SwappedOrder(_Strict):
+    label: str
+    magic_hex: str
+    word_bytes: int = Field(gt=1)
+
+    @model_validator(mode="after")
+    def _hex(self) -> "SwappedOrder":
+        bytes.fromhex(self.magic_hex)
+        return self
+
+
+class ByteOrderConfig(_Strict):
+    magic_offset: int = Field(ge=0)
+    native_magic_hex: str
+    native_extension: str
+    swapped: list[SwappedOrder] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _same_length(self) -> "ByteOrderConfig":
+        native = bytes.fromhex(self.native_magic_hex)
+        if any(len(bytes.fromhex(s.magic_hex)) != len(native) for s in self.swapped):
+            raise ValueError("every byte order's magic must be as long as the native one")
+        return self
+
+
 class NamesConfig(_Strict):
     regions: list[str]
     prerelease_tags: list[str]
@@ -392,6 +417,7 @@ class Settings(_Strict):
     jobs: JobsConfig
     apply: ApplyConfig
     headers: dict[str, list[HeaderRule]]
+    byte_orders: dict[str, ByteOrderConfig] = Field(default_factory=dict)
     names: NamesConfig
     grouping: GroupingConfig
     ranking: RankingConfig

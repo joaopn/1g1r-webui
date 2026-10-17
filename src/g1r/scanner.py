@@ -2,13 +2,15 @@
 them against the DAT.
 
 Identification is igir's checksum match first; for files igir leaves unmatched on
-platforms with copier headers, the header-stripped data is looked up by CRC and size.
+platforms with copier headers, the header-stripped data is looked up by CRC and size, and
+on platforms with several byte orders, a swapped file's data in the native order.
 Without an active DAT the scan still takes the inventory, which is all conversion needs.
 """
 
 import fnmatch
 import os
 import sqlite3
+import zipfile
 import zlib
 from collections import Counter
 from collections.abc import Callable
@@ -27,15 +29,19 @@ from g1r.hashing import (
     chd_identity,
     content_hashes,
     header_size,
+    magic_length,
+    native_order,
     payload_count,
     payload_sha1,
     payloads,
     rvz_identity,
+    word_bytes,
 )
 from g1r.library import FolderEntry, LibraryStore
 
 METHOD_CHECKSUM = "dat-checksum"
 METHOD_HEADERLESS = "dat-headerless"
+METHOD_BYTESWAPPED = "dat-byteswapped"
 METHOD_DUPLICATE = "duplicate"
 METHOD_HASHEOUS = "hasheous"
 METHOD_SCREENSCRAPER = "screenscraper"
@@ -94,11 +100,7 @@ def headerless_matches(settings: Settings, platform: str, path: Path, dat: Dat) 
     rules = settings.headers.get(platform, [])
     if not rules:
         return set()
-    index: dict[tuple[str, int], set[str]] = {}
-    for game in dat.games:
-        for rom in game.roms:
-            if rom.crc and rom.size is not None:
-                index.setdefault((rom.crc, rom.size), set()).add(game.name)
+    index = _crc_index(dat)
     profile = settings.platforms.profiles[platform]
     exts = {e.lower() for e in profile.rom_extensions}
     found: set[str] = set()
@@ -110,6 +112,80 @@ def headerless_matches(settings: Settings, platform: str, path: Path, dat: Dat) 
             body = data[size:]
             crc = format(zlib.crc32(body), "08x")
             found |= index.get((crc, len(body)), set())
+    return found
+
+
+def _crc_index(dat: Dat) -> dict[tuple[str, int], set[str]]:
+    index: dict[tuple[str, int], set[str]] = {}
+    for game in dat.games:
+        for rom in game.roms:
+            if rom.crc and rom.size is not None:
+                index.setdefault((rom.crc, rom.size), set()).add(game.name)
+    return index
+
+
+def byte_order_matches(
+    settings: Settings, platform: str, path: Path, dat: Dat
+) -> tuple[set[str], set[str]]:
+    """On a platform with several byte orders: the games with a ROM equal to this file's
+    data as it is, and those equal to it in the native order. A DAT may list each order as a
+    ROM of one game (libretro's N64 DAT has .z64 and .v64), which igir then reports missing
+    unless every order is present: any one of them identifies the game."""
+    config = settings.byte_orders.get(platform)
+    if config is None:
+        return set(), set()
+    index = _crc_index(dat)
+    exts = {e.lower() for e in settings.platforms.profiles[platform].rom_extensions}
+    as_is: set[str] = set()
+    native: set[str] = set()
+
+    def look(data: bytes) -> set[str]:
+        return index.get((format(zlib.crc32(data), "08x"), len(data)), set())
+
+    for data in payloads(path, exts, settings.dats.max_upload_bytes):
+        as_is |= look(data)
+        swapped = native_order(config, data)
+        if swapped is not None:
+            native |= look(swapped)
+    return as_is, native
+
+
+# Byte orders ----------------------------------------------------------------------
+
+
+def read_byte_orders(settings: Settings, platform: str, root: Path, files, members) -> dict:
+    """rel_path -> word length to reverse, for each file whose single ROM (bare, or the one
+    ROM member of a zip) starts with a swapped order's magic. 7z is not read."""
+    config = settings.byte_orders.get(platform)
+    if config is None:
+        return {}
+    exts = {e.lower() for e in settings.platforms.profiles[platform].rom_extensions}
+    roms_inside: dict[str, list[str]] = {}
+    for rel, member in members:
+        if PurePosixPath(member.name).suffix.lower().lstrip(".") in exts:
+            roms_inside.setdefault(rel, []).append(member.name)
+    length = magic_length(config)
+    found = {}
+    for f in files:
+        head = None
+        try:
+            if f.kind == "rom":
+                with (root / f.rel_path).open("rb") as handle:
+                    head = handle.read(length)
+            elif (
+                f.rel_path.lower().endswith(ZIP_SUFFIX)
+                and len(roms_inside.get(f.rel_path, [])) == 1
+            ):
+                with (
+                    zipfile.ZipFile(root / f.rel_path) as z,
+                    z.open(roms_inside[f.rel_path][0]) as m,
+                ):
+                    head = m.read(length)
+        except (OSError, zipfile.BadZipFile, KeyError):
+            continue
+        word = word_bytes(config, head) if head else None
+        if word is not None:
+            found[f.rel_path] = word
     return found
 
 
@@ -174,6 +250,9 @@ class Scanner:
             self.settings, root, folder.platform, self.store.ignored_filenames(library)
         )
         found = Found(*self._members(root, files))
+        found.byte_orders = read_byte_orders(
+            self.settings, folder.platform, root, files, found.members
+        )
         active = self.registry.active_version(conn, library, folder.platform)
         if active is None:
             self._store(conn, label, files, None, found)
@@ -203,6 +282,14 @@ class Scanner:
             for f in unmatched:
                 games = headerless_matches(self.settings, folder.platform, root / f.rel_path, dat)
                 found.identify(f.rel_path, games, METHOD_HEADERLESS)
+        unmatched = [f for f in unmatched if f.rel_path not in found.identified]
+        if self.settings.byte_orders.get(folder.platform):
+            for f in unmatched:
+                as_is, native = byte_order_matches(
+                    self.settings, folder.platform, root / f.rel_path, dat
+                )
+                found.identify(f.rel_path, as_is, METHOD_CHECKSUM)
+                found.identify(f.rel_path, native - as_is, METHOD_BYTESWAPPED)
         unmatched = [f for f in unmatched if f.rel_path not in found.identified]
         self._duplicates(root, folder.platform, files, found)
         unmatched = [f for f in unmatched if f.rel_path not in found.identified]
@@ -351,7 +438,13 @@ class Scanner:
         ] + [(f, size) for f, size in unmatched if size in identified_sizes]
         limit = self.settings.lookups.max_hash_bytes
         for f, size in wanted:
-            sha1 = payload_sha1(root / f.rel_path, rom_extensions, limit, self._rvz_sha1)
+            sha1 = payload_sha1(
+                root / f.rel_path,
+                rom_extensions,
+                limit,
+                self._rvz_sha1,
+                self.settings.byte_orders.get(platform),
+            )
             if sha1 is not None:
                 # An RVZ's key starts with the disc's size, which is what is stored.
                 stored = int(size.split(":")[0]) if isinstance(size, str) else size
@@ -467,6 +560,10 @@ class Scanner:
                 [(label, rel, size, sha1) for rel, (size, sha1) in found.payloads.items()],
             )
             conn.executemany(
+                "INSERT INTO byte_order VALUES (?, ?, ?)",
+                [(label, rel, word) for rel, word in found.byte_orders.items()],
+            )
+            conn.executemany(
                 "INSERT INTO suggestion VALUES (?, ?, ?, ?)",
                 [
                     (label, rel, game, score)
@@ -498,6 +595,8 @@ class Found:
     suggestions: dict[str, list[tuple[str, float]]] = field(default_factory=dict)
     # rel_path -> (payload size, payload SHA1), where a duplicate was possible
     payloads: dict[str, tuple[int, str]] = field(default_factory=dict)
+    # rel_path -> word length to reverse for the native byte order (swapped dumps only)
+    byte_orders: dict[str, int] = field(default_factory=dict)
 
     def identify(self, rel_path, games, method, score=CHECKSUM_SCORE) -> None:
         for game in sorted(games):

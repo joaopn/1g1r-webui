@@ -1,7 +1,8 @@
 """Content hashes of a file's ROM data: what an online lookup sends.
 
 The data is the bare file, or each ROM member of a zip; on platforms with copier headers
-the header-stripped data is hashed too, since databases list either form.
+the header-stripped data is hashed too, since databases list either form. On platforms whose
+dumps come in several byte orders (N64), a swapped file is hashed in the native order too.
 """
 
 import hashlib
@@ -12,10 +13,11 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-from g1r.config import HeaderRule, Settings
+from g1r.config import ByteOrderConfig, HeaderRule, Settings
 
 FULL = "full"
 HEADERLESS = "headerless"
+SWAPPED = "native-order"
 
 
 def header_size(rule: HeaderRule, data: bytes) -> int | None:
@@ -28,6 +30,40 @@ def header_size(rule: HeaderRule, data: bytes) -> int | None:
     if len(data) % rule.size_modulus == rule.header_size:
         return rule.header_size
     return None
+
+
+def word_bytes(config: ByteOrderConfig | None, head: bytes) -> int | None:
+    """The word length to reverse for the native byte order, or None when the data is in it
+    (or in no order the platform knows)."""
+    if config is None:
+        return None
+    for order in config.swapped:
+        magic = bytes.fromhex(order.magic_hex)
+        if head[config.magic_offset : config.magic_offset + len(magic)] == magic:
+            return order.word_bytes
+    return None
+
+
+def magic_length(config: ByteOrderConfig) -> int:
+    """How many bytes from the start `word_bytes` needs to see."""
+    return config.magic_offset + len(bytes.fromhex(config.native_magic_hex))
+
+
+def swap_words(data: bytes, word: int) -> bytes:
+    """Reverse the bytes of each `word`-long word (its own inverse). The length must be a
+    multiple of `word`."""
+    out = bytearray(len(data))
+    for i in range(word):
+        out[i::word] = data[word - 1 - i :: word]
+    return bytes(out)
+
+
+def native_order(config: ByteOrderConfig | None, data: bytes) -> bytes | None:
+    """The data in the platform's native byte order, when it is swapped (else None)."""
+    word = word_bytes(config, data)
+    if word is None or len(data) % word:
+        return None
+    return swap_words(data, word)
 
 
 def payloads(path: Path, rom_extensions: set[str], limit: int):
@@ -121,9 +157,11 @@ def payload_sha1(
     rom_extensions: set[str],
     limit: int,
     rvz_sha1: Callable[[Path], str | None] | None = None,
+    byte_order: ByteOrderConfig | None = None,
 ) -> str | None:
     """The SHA1 of the file's ROM data when it holds exactly one payload, else None. A CHD's
-    is the disc's own SHA1 from its header, so two compressions of one disc are equal."""
+    is the disc's own SHA1 from its header, so two compressions of one disc are equal; a
+    byte-swapped ROM's is that of its native order, so it equals the unswapped dump's."""
     if path.suffix.lower() == CHD_SUFFIX:
         identity = chd_identity(path)
         return identity[1] if identity else None
@@ -132,7 +170,10 @@ def payload_sha1(
         return rvz_sha1(path) if rvz_sha1 is not None else None
     found = []
     for data in payloads(path, rom_extensions, limit):
-        found.append(hashlib.sha1(data, usedforsecurity=False).hexdigest())
+        native = native_order(byte_order, data)
+        found.append(
+            hashlib.sha1(data if native is None else native, usedforsecurity=False).hexdigest()
+        )
         if len(found) > 1:
             return None
     return found[0] if found else None
@@ -147,6 +188,7 @@ def content_hashes(settings: Settings, platform: str, path: Path) -> list[Conten
     profile = settings.platforms.profiles[platform]
     extensions = {e.lower() for e in profile.rom_extensions}
     rules = settings.headers.get(platform, [])
+    byte_order = settings.byte_orders.get(platform)
     found: list[ContentHash] = []
     for index, data in enumerate(payloads(path, extensions, settings.lookups.max_hash_bytes)):
         suffix = f":{index}" if index else ""
@@ -156,4 +198,7 @@ def content_hashes(settings: Settings, platform: str, path: Path) -> list[Conten
             if size is not None:
                 found.append(_hash(HEADERLESS + suffix, data[size:]))
                 break
+        native = native_order(byte_order, data)
+        if native is not None:
+            found.append(_hash(SWAPPED + suffix, native))
     return found

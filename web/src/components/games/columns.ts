@@ -62,6 +62,10 @@ export const METHOD_LABELS: Record<string, { short: string; long: string }> = {
     short: "DAT, no header",
     long: "checksum match in the DAT after removing a copier header",
   },
+  "dat-byteswapped": {
+    short: "DAT, byte order",
+    long: "checksum match in the DAT after putting the ROM in its native byte order",
+  },
   duplicate: {
     short: "copy",
     long: "byte-identical to another file of this game, which the DAT identified",

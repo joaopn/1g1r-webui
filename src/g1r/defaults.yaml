@@ -104,6 +104,7 @@ platforms:
     - genesis
     - jaguar
     - lynx
+    - n64
     - nds
     - neo-geo-pocket
     - neo-geo-pocket-color
@@ -258,6 +259,15 @@ platforms:
       targets: [zip, plain]
       default_target: zip
       screenscraper_id: 28
+    n64:
+      name: Nintendo 64
+      short: "N64"
+      kind: console
+      dat_name: Nintendo - Nintendo 64
+      rom_extensions: [z64, v64, n64]
+      targets: [zip, plain]
+      default_target: zip
+      screenscraper_id: 14
     nds:
       name: Nintendo DS
       short: "NDS"
@@ -600,6 +610,20 @@ headers:
     - {magic_hex: "4c594e58", magic_offset: 0, header_size: 64}
   snes:
     - {size_modulus: 1024, header_size: 512}
+
+# Platforms whose dumps come in several byte orders. The DAT lists the native order (and
+# may list others); a file is recognised by the magic bytes at magic_offset, never by its
+# extension. A swapped file's data is matched, hashed and compared in the native order, and
+# its conversion rewrites it in that order under native_extension. Swapping reverses the
+# bytes of every word_bytes-long word.
+byte_orders:
+  n64:
+    magic_offset: 0
+    native_magic_hex: "80371240"
+    native_extension: z64
+    swapped:
+      - {label: byte-swapped (v64), magic_hex: "37804012", word_bytes: 2}
+      - {label: little-endian, magic_hex: "40123780", word_bytes: 4}
 
 # Reading No-Intro / Redump names: "Title (Region) (Languages) (Rev 1) (Beta) ...".
 names:

@@ -3,8 +3,9 @@ same ROM, then give it its name without ever replacing a file (design §4).
 
 Wrap: the ROM goes into a new zip as its only member; the zip is re-read and its member's
 name, size and CRC32 must equal the ROM's. Unwrap: the archive's ROM member is extracted;
-its size and CRC32 must equal what the scan listed. Either way the source is left as it was:
-moving or deleting it is the journal's next step.
+its size and CRC32 must equal what the scan listed. Byteswap: the ROM is written in the
+native byte order (bare or zipped), read back and swapped again, and must equal the original.
+Either way the source is left as it was: moving or deleting it is the journal's next step.
 """
 
 import hashlib
@@ -16,7 +17,7 @@ import zlib
 from collections.abc import Callable
 from pathlib import Path, PurePosixPath
 
-from g1r import conversion, discs, moves
+from g1r import conversion, discs, hashing, moves
 from g1r.config import Settings
 
 CRC_FORMAT = "08x"
@@ -80,6 +81,8 @@ class Converter:
         try:
             if step.recipe in (conversion.RECIPE_DISC, conversion.RECIPE_ARCHIVE_DISC):
                 self._disc(step, temp)
+            elif step.recipe == conversion.RECIPE_BYTESWAP:
+                self._byteswap(step, temp)
             elif step.member is None:
                 self._wrap(step.source, temp)
             else:
@@ -121,6 +124,52 @@ class Converter:
             or bad is not None
         ):
             raise moves.MoveError(f"the new zip of {source} does not hold the same data")
+
+    def _byteswap(self, step, temp: Path) -> None:
+        """Write the ROM in the native byte order; reading the result back and swapping it
+        again must give the original's SHA1."""
+        if step.member is None:
+            data = step.source.read_bytes()
+        else:
+            try:
+                with zipfile.ZipFile(step.source) as z:
+                    data = z.read(step.member)
+            except (zipfile.BadZipFile, KeyError) as exc:
+                raise moves.MoveError(f"cannot read {step.member} from {step.source}") from exc
+            found = (format(zlib.crc32(data), CRC_FORMAT), len(data))
+            if found != ((step.member_crc32 or "").lower(), step.member_size):
+                raise moves.MoveError(f"{step.member} is not the data the scan listed")
+        word = step.word_bytes
+        if not word or len(data) % word:
+            raise moves.MoveError(f"{step.source.name} is not a whole number of {word}-byte words")
+        original = hashlib.sha1(data, usedforsecurity=False).hexdigest()
+        native = hashing.swap_words(data, word)
+        del data
+        if step.output_member is None:
+            with temp.open("xb") as handle:
+                handle.write(native)
+        else:
+            with zipfile.ZipFile(
+                temp,
+                "x",
+                compression=zipfile.ZIP_DEFLATED,
+                compresslevel=self.config.zip_compress_level,
+                strict_timestamps=False,
+            ) as z:
+                z.writestr(step.output_member, native)
+        del native
+        try:
+            if step.output_member is None:
+                back = temp.read_bytes()
+            else:
+                with zipfile.ZipFile(temp) as z:
+                    names = z.namelist()
+                    back = z.read(step.output_member) if names == [step.output_member] else b""
+        except (zipfile.BadZipFile, KeyError) as exc:
+            raise moves.MoveError(f"the new file for {step.source.name} is unreadable") from exc
+        again = hashlib.sha1(hashing.swap_words(back, word), usedforsecurity=False).hexdigest()
+        if len(back) % word or again != original:
+            raise moves.MoveError(f"the rewritten {step.source.name} does not hold the same ROM")
 
     def _disc(self, step, temp: Path) -> None:
         """chdman makes the CHD; it must pass `verify`, and its tracks extracted back must

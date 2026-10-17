@@ -49,7 +49,7 @@ def test_default_target_must_be_allowed(make_settings):
 def test_wave_one_platforms_are_enabled(make_settings):
     enabled = make_settings().platforms.enabled
     assert {"nes", "gb", "snes", "genesis"} <= set(enabled)
-    assert not {"dc", "psvita", "n64"} & set(enabled)
+    assert not {"dc", "psvita", "3ds"} & set(enabled)
 
 
 def test_deep_merge_replaces_non_mappings():

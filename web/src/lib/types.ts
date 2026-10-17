@@ -276,6 +276,7 @@ export type ConversionStatus =
   | "unwrap"
   | "make chd"
   | "make rvz"
+  | "byteswap"
   | "flagged"
   | "part"
   | "accepted"

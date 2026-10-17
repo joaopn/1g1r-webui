@@ -1,7 +1,8 @@
 """The conversion part: what each file of a folder would become under its platform's target.
 
 Proposals only: nothing here touches a file. Every proposal is lossless by construction
-(wrap a ROM in a zip, or take it out of one) and names the check that would prove it.
+(wrap a ROM in a zip, or take it out of one; a disc into one file; a byte-swapped ROM into
+its native order) and names the check that would prove it.
 """
 
 import fnmatch
@@ -21,11 +22,13 @@ WRAP = "wrap"
 UNWRAP = "unwrap"
 MAKE_CHD = "make chd"
 MAKE_RVZ = "make rvz"
+# A ROM in a swapped byte order (N64 .v64) rewritten in the native one.
+BYTESWAP = "byteswap"
 # A track file a cue sheet's conversion takes along.
 PART = "part"
 FLAGGED = "flagged"
-STATUSES = (WRAP, UNWRAP, MAKE_CHD, MAKE_RVZ, FLAGGED, PART, ACCEPTED, DONE)
-CONVERTING = (WRAP, UNWRAP, MAKE_CHD, MAKE_RVZ)
+STATUSES = (WRAP, UNWRAP, MAKE_CHD, MAKE_RVZ, BYTESWAP, FLAGGED, PART, ACCEPTED, DONE)
+CONVERTING = (WRAP, UNWRAP, MAKE_CHD, MAKE_RVZ, BYTESWAP)
 # The only archive the app writes; other targets are listed but never produced here.
 ZIP = "zip"
 ZIP_SUFFIX = f".{ZIP}"
@@ -40,6 +43,8 @@ RECIPE_UNWRAP = "unwrap"
 RECIPE_DISC = "disc"
 # The same from a cue sheet or ISO inside an archive, extracted to a work directory first.
 RECIPE_ARCHIVE_DISC = "archive-disc"
+# The ROM (bare, or an archive's one ROM member) rewritten in the native byte order.
+RECIPE_BYTESWAP = "byteswap"
 
 
 @dataclass
@@ -59,6 +64,11 @@ class ConversionRow:
     parts: list[str] = field(default_factory=list)
     # createcd or createdvd, for a disc recipe.
     disc_mode: str | None = None
+    # The word length whose bytes are reversed, and the archive member read, for a byteswap.
+    word_bytes: int | None = None
+    source_member: dict | None = None
+    # The ROM's name inside the output zip, when the output is a zip made from another name.
+    output_member: str | None = None
 
 
 def container_of(rel_path: str, kind: str, disc_formats=()) -> str:
@@ -124,6 +134,19 @@ def rows(
         r[0].lower()
         for r in conn.execute("SELECT rel_path FROM folder_file WHERE folder_label = ?", (label,))
     }
+    held = {
+        r[0].lower()
+        for r in conn.execute(
+            "SELECT rel_path FROM folder_file WHERE folder_label = ? AND place = 'discarded'",
+            (label,),
+        )
+    }
+    swapped = dict(
+        conn.execute(
+            "SELECT rel_path, word_bytes FROM byte_order WHERE folder_label = ?", (label,)
+        ).fetchall()
+    )
+    byte_order = settings.byte_orders.get(platform)
     sheets, taken = _cue_sheets(files, root) if to_disc else ({}, {})
     patterns = [p.lower() for p in settings.platforms.lossy_patterns]
 
@@ -182,6 +205,10 @@ def rows(
                 if not roms
                 else f"{len(roms)} ROM files in one archive; split it by hand"
             )
+        elif rel in swapped and byte_order is not None:
+            _byteswap(
+                settings, label, target, row, roms, swapped[rel], byte_order, delete_originals
+            )
         elif row.container == target.produces:
             row.status = DONE
         elif row.container in target.accepts:
@@ -191,7 +218,13 @@ def rows(
         if row.output:
             if row.output.lower() in existing | planned:
                 row.status = FLAGGED
-                row.note = f"{row.output} already exists or is another file's output"
+                if row.output.lower() in held:
+                    row.note = (
+                        f"{row.output} is the name of a file in discarded/, which a restore "
+                        "would need back; empty discarded/ to convert this"
+                    )
+                else:
+                    row.note = f"{row.output} already exists or is another file's output"
                 row.output = row.verify = row.recipe = row.originals_to = None
                 row.parts = []
             else:
@@ -299,6 +332,45 @@ def _propose(settings, label, target, row, roms, delete_originals) -> None:
         row.status, row.recipe = WRAP, RECIPE_WRAP
         row.output = str(parent / f"{PurePosixPath(row.rel_path).stem}.{target.produces}")
         row.verify = f"CRC32 and size of the zipped member equal the file's ({row.size} bytes)"
+    if delete_originals:
+        row.reversible = False
+    else:
+        row.originals_to = originals_path(settings, label, row.rel_path)
+
+
+def _byteswap(settings, label, target, row, roms, word, byte_order, delete_originals) -> None:
+    """A swapped ROM is rewritten in the native order, under the native extension, in the
+    target's container. A zip whose new name would be its own becomes a bare ROM first (the
+    next conversion wraps it): an output never replaces its source."""
+    inner = roms[0] if roms else None
+    size = inner["size"] if inner else row.size
+    if size is None or size % word:
+        row.status = FLAGGED
+        row.note = f"byte-swapped, but its size is not a multiple of {word} bytes"
+        return
+    parent = PurePosixPath(row.rel_path).parent
+    stem = PurePosixPath(inner["name"] if inner else row.rel_path).stem
+    bare = str(parent / f"{stem}.{byte_order.native_extension}")
+    zipped = str(parent / f"{stem}{ZIP_SUFFIX}")
+    if target.produces == ZIP and zipped.lower() != row.rel_path.lower():
+        row.output, row.output_member = zipped, PurePosixPath(bare).name
+    elif bare.lower() != row.rel_path.lower():
+        row.output = bare
+        if target.produces == ZIP:
+            row.note = (
+                "taken out of the zip in the native order; zipped again once the original "
+                "has left discarded/ (the zip's name is the original's)"
+            )
+    else:
+        row.status = FLAGGED
+        row.note = (
+            f"named .{byte_order.native_extension} but byte-swapped: rename it (e.g. .v64) "
+            "and rescan"
+        )
+        return
+    row.status, row.recipe, row.word_bytes = BYTESWAP, RECIPE_BYTESWAP, word
+    row.source_member = inner
+    row.verify = "the new file's ROM, swapped back, must equal the original's (SHA1)"
     if delete_originals:
         row.reversible = False
     else:
