@@ -56,7 +56,7 @@ def rows(
     rom_extensions = {e.lower() for e in settings.platforms.profiles[platform].rom_extensions}
     files = conn.execute(
         "SELECT rel_path, size, kind FROM folder_file WHERE folder_label = ? "
-        "AND kind IN ('rom', 'archive') ORDER BY rel_path",
+        "AND kind IN ('rom', 'archive') AND place = 'folder' ORDER BY rel_path",
         (label,),
     ).fetchall()
     members: dict[str, list[dict]] = {}
@@ -75,7 +75,9 @@ def rows(
     )
     existing = {
         r[0].lower()
-        for r in conn.execute("SELECT rel_path FROM folder_file WHERE folder_label = ?", (label,))
+        for r in conn.execute(
+            "SELECT rel_path FROM folder_file WHERE folder_label = ? AND place = 'folder'", (label,)
+        )
     }
 
     def is_rom(name: str) -> bool:

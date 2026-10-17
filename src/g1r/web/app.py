@@ -15,7 +15,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from g1r import db, hasheous, scanner
+from g1r import db, hasheous, journal, scanner
 from g1r.config import Settings, load_settings
 from g1r.dat_registry import DatRegistry, Fetch
 from g1r.jobs import Jobs
@@ -41,6 +41,7 @@ def create_app(
         # Migrate once at start-up; requests then open their own connections.
         conn = db.open_database(settings)
         scanner.fail_interrupted(conn)
+        journal.recover(settings.apply, conn)
         conn.close()
         store.load()  # fail fast on an invalid library.yaml
         app.state.jobs = Jobs(settings, folder_scanner)

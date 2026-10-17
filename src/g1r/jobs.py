@@ -1,8 +1,13 @@
-"""Background work: folder scans run in a small thread pool, each with its own connection."""
+"""Background work: folder scans and apply runs, in a small thread pool.
 
+Each job opens its own connection. Starting a job goes through one lock, so a scan and an
+apply can never both start on a folder.
+"""
+
+import threading
 from concurrent.futures import ThreadPoolExecutor
 
-from g1r import db
+from g1r import db, journal
 from g1r.config import Settings
 from g1r.scanner import Scanner
 
@@ -14,16 +19,39 @@ class Jobs:
         self.pool = ThreadPoolExecutor(
             max_workers=settings.jobs.workers, thread_name_prefix="g1r-job"
         )
+        self.starting = threading.Lock()
+
+    def _connect(self):
+        return db.connect(self.settings.paths.database_path, self.settings.database.busy_timeout_ms)
 
     def scan(self, conn, label: str, refresh_lookups: bool = False) -> int:
-        scan_id = self.scanner.start(conn, label)
+        with self.starting:
+            scan_id = self.scanner.start(conn, label)
         self.pool.submit(self._run_scan, scan_id, label, refresh_lookups)
         return scan_id
 
     def _run_scan(self, scan_id: int, label: str, refresh_lookups: bool) -> None:
-        conn = db.connect(self.settings.paths.database_path, self.settings.database.busy_timeout_ms)
+        conn = self._connect()
         try:
             self.scanner.run(conn, scan_id, label, refresh_lookups)
+        finally:
+            conn.close()
+
+    def apply(self, conn, label: str, kind: str, scope: str, check) -> int:
+        """Start a run. `check()` re-plans under the lock and returns the plan or raises."""
+        with self.starting:
+            reason = journal.busy(conn, label)
+            if reason:
+                raise journal.PlanError(reason)
+            plan = check()
+            run_id = journal.start_run(conn, label, kind, scope, len(plan))
+        self.pool.submit(self._run_apply, run_id, label, plan)
+        return run_id
+
+    def _run_apply(self, run_id: int, label: str, plan) -> None:
+        conn = self._connect()
+        try:
+            journal.run(self.settings.apply, conn, run_id, label, plan)
         finally:
             conn.close()
 

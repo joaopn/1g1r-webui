@@ -32,7 +32,9 @@ def warnings(
             add(WARN, "The active DAT changed since the last scan. Rescan to use it.")
 
     foreign = conn.execute(
-        "SELECT COUNT(*) FROM folder_file WHERE folder_label = ? AND kind = 'other'", (label,)
+        "SELECT COUNT(*) FROM folder_file WHERE folder_label = ? AND kind = 'other' "
+        "AND place = 'folder'",
+        (label,),
     ).fetchone()[0]
     if foreign:
         add(
@@ -46,6 +48,13 @@ def warnings(
     ).fetchone()[0]
     if elsewhere:
         add(WARN, f"Hasheous knows {_files(elsewhere)} for another platform.")
+    last = conn.execute(
+        "SELECT kind, status, message FROM apply_run WHERE folder_label = ? "
+        "ORDER BY id DESC LIMIT 1",
+        (label,),
+    ).fetchone()
+    if last is not None and last["status"] == "failed":
+        add(BAD, f"The last {last['kind']} failed: {last['message']}")
     return found
 
 

@@ -36,6 +36,8 @@ class DiscardedFile:
     # Where Restore puts it back, and whether something is already there.
     restore_to: str | None
     occupied: bool
+    # The apply operation that moved it here; only those can be restored by the app.
+    operation_id: int | None = None
 
 
 @dataclass
@@ -74,10 +76,21 @@ def _walk(root: Path) -> list[tuple[str, os.stat_result]]:
     return found
 
 
-def listing(settings: Settings, label: str, folder_location: str | None) -> list[Reason]:
-    """Every file in discarded/<label>/, known reasons first in their fixed order."""
+def listing(
+    settings: Settings,
+    label: str,
+    folder_location: str | None,
+    operations: dict[str, int] | None = None,
+) -> list[Reason]:
+    """Every file in discarded/<label>/, known reasons first in their fixed order.
+
+    `operations` maps a discarded file's absolute path to the apply operation that put it
+    there.
+    """
+    operations = operations or {}
+    root = folder_root(settings, label)
     reasons: dict[str, Reason] = {}
-    for rel, stat in _walk(folder_root(settings, label)):
+    for rel, stat in _walk(root):
         head, sep, rest = rel.partition("/")
         reason_id, original = (head, rest) if sep else (REASON_NONE, rel)
         reason = reasons.get(reason_id)
@@ -96,6 +109,7 @@ def listing(settings: Settings, label: str, folder_location: str | None) -> list
                 datetime.fromtimestamp(stat.st_mtime, UTC).strftime(TIMESTAMP),
                 restore_to,
                 restore_to is not None and os.path.lexists(restore_to),
+                operations.get(str(root / rel)),
             )
         )
     order = list(REASONS)

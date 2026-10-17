@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from functools import cache
 from pathlib import Path, PurePosixPath
 
+from g1r import journal
 from g1r.config import RankingConfig, Settings
 from g1r.dats import Dat, parse_dat
 from g1r.grouping import Group, Version, build_groups
@@ -18,6 +19,7 @@ STATUS_DECIDED = "decided"
 STATUS_UNDECIDED = "undecided"
 STATUS_PICKED = "your pick"
 STATUS_LEFT = "left alone"
+STATUS_APPLIED = "applied"
 
 FILTERS = {
     "all": "All games",
@@ -25,9 +27,10 @@ FILTERS = {
     "proposals": "With proposed moves",
     "undecided": "Undecided",
     "left": "Left alone",
+    "applied": "Applied",
 }
 
-REASON_DISCARDED = "1g1r"
+REASON_DISCARDED = journal.REASON_1G1R
 
 
 @dataclass
@@ -37,6 +40,8 @@ class Row:
     keep: bool
     operation: str | None  # None = nothing happens to this file
     probability: float = 1.0
+    # Set when an apply moved this version to discarded/: the journal operation's id.
+    discarded: int | None = None
 
 
 @dataclass
@@ -88,7 +93,23 @@ def game_rows(
     ).fetchall()
     if not identities:
         return []
-    dat = load_dat(settings, conn, identities[0]["dat_sha1"])
+    places = dict(
+        conn.execute(
+            "SELECT rel_path, place FROM folder_file WHERE folder_label = ?", (label,)
+        ).fetchall()
+    )
+    # A file put back by hand shows as in the folder again (a rescan found it there).
+    gone = {
+        op["rel_path"]: op["id"]
+        for op in journal.active_discards(conn, label)
+        if places.get(op["rel_path"]) == journal.PLACE_DISCARDED
+    }
+    # Discarded files keep the identity of the scan before their move; use the folder's DAT.
+    dat_sha1 = next(
+        (r["dat_sha1"] for r in identities if r["rel_path"] not in gone),
+        identities[0]["dat_sha1"],
+    )
+    dat = load_dat(settings, conn, dat_sha1)
     if dat is None:
         return []
     scores = {(r["rel_path"], r["game_name"]): r["score"] for r in identities}
@@ -111,33 +132,60 @@ def game_rows(
     )
     result = []
     for group in groups:
-        decision: Decision = decide(group, ranking)
-        winner = decision.winner
-        status = (
-            STATUS_SINGLE
-            if len(group.versions) == 1
-            else (STATUS_DECIDED if winner else STATUS_UNDECIDED)
+        # Ranking and picks see only the versions still in the folder.
+        present = Group(
+            group.key,
+            group.name,
+            group.source,
+            [v for v in group.versions if v.rel_path not in gone],
         )
-        reason = decision.reason
-        picked = picks.get(group.key)
-        if picked and any(v.rel_path == picked for v in group.versions) and len(group.versions) > 1:
-            winner = next(v for v in group.versions if v.rel_path == picked)
-            status, reason = STATUS_PICKED, "you ticked this version"
-        if group.key in left:
-            status, reason = STATUS_LEFT, "you took this game out of the operations"
+        status, reason, winner, candidates = _decide(present, ranking, picks, left)
+        if status == STATUS_SINGLE and len(present.versions) < len(group.versions):
+            status, reason = STATUS_APPLIED, "the other versions are in discarded/"
         rows = []
         for version in group.versions:
             keep = winner is not None and version.rel_path == winner.rel_path
             operation = None
-            if status in (STATUS_DECIDED, STATUS_PICKED) and not keep:
+            if (
+                status in (STATUS_DECIDED, STATUS_PICKED)
+                and not keep
+                and version in present.versions
+            ):
                 operation = discard_path(settings, label, version.rel_path)
             probability = scores.get((version.rel_path, version.game_name), 1.0)
-            rows.append(Row(version, sizes.get(version.rel_path), keep, operation, probability))
+            rows.append(
+                Row(
+                    version,
+                    sizes.get(version.rel_path),
+                    keep,
+                    operation,
+                    probability,
+                    gone.get(version.rel_path),
+                )
+            )
         kept = next((r for r in rows if r.keep), None)
-        result.append(
-            GameRow(group, status, reason, rows, kept, {v.rel_path for v in decision.candidates})
-        )
+        result.append(GameRow(group, status, reason, rows, kept, candidates))
     return result
+
+
+def _decide(present: Group, ranking, picks, left) -> tuple[str, str, Version | None, set[str]]:
+    if not present.versions:
+        return STATUS_APPLIED, "every version is in discarded/", None, set()
+    decision: Decision = decide(present, ranking)
+    winner = decision.winner
+    status = (
+        STATUS_SINGLE
+        if len(present.versions) == 1
+        else (STATUS_DECIDED if winner else STATUS_UNDECIDED)
+    )
+    reason = decision.reason
+    picked = picks.get(present.key)
+    if picked and len(present.versions) > 1 and any(v.rel_path == picked for v in present.versions):
+        winner = next(v for v in present.versions if v.rel_path == picked)
+        status, reason = STATUS_PICKED, "you ticked this version"
+    if present.key in left:
+        status, reason = STATUS_LEFT, "you took this game out of the operations"
+    return status, reason, winner, {v.rel_path for v in decision.candidates}
 
 
 def table(
@@ -157,6 +205,7 @@ def table(
         "proposals": lambda g: g.has_proposals,
         "undecided": lambda g: g.status == STATUS_UNDECIDED,
         "left": lambda g: g.status == STATUS_LEFT,
+        "applied": lambda g: any(r.discarded for r in g.rows),
     }
     counts = {name: sum(1 for g in games if test(g)) for name, test in tests.items()}
     reclaim = sum(r.size or 0 for g in games for r in g.rows if r.operation)

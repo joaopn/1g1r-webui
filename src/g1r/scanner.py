@@ -14,7 +14,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
-from g1r import archives, fuzzy, hasheous, igir, mounts
+from g1r import archives, fuzzy, hasheous, igir, journal, mounts
 from g1r.config import Settings
 from g1r.dat_registry import DatRegistry
 from g1r.dats import Dat
@@ -119,11 +119,9 @@ class Scanner:
         self.lookup_post = lookup_post
 
     def start(self, conn: sqlite3.Connection, label: str) -> int:
-        running = conn.execute(
-            "SELECT id FROM scan WHERE folder_label = ? AND status = 'running'", (label,)
-        ).fetchone()
-        if running:
-            raise ScanError("a scan of this folder is already running")
+        reason = journal.busy(conn, label)
+        if reason:
+            raise ScanError(reason)
         return conn.execute(
             "INSERT INTO scan (folder_label, status) VALUES (?, 'running')", (label,)
         ).lastrowid
@@ -266,10 +264,18 @@ class Scanner:
     def _store(self, conn, label, files, dat_sha1, found: "Found") -> None:
         conn.execute("BEGIN")
         try:
-            conn.execute("DELETE FROM identity WHERE folder_label = ?", (label,))
-            conn.execute("DELETE FROM folder_file WHERE folder_label = ?", (label,))
+            # Files an apply moved to discarded/ keep their rows (and identities) so the table
+            # still shows them; one that is back in the folder is scanned afresh instead.
+            conn.execute(
+                "DELETE FROM folder_file WHERE folder_label = ? AND place = 'folder'", (label,)
+            )
             conn.executemany(
-                "INSERT INTO folder_file VALUES (?, ?, ?, ?, ?)",
+                "DELETE FROM folder_file WHERE folder_label = ? AND rel_path = ?",
+                [(label, f.rel_path) for f in files],
+            )
+            conn.executemany(
+                "INSERT INTO folder_file (folder_label, rel_path, size, mtime_ns, kind) "
+                "VALUES (?, ?, ?, ?, ?)",
                 [(label, f.rel_path, f.size, f.mtime_ns, f.kind) for f in files],
             )
             conn.executemany(
@@ -359,18 +365,22 @@ def folder_summary(conn: sqlite3.Connection, label: str) -> dict:
     counts = {
         row["kind"]: row["n"]
         for row in conn.execute(
-            "SELECT kind, COUNT(*) AS n FROM folder_file WHERE folder_label = ? GROUP BY kind",
+            "SELECT kind, COUNT(*) AS n FROM folder_file WHERE folder_label = ? "
+            "AND place = 'folder' GROUP BY kind",
             (label,),
         )
     }
     identified = conn.execute(
-        "SELECT COUNT(DISTINCT rel_path) FROM identity WHERE folder_label = ?", (label,)
+        "SELECT COUNT(DISTINCT i.rel_path) FROM identity i JOIN folder_file f "
+        "USING (folder_label, rel_path) WHERE i.folder_label = ? AND f.place = 'folder'",
+        (label,),
     ).fetchone()[0]
     methods = {
         row["method"]: row["n"]
         for row in conn.execute(
-            "SELECT method, COUNT(DISTINCT rel_path) AS n FROM identity WHERE folder_label = ? "
-            "GROUP BY method",
+            "SELECT i.method, COUNT(DISTINCT i.rel_path) AS n FROM identity i JOIN folder_file f "
+            "USING (folder_label, rel_path) WHERE i.folder_label = ? AND f.place = 'folder' "
+            "GROUP BY i.method",
             (label,),
         )
     }
@@ -387,7 +397,7 @@ def folder_summary(conn: sqlite3.Connection, label: str) -> dict:
 def unmatched_files(conn: sqlite3.Connection, label: str) -> list[sqlite3.Row]:
     return conn.execute(
         """SELECT f.* FROM folder_file f
-           WHERE f.folder_label = ? AND f.kind IN ('rom', 'archive')
+           WHERE f.folder_label = ? AND f.kind IN ('rom', 'archive') AND f.place = 'folder'
              AND NOT EXISTS (SELECT 1 FROM identity i
                              WHERE i.folder_label = f.folder_label AND i.rel_path = f.rel_path)
            ORDER BY f.rel_path""",
@@ -398,6 +408,7 @@ def unmatched_files(conn: sqlite3.Connection, label: str) -> list[sqlite3.Row]:
 def other_files(conn: sqlite3.Connection, label: str) -> list[sqlite3.Row]:
     return conn.execute(
         "SELECT * FROM folder_file WHERE folder_label = ? AND kind IN ('other', 'ignored') "
+        "AND place = 'folder' "
         "ORDER BY kind, rel_path",
         (label,),
     ).fetchall()

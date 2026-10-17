@@ -383,6 +383,13 @@ jobs:
   # Folder scans run in the background, this many at a time.
   workers: 1
 
+apply:
+  # Moves to another disk copy in chunks of this many bytes, hashing as they go.
+  copy_chunk_bytes: 1048576
+  # A copy is written under this suffix beside its destination and renamed once verified;
+  # one left behind by a restart is removed at start-up.
+  temp_suffix: .g1r-part
+
 # Copier/emulator headers some ROM files carry in front of the data. When igir finds no
 # match, the header is stripped and the remaining data looked up in the DAT by CRC and size.
 # A rule applies when the magic bytes are found at magic_offset, or (when no magic is

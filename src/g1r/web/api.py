@@ -11,7 +11,7 @@ import yaml
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel
 
-from g1r import conversion, dashboard, discarded, matching, mounts, scanner, unmatched
+from g1r import conversion, dashboard, discarded, journal, matching, mounts, scanner, unmatched
 from g1r.config import RANKING_CRITERIA, RankingConfig, Settings
 from g1r.dat_registry import DatRegistry, RegistryError
 from g1r.library import FolderEntry, Library, LibraryStore
@@ -41,6 +41,17 @@ class NewFolder(BaseModel):
     mount: str
     path: str
     label: str = ""
+
+
+class ApplyScope(BaseModel):
+    # One game, or the whole folder when None.
+    group_key: str | None = None
+    token: str | None = None
+
+
+class RestoreScope(BaseModel):
+    operation_ids: list[int] | None = None
+    group_key: str | None = None
 
 
 class KeepChoice(BaseModel):
@@ -117,6 +128,7 @@ def game_dict(game: matching.GameRow) -> dict:
                 "size": row.size,
                 "keep": row.keep,
                 "operation": row.operation,
+                "discarded": row.discarded,
             }
             for row in game.rows
         ],
@@ -285,16 +297,116 @@ def build_router(
         }
 
     @router.get("/folders/{label}/discarded")
-    def folder_discarded(label: str):
+    def folder_discarded(label: str, conn: Conn):
         folder = folder_or_404(label)
         info = folder_info(store.load(), folder)
-        reasons = discarded.listing(settings, label, info["location"])
+        operations = {op["destination"]: op["id"] for op in journal.active_discards(conn, label)}
+        reasons = discarded.listing(settings, label, info["location"], operations)
         return {
             "root": str(discarded.folder_root(settings, label)),
             "files": sum(len(r.files) for r in reasons),
             "bytes": sum(r.bytes for r in reasons),
             "reasons": [asdict(r) | {"bytes": r.bytes} for r in reasons],
         }
+
+    # Apply and restore -----------------------------------------------------------
+
+    def folder_root(folder: FolderEntry):
+        try:
+            return mounts.resolve(settings, folder.mount, folder.path)
+        except mounts.FolderPathError as exc:
+            raise conflict(str(exc)) from exc
+
+    def conflict(message: str, problems=None) -> HTTPException:
+        detail = {
+            "message": message,
+            "problems": [{"rel_path": rel, "problem": text} for rel, text in problems or []],
+        }
+        return HTTPException(status_code=HTTPStatus.CONFLICT, detail=detail)
+
+    def discard_plan(conn, label: str, group_key: str | None):
+        folder = folder_or_404(label)
+        games = matching.game_rows(settings, conn, label, store.ranking_for(folder))
+        if group_key is not None:
+            games = [g for g in games if g.group.key == group_key]
+            if not games:
+                raise not_found("no such game")
+        root = folder_root(folder)
+        plan = journal.plan_discards(conn, label, root, games)
+        problems = journal.preflight(plan, root, discarded.folder_root(settings, label))
+        return plan, problems
+
+    def move_dict(m: journal.Move) -> dict:
+        return {
+            "rel_path": m.rel_path,
+            "group_key": m.group_key,
+            "source": str(m.source),
+            "destination": str(m.destination),
+            "size": m.size,
+        }
+
+    @router.post("/folders/{label}/apply/preview")
+    def apply_preview(label: str, body: ApplyScope, conn: Conn):
+        plan, problems = discard_plan(conn, label, body.group_key)
+        return {
+            "token": journal.token(plan),
+            "moves": [move_dict(m) for m in plan],
+            "bytes": sum(m.size for m in plan),
+            "problems": [{"rel_path": r, "problem": p} for r, p in problems],
+            "busy": journal.busy(conn, label),
+        }
+
+    @router.post("/folders/{label}/apply", status_code=HTTPStatus.ACCEPTED)
+    def apply(label: str, body: ApplyScope, request: Request, conn: Conn):
+        def check():
+            plan, problems = discard_plan(conn, label, body.group_key)
+            if journal.token(plan) != body.token:
+                raise journal.PlanError("the plan changed since you reviewed it; look again")
+            if problems:
+                raise journal.PlanError(
+                    "nothing was moved: some files are not as scanned", problems
+                )
+            if not plan:
+                raise journal.PlanError("there is nothing to apply")
+            return plan
+
+        try:
+            run_id = request.app.state.jobs.apply(
+                conn, label, journal.APPLY, body.group_key or "", check
+            )
+        except journal.PlanError as exc:
+            raise conflict(str(exc), exc.problems) from exc
+        return journal.progress(conn, run_id)
+
+    @router.post("/folders/{label}/restore", status_code=HTTPStatus.ACCEPTED)
+    def restore(label: str, body: RestoreScope, request: Request, conn: Conn):
+        folder = folder_or_404(label)
+
+        def check():
+            plan = journal.plan_restore(
+                conn, label, operation_ids=body.operation_ids, group_key=body.group_key
+            )
+            if not plan:
+                raise journal.PlanError("there is nothing to restore")
+            problems = journal.preflight(
+                plan, discarded.folder_root(settings, label), folder_root(folder)
+            )
+            if problems:
+                raise journal.PlanError("nothing was restored", problems)
+            return plan
+
+        try:
+            run_id = request.app.state.jobs.apply(
+                conn, label, journal.RESTORE, body.group_key or "", check
+            )
+        except journal.PlanError as exc:
+            raise conflict(str(exc), exc.problems) from exc
+        return journal.progress(conn, run_id)
+
+    @router.get("/folders/{label}/run")
+    def run_status(label: str, conn: Conn):
+        folder_or_404(label)
+        return journal.latest_run(conn, label)
 
     @router.get("/folders/{label}/games")
     def folder_games(label: str, conn: Conn):

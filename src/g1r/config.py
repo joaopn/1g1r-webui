@@ -238,6 +238,11 @@ class JobsConfig(_Strict):
     workers: int = Field(gt=0)
 
 
+class ApplyConfig(_Strict):
+    copy_chunk_bytes: int = Field(gt=0)
+    temp_suffix: str = Field(min_length=1)
+
+
 class HeaderRule(_Strict):
     header_size: int = Field(gt=0)
     magic_hex: str | None = None
@@ -301,6 +306,7 @@ class Settings(_Strict):
     lookups: LookupsConfig
     fuzzy: FuzzyConfig
     jobs: JobsConfig
+    apply: ApplyConfig
     headers: dict[str, list[HeaderRule]]
     names: NamesConfig
     grouping: GroupingConfig
