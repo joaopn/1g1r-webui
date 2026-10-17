@@ -38,7 +38,7 @@ def test_non_mapping_config_is_rejected(data_dir):
 
 def test_enabled_platform_needs_profile(make_settings):
     with pytest.raises(ConfigError, match="without a profile"):
-        make_settings({"platforms": {"enabled": ["nes", "3ds"]}})
+        make_settings({"platforms": {"enabled": ["nes", "psvita"]}})
 
 
 def test_default_target_must_be_allowed(make_settings):
@@ -49,7 +49,7 @@ def test_default_target_must_be_allowed(make_settings):
 def test_wave_one_platforms_are_enabled(make_settings):
     enabled = make_settings().platforms.enabled
     assert {"nes", "gb", "snes", "genesis"} <= set(enabled)
-    assert not {"psvita", "3ds", "switch"} & set(enabled)
+    assert not {"psvita", "switch"} & set(enabled)
 
 
 def test_deep_merge_replaces_non_mappings():

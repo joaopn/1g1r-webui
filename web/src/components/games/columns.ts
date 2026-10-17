@@ -71,6 +71,10 @@ export const METHOD_LABELS: Record<string, { short: string; long: string }> = {
     short: "DAT, byte order",
     long: "checksum match in the DAT after putting the ROM in its native byte order",
   },
+  "dat-untrimmed": {
+    short: "DAT, trimmed",
+    long: "checksum match in the DAT after padding the trimmed card image back to its size",
+  },
   duplicate: {
     short: "copy",
     long: "byte-identical to another file of this game, which the DAT identified",
@@ -143,6 +147,7 @@ export function flagsOf(version: Version): string[] {
     ...(version.prerelease ? ["pre-release"] : []),
     ...(version.rerelease ? ["re-release"] : []),
     ...version.tags,
+    ...version.notes,
   ];
 }
 

@@ -151,6 +151,8 @@ class PlatformProfile(_Strict):
     default_target: str
     # ScreenScraper's systemeid for the platform; no ScreenScraper lookups without one.
     screenscraper_id: int | None = None
+    # A card image header the scan reads (a key of `card_images`), or None.
+    card_image: str | None = None
 
 
 class PlatformsConfig(_Strict):
@@ -371,6 +373,22 @@ class ByteOrderConfig(_Strict):
         return self
 
 
+class NcsdConfig(_Strict):
+    magic: str
+    magic_offset: int = Field(ge=0)
+    image_size_offset: int = Field(ge=0)
+    partition_table_offset: int = Field(ge=0)
+    flags_offset: int = Field(ge=0)
+    media_unit_flag: int = Field(ge=0)
+    media_unit_bytes: int = Field(gt=0)
+    ncch_magic: str
+    ncch_magic_offset: int = Field(ge=0)
+    ncch_flags_offset: int = Field(ge=0)
+    crypto_flag: int = Field(ge=0)
+    no_crypto_mask: int = Field(gt=0)
+    padding_hex: str
+
+
 class NamesConfig(_Strict):
     regions: list[str]
     prerelease_tags: list[str]
@@ -424,6 +442,7 @@ class Settings(_Strict):
     apply: ApplyConfig
     headers: dict[str, list[HeaderRule]]
     byte_orders: dict[str, ByteOrderConfig] = Field(default_factory=dict)
+    card_images: dict[str, NcsdConfig] = Field(default_factory=dict)
     names: NamesConfig
     grouping: GroupingConfig
     ranking: RankingConfig

@@ -50,6 +50,8 @@ class Row:
     identical: list[str] = field(default_factory=list)
     # The discarded/ subfolder the proposed move goes to.
     discard_reason: str = REASON_DISCARDED
+    # What the file's header says (cards.ENCRYPTED, cards.TRIMMED).
+    notes: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -207,6 +209,11 @@ def game_rows(
             "SELECT rel_path, sha1 FROM payload_hash WHERE folder_label = ?", (label,)
         ).fetchall()
     )
+    file_notes: dict[str, list[str]] = {}
+    for rel, note in conn.execute(
+        "SELECT rel_path, note FROM file_note WHERE folder_label = ? ORDER BY note", (label,)
+    ):
+        file_notes.setdefault(rel, []).append(note)
     groups = build_groups(
         settings, dat, [(r["rel_path"], r["game_name"], r["method"]) for r in identities]
     )
@@ -263,6 +270,7 @@ def game_rows(
                     gone.get(version.rel_path),
                     identical,
                     discard_reason,
+                    file_notes.get(version.rel_path, []),
                 )
             )
         kept = next((r for r in rows if r.keep), None)

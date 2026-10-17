@@ -162,6 +162,7 @@ def game_dict(game: matching.GameRow) -> dict:
                 "operation": row.operation,
                 "discarded": row.discarded,
                 "identical": row.identical,
+                "notes": row.notes,
                 "discard_reason": row.discard_reason if row.operation else None,
             }
             for row in game.rows

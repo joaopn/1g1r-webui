@@ -17,7 +17,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
-from g1r import archives, discs, fuzzy, hasheous, igir, journal, mounts, screenscraper
+from g1r import archives, cards, discs, fuzzy, hasheous, igir, journal, mounts, screenscraper
 from g1r.config import Settings
 from g1r.conversion import ZIP_SUFFIX
 from g1r.dat_registry import DatRegistry
@@ -42,6 +42,7 @@ from g1r.library import FolderEntry, LibraryStore
 METHOD_CHECKSUM = "dat-checksum"
 METHOD_HEADERLESS = "dat-headerless"
 METHOD_BYTESWAPPED = "dat-byteswapped"
+METHOD_UNTRIMMED = "dat-untrimmed"
 METHOD_DUPLICATE = "duplicate"
 METHOD_HASHEOUS = "hasheous"
 METHOD_SCREENSCRAPER = "screenscraper"
@@ -189,6 +190,35 @@ def read_byte_orders(settings: Settings, platform: str, root: Path, files, membe
     return found
 
 
+# Card images ----------------------------------------------------------------------
+
+
+def read_cards(settings: Settings, platform: str, root: Path, files, members) -> dict:
+    """rel_path -> (CardInfo, zip member or None) for each card image the platform's header
+    format recognises: a bare file, or a zip's one ROM member."""
+    profile = settings.platforms.profiles[platform]
+    config = settings.card_images.get(profile.card_image or "")
+    if config is None:
+        return {}
+    exts = {e.lower() for e in profile.rom_extensions}
+    inside: dict[str, list[archives.Member]] = {}
+    for rel, member in members:
+        if PurePosixPath(member.name).suffix.lower().lstrip(".") in exts:
+            inside.setdefault(rel, []).append(member)
+    found = {}
+    for f in files:
+        if f.kind == "rom":
+            member, size = None, f.size
+        elif f.rel_path.lower().endswith(ZIP_SUFFIX) and len(inside.get(f.rel_path, [])) == 1:
+            member, size = inside[f.rel_path][0].name, inside[f.rel_path][0].size
+        else:
+            continue
+        info = cards.read_ncsd(config, root / f.rel_path, member, size)
+        if info is not None:
+            found[f.rel_path] = (info, member)
+    return found
+
+
 # The scan ------------------------------------------------------------------------
 
 
@@ -253,6 +283,7 @@ class Scanner:
         found.byte_orders = read_byte_orders(
             self.settings, folder.platform, root, files, found.members
         )
+        found.cards = read_cards(self.settings, folder.platform, root, files, found.members)
         active = self.registry.active_version(conn, library, folder.platform)
         if active is None:
             self._store(conn, label, files, None, found)
@@ -290,6 +321,8 @@ class Scanner:
                 )
                 found.identify(f.rel_path, as_is, METHOD_CHECKSUM)
                 found.identify(f.rel_path, native - as_is, METHOD_BYTESWAPPED)
+        unmatched = [f for f in unmatched if f.rel_path not in found.identified]
+        self._untrimmed(folder.platform, root, unmatched, dat, found)
         unmatched = [f for f in unmatched if f.rel_path not in found.identified]
         self._duplicates(root, folder.platform, files, found)
         unmatched = [f for f in unmatched if f.rel_path not in found.identified]
@@ -458,6 +491,30 @@ class Scanner:
             if original is not None:
                 found.identify(f.rel_path, games[original], METHOD_DUPLICATE)
 
+    def _untrimmed(self, platform, root: Path, unmatched, dat: Dat, found: "Found") -> None:
+        """A trimmed card image is the DAT's entry once padded back to the card's size."""
+        profile = self.settings.platforms.profiles[platform]
+        config = self.settings.card_images.get(profile.card_image or "")
+        if config is None:
+            return
+        index = _crc_index(dat)
+        for f in unmatched:
+            card = found.cards.get(f.rel_path)
+            if card is None or not card[0].trimmed:
+                continue
+            info, member = card
+            try:
+                crc = cards.padded_crc(
+                    config,
+                    root / f.rel_path,
+                    member,
+                    info.image_size,
+                    self.settings.apply.copy_chunk_bytes,
+                )
+            except (OSError, zipfile.BadZipFile, KeyError):
+                continue
+            found.identify(f.rel_path, index.get((crc, info.image_size), set()), METHOD_UNTRIMMED)
+
     def _rvz_sha1(self, path: Path) -> str | None:
         dolphin = self.settings.dolphin
         try:
@@ -560,6 +617,14 @@ class Scanner:
                 [(label, rel, size, sha1) for rel, (size, sha1) in found.payloads.items()],
             )
             conn.executemany(
+                "INSERT INTO file_note VALUES (?, ?, ?)",
+                [
+                    (label, rel, note)
+                    for rel, (info, _) in found.cards.items()
+                    for note in info.notes()
+                ],
+            )
+            conn.executemany(
                 "INSERT INTO byte_order VALUES (?, ?, ?)",
                 [(label, rel, word) for rel, word in found.byte_orders.items()],
             )
@@ -597,6 +662,8 @@ class Found:
     payloads: dict[str, tuple[int, str]] = field(default_factory=dict)
     # rel_path -> word length to reverse for the native byte order (swapped dumps only)
     byte_orders: dict[str, int] = field(default_factory=dict)
+    # rel_path -> (cards.CardInfo, zip member or None), for card images (3DS)
+    cards: dict[str, tuple] = field(default_factory=dict)
 
     def identify(self, rel_path, games, method, score=CHECKSUM_SCORE) -> None:
         for game in sorted(games):

@@ -72,7 +72,7 @@ def test_suggest_label():
 def test_meta_lists_enabled_platforms_and_ui_config(setup):
     client, _, _ = setup
     meta = client.get("/api/meta").json()
-    assert "nes" in meta["platforms"] and "3ds" not in meta["platforms"]
+    assert "nes" in meta["platforms"] and "psvita" not in meta["platforms"]
     assert (
         meta["platforms"]["gb"]["short"] == "GB" and meta["platforms"]["gb"]["kind"] == "handheld"
     )
@@ -94,7 +94,7 @@ def test_add_folder_rules(setup):
     created = add_nes(client)
     assert created.status_code == HTTPStatus.CREATED and created.json()["label"] == "nes-set"
     for body, message in [
-        ({"platform": "3ds"}, "supported platform"),
+        ({"platform": "psvita"}, "supported platform"),
         ({"path": ""}, "not the mount itself"),
         ({"path": "../x"}, "may not contain"),
         ({"path": "gb", "label": "Bad Label"}, "lowercase"),

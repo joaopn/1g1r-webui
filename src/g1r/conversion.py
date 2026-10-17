@@ -11,7 +11,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
-from g1r import discs
+from g1r import cards, discs
 from g1r.config import PLAIN, Settings, TargetConfig
 
 REASON_ORIGINALS = "originals"
@@ -24,6 +24,14 @@ MAKE_CHD = "make chd"
 MAKE_RVZ = "make rvz"
 # A ROM in a swapped byte order (N64 .v64) rewritten in the native one.
 BYTESWAP = "byteswap"
+# What a card image's header says, as the Conversion table explains it.
+NOTE_TEXT = {
+    cards.ENCRYPTED: (
+        "encrypted: Azahar and Citra need a decrypted image; decrypting needs keys from "
+        "your console and is not done here"
+    ),
+    cards.TRIMMED: "trimmed (the card's empty padding was cut off): it runs the same",
+}
 # A track file a cue sheet's conversion takes along.
 PART = "part"
 FLAGGED = "flagged"
@@ -148,6 +156,11 @@ def rows(
         ).fetchall()
     )
     byte_order = settings.byte_orders.get(platform)
+    file_notes: dict[str, list[str]] = {}
+    for rel, note in conn.execute(
+        "SELECT rel_path, note FROM file_note WHERE folder_label = ? ORDER BY note", (label,)
+    ):
+        file_notes.setdefault(rel, []).append(note)
     sheets, taken = _cue_sheets(files, root) if to_disc else ({}, {})
     patterns = [p.lower() for p in settings.platforms.lossy_patterns]
 
@@ -228,6 +241,11 @@ def rows(
                 row.parts = []
             else:
                 planned.add(row.output.lower())
+        notes = file_notes.get(rel, [])
+        if notes:
+            if cards.ENCRYPTED in notes and row.status in (DONE, ACCEPTED):
+                row.status = FLAGGED
+            row.note = "; ".join([*(NOTE_TEXT.get(n, n) for n in notes), *filter(None, [row.note])])
         result.append(row)
     # A track whose cue sheet could not be converted is not taken along after all.
     converting = {p for r in result if r.status in CONVERTING for p in r.parts}

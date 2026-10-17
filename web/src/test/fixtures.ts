@@ -128,6 +128,7 @@ const version = (
   operation: null,
   discarded: null,
   identical: [] as string[],
+  notes: [] as string[],
   discard_reason: null as Version["discard_reason"],
   ...extra,
 });

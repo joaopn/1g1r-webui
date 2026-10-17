@@ -126,6 +126,7 @@ platforms:
     - jaguar
     - lynx
     - n64
+    - 3ds
     - nds
     - neo-geo-pocket
     - neo-geo-pocket-color
@@ -290,6 +291,18 @@ platforms:
       targets: [zip, plain]
       default_target: zip
       screenscraper_id: 14
+    "3ds":
+      name: Nintendo 3DS
+      short: "3DS"
+      kind: handheld
+      dat_name: Nintendo - Nintendo 3DS
+      rom_extensions: [3ds, cci, cia]
+      # Azahar/Citra do not read zips: the target is the bare card image.
+      targets: [plain]
+      default_target: plain
+      screenscraper_id: 17
+      # Card images are read for encryption and trimming (`card_images`).
+      card_image: ncsd
     nds:
       name: Nintendo DS
       short: "NDS"
@@ -659,6 +672,27 @@ byte_orders:
     swapped:
       - {label: byte-swapped (v64), magic_hex: "37804012", word_bytes: 2}
       - {label: little-endian, magic_hex: "40123780", word_bytes: 4}
+
+# Card image formats whose header the scan reads (platforms.profiles.<id>.card_image).
+# NCSD (Nintendo 3DS .3ds/.cci): the image size and the first partition's offset are
+# little-endian u32 counts of media units of media_unit_bytes << flags[media_unit_flag]; the
+# first partition is an NCCH, encrypted unless its flags[crypto_flag] has no_crypto_mask.
+# A trimmed image (shorter than its size) is padded with padding_hex to compare with the DAT.
+card_images:
+  ncsd:
+    magic: NCSD
+    magic_offset: 256
+    image_size_offset: 260
+    partition_table_offset: 288
+    flags_offset: 392
+    media_unit_flag: 6
+    media_unit_bytes: 512
+    ncch_magic: NCCH
+    ncch_magic_offset: 256
+    ncch_flags_offset: 392
+    crypto_flag: 7
+    no_crypto_mask: 4
+    padding_hex: ff
 
 # Reading No-Intro / Redump names: "Title (Region) (Languages) (Rev 1) (Beta) ...".
 names:

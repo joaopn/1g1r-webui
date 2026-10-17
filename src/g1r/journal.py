@@ -60,6 +60,7 @@ CARRIED = (
     "suggestion",
     "manual_identity",
     "payload_hash",
+    "file_note",
 )
 
 

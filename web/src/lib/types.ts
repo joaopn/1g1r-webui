@@ -152,6 +152,8 @@ export type Version = {
   discarded: number | null;
   /** The other versions with byte-identical ROM data. */
   identical: string[];
+  /** What the file's header says: "encrypted", "trimmed" (3DS card images). */
+  notes: string[];
   /** Where the proposed move goes: 1g1r/, or duplicates/ for an identical copy. */
   discard_reason: "1g1r" | "duplicates" | null;
 };
