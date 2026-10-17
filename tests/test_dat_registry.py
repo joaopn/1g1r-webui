@@ -86,13 +86,13 @@ def test_pack_is_split_by_platform(env):
         b"Nintendo - Nintendo Entertainment System (Headered)", b"Nintendo - Game Boy"
     )
     dc = NOINTRO.replace(
-        b"Nintendo - Nintendo Entertainment System (Headered)", b"Sega - Dreamcast"
+        b"Nintendo - Nintendo Entertainment System (Headered)", b"Nintendo - Nintendo 3DS"
     )
     pack = zip_of(
         {
             "No-Intro/nes.dat": NOINTRO,
             "No-Intro/gb.dat": gb,
-            "x/dc.dat": dc,
+            "x/3ds.dat": dc,
             "readme.txt": b"hi",
             "bad.dat": b"nonsense",
         }
@@ -100,7 +100,7 @@ def test_pack_is_split_by_platform(env):
     results = {r.member: r for r in registry.add_pack(conn, pack)}
     assert results["nes.dat"].platform == "nes" and results["nes.dat"].version_id
     assert results["gb.dat"].platform == "gb"
-    assert "not a supported platform" in results["dc.dat"].message
+    assert "not a supported platform" in results["3ds.dat"].message
     assert "skipped" in results["bad.dat"].message
     assert set(store.load().dats) == {"nes", "gb"}
 
@@ -108,7 +108,7 @@ def test_pack_is_split_by_platform(env):
 def test_rejections(env, make_settings):
     _, _, registry, conn, _ = env
     with pytest.raises(RegistryError, match="not a supported platform"):
-        registry.add_upload(conn, "dc", NOINTRO, "x.dat")
+        registry.add_upload(conn, "3ds", NOINTRO, "x.dat")
     with pytest.raises(RegistryError, match="not a usable DAT"):
         registry.add_upload(conn, "nes", b"junk", "x.dat")
     with pytest.raises(RegistryError, match="several DATs"):

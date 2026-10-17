@@ -187,8 +187,8 @@ class Converter:
                 if step.recipe == conversion.RECIPE_ARCHIVE_DISC
                 else step.source
             )
-            cue = disc.suffix.lower().lstrip(".") == discs.CUE
-            originals = discs.cue_paths(disc) if cue else [disc]
+            sheet = disc.suffix.lower().lstrip(".") in discs.SHEETS
+            originals = discs.sheet_paths(disc) if sheet else [disc]
             each, whole = self._digests(originals)
             if step.disc_mode == discs.RVZ:
                 self._rvz(step, disc, whole, temp)
@@ -240,7 +240,7 @@ class Converter:
                 raise moves.MoveError(f"the scan listed no CRC32 for {name}")
             if crc_and_size(self.config.copy_chunk_bytes, path) != (crc.lower(), size):
                 raise moves.MoveError(f"{name} did not extract as the archive lists it")
-            if relative.suffix.lower().lstrip(".") in (discs.CUE, *discs.IMAGES):
+            if relative.suffix.lower().lstrip(".") in (*discs.SHEETS, *discs.IMAGES):
                 found = path
         if found is None:
             raise moves.MoveError(f"{step.source.name} holds no cue sheet or disc image")

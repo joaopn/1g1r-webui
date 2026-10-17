@@ -1,8 +1,9 @@
 """Disc images: reading cue sheets, the chdman runs that make and check a CHD, and the
 dolphin-tool runs that make and check an RVZ.
 
-A cue sheet names the files holding the disc's tracks (`FILE "name" BINARY`). chdman makes
-the CHD from the cue sheet (or from an ISO, a single data track), checks the CHD's own
+A cue sheet names the files holding the disc's tracks (`FILE "name" BINARY`), and so does a
+Dreamcast .gdi (one line per track: number, start, type, sector size, file, offset). chdman
+makes the CHD from either sheet (or from an ISO, a single data track), checks the CHD's own
 hashes (`verify`), and gives the tracks back (`extractcd`), so a conversion is proven
 lossless by comparing those tracks with the originals.
 """
@@ -14,6 +15,9 @@ from pathlib import Path, PurePosixPath
 from g1r.config import ChdmanConfig, DolphinConfig
 
 CUE = "cue"
+GDI = "gdi"
+# Track lists a disc is converted from, with its track files.
+SHEETS = (CUE, GDI)
 ISO = "iso"
 GCM = "gcm"
 # Single-file disc images a CHD or RVZ is made from.
@@ -32,6 +36,12 @@ EXTRACTED_TRACKS = "track%t.bin"
 _FILE_LINE = re.compile(r'^\s*FILE\s+(?:"(?P<quoted>[^"]+)"|(?P<bare>\S+))\s+\S+\s*$', re.I)
 
 
+# A .gdi track line; the file name is quoted when it has spaces.
+_GDI_LINE = re.compile(
+    r'^\s*\d+\s+\d+\s+\d+\s+\d+\s+(?:"(?P<quoted>[^"]+)"|(?P<bare>\S+))\s+-?\d+\s*$'
+)
+
+
 class DiscError(RuntimeError):
     """chdman failed, or the cue sheet cannot be used; the message says why."""
 
@@ -46,17 +56,30 @@ def cue_files(text: str) -> list[str]:
     return names
 
 
-def read_cue(path: Path) -> list[str]:
+def gdi_files(text: str) -> list[str]:
+    """The track file names a .gdi refers to, in order (the first line is the count)."""
+    names = []
+    for line in text.splitlines():
+        match = _GDI_LINE.match(line)
+        if match:
+            names.append(match.group("quoted") or match.group("bare"))
+    return names
+
+
+def read_sheet(path: Path) -> list[str]:
+    """The track file names of a cue sheet or a .gdi."""
+    read = gdi_files if path.suffix.lower().lstrip(".") == GDI else cue_files
     try:
-        return cue_files(path.read_text(encoding="utf-8", errors="replace"))
+        return read(path.read_text(encoding="utf-8", errors="replace"))
     except OSError as exc:
         raise DiscError(f"cannot read {path.name}: {exc.strerror}") from exc
 
 
-def cue_paths(cue: Path) -> list[Path]:
-    """The track files of a cue sheet, beside it; raises when one is missing or outside."""
+def sheet_paths(cue: Path) -> list[Path]:
+    """The track files of a cue sheet or .gdi, beside it; raises when one is missing or
+    outside."""
     paths = []
-    for name in read_cue(cue):
+    for name in read_sheet(cue):
         relative = PurePosixPath(name.replace("\\", "/"))
         if relative.is_absolute() or ".." in relative.parts:
             raise DiscError(f"{cue.name} refers to {name}, outside its folder")
@@ -112,7 +135,7 @@ def extract_cd(config: ChdmanConfig, chd: Path, work: Path) -> list[Path]:
             "--splitbin",
         ],
     )
-    return cue_paths(cue)
+    return sheet_paths(cue)
 
 
 def extract_dvd(config: ChdmanConfig, chd: Path, output: Path) -> None:

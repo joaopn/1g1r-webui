@@ -113,6 +113,7 @@ platforms:
     - ps2
     - psp
     - wii
+    - dc
     - neo-geo-cd
     - psx
     - saturn
@@ -349,6 +350,19 @@ platforms:
       targets: [zip, plain]
       default_target: zip
       screenscraper_id: 11
+    dc:
+      name: Dreamcast
+      short: "DC"
+      kind: console
+      dat_name: Sega - Dreamcast
+      dat_family: redump
+      redump_system: dc
+      # GD-ROMs: Redump's cue sheets (with the high-density area) or a .gdi and its tracks.
+      rom_extensions: [chd, cue, gdi, bin, raw]
+      part_extensions: [cue, gdi, bin, raw]
+      targets: [chd]
+      default_target: chd
+      screenscraper_id: 23
     psx:
       name: PlayStation
       short: "PS1"

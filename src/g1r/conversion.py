@@ -108,6 +108,7 @@ def rows(
     """`root`: the folder on disk, where loose cue sheets are read (None: not available)."""
     profile = settings.platforms.profiles[platform]
     rom_extensions = {e.lower() for e in profile.rom_extensions}
+    part_extensions = {e.lower() for e in profile.part_extensions}
     disc_formats = {e.lower() for e in settings.platforms.disc_formats}
     to_disc = target.produces in disc_formats
     files = conn.execute(
@@ -170,16 +171,14 @@ def rows(
         elif lossy(PurePosixPath(rel).name):
             row.status = FLAGGED
             row.note = "already stripped of data (scrubbed or trimmed): never converted further"
-        elif to_disc and f["kind"] == "rom" and ext == discs.CUE:
+        elif to_disc and f["kind"] == "rom" and ext in discs.SHEETS:
             sheet = sheets.get(rel)
             if isinstance(sheet, str):
                 row.status, row.note = FLAGGED, sheet
             else:
                 row.parts = sheet
                 row.members = [{"name": PurePosixPath(p).name} for p in sheet]
-                _disc(
-                    settings, label, row, RECIPE_DISC, discs.CUE, profile, target, delete_originals
-                )
+                _disc(settings, label, row, RECIPE_DISC, ext, profile, target, delete_originals)
         elif to_disc and f["kind"] == "rom" and ext in profile.part_extensions:
             if rel in taken:
                 row.status, row.note = PART, f"converted with {taken[rel]}"
@@ -187,13 +186,13 @@ def rows(
                 row.status, row.note = FLAGGED, "a track no cue sheet in the folder refers to"
         elif to_disc and f["kind"] == "rom" and ext in discs.IMAGES:
             _disc(settings, label, row, RECIPE_DISC, ext, profile, target, delete_originals)
-        elif to_disc and f["kind"] == "archive" and _disc_inside(roms):
+        elif to_disc and f["kind"] == "archive" and _disc_inside(roms, part_extensions):
             _disc(
                 settings,
                 label,
                 row,
                 RECIPE_ARCHIVE_DISC,
-                _disc_inside(roms),
+                _disc_inside(roms, part_extensions),
                 profile,
                 target,
                 delete_originals,
@@ -246,13 +245,13 @@ def _cue_sheets(files, root: Path | None) -> tuple[dict, dict]:
     taken: dict[str, str] = {}
     for f in files:
         rel = f["rel_path"]
-        if f["kind"] != "rom" or _ext(rel) != discs.CUE:
+        if f["kind"] != "rom" or _ext(rel) not in discs.SHEETS:
             continue
         if root is None:
             sheets[rel] = "the folder is not available to read the cue sheet"
             continue
         try:
-            names = discs.read_cue(root / rel)
+            names = discs.read_sheet(root / rel)
         except discs.DiscError as exc:
             sheets[rel] = str(exc)
             continue
@@ -274,11 +273,18 @@ def _cue_sheets(files, root: Path | None) -> tuple[dict, dict]:
     return sheets, taken
 
 
-def _disc_inside(roms: list[dict]) -> str | None:
-    """An archive holding one disc: a cue sheet with its tracks, or a single image."""
+def _disc_inside(roms: list[dict], parts: set[str]) -> str | None:
+    """An archive holding one disc: a cue sheet or .gdi with its tracks (files of the
+    platform's part extensions), or a single image."""
     kinds = Counter(_ext(m["name"]) for m in roms)
-    if kinds.get(discs.CUE) == 1 and set(kinds) <= {discs.CUE, "bin"} and len(roms) > 1:
-        return discs.CUE
+    sheets = [k for k in kinds if k in discs.SHEETS]
+    if (
+        len(sheets) == 1
+        and kinds[sheets[0]] == 1
+        and set(kinds) <= parts | {sheets[0]}
+        and len(roms) > 1
+    ):
+        return sheets[0]
     if len(roms) == 1 and _ext(roms[0]["name"]) in discs.IMAGES:
         return _ext(roms[0]["name"])
     return None
