@@ -15,7 +15,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
-from g1r import archives, fuzzy, hasheous, igir, journal, mounts
+from g1r import archives, fuzzy, hasheous, igir, journal, mounts, screenscraper
 from g1r.config import Settings
 from g1r.conversion import ZIP_SUFFIX
 from g1r.dat_registry import DatRegistry
@@ -34,6 +34,7 @@ METHOD_CHECKSUM = "dat-checksum"
 METHOD_HEADERLESS = "dat-headerless"
 METHOD_DUPLICATE = "duplicate"
 METHOD_HASHEOUS = "hasheous"
+METHOD_SCREENSCRAPER = "screenscraper"
 METHOD_FUZZY = "fuzzy"
 METHOD_MANUAL = "manual"
 CHECKSUM_SCORE = 1.0
@@ -120,6 +121,7 @@ class Scanner:
         report_runner: ReportRunner | None = None,
         seven_zip: archives.SevenZipRunner = archives.run_seven_zip,
         lookup_post: hasheous.Post = hasheous.http_post,
+        screenscraper_get: screenscraper.Get = screenscraper.http_get,
     ):
         self.settings = settings
         self.store = store
@@ -127,6 +129,7 @@ class Scanner:
         self.report_runner = report_runner or igir.run_report
         self.seven_zip = seven_zip
         self.lookup_post = lookup_post
+        self.screenscraper_get = screenscraper_get
 
     def start(self, conn: sqlite3.Connection, label: str) -> int:
         reason = journal.busy(conn, label)
@@ -195,7 +198,7 @@ class Scanner:
         self._duplicates(root, folder.platform, files, found)
         unmatched = [f for f in unmatched if f.rel_path not in found.identified]
         notes = self._look_up(
-            conn, library, folder.platform, root, unmatched, found, refresh_lookups
+            conn, library, folder.platform, root, unmatched, found, refresh_lookups, dat
         )
         unmatched = [f for f in unmatched if f.rel_path not in found.identified]
         self._suggest(dat, unmatched, found)
@@ -212,32 +215,88 @@ class Scanner:
             parts.append(f"{online} of them via Hasheous")
         return "; ".join(parts + notes)
 
-    def _look_up(self, conn, library, platform, root, unmatched, found, refresh) -> list[str]:
-        """Identification step 3: hash what the DAT missed; ask Hasheous when it is on."""
-        dat_name = self.settings.platforms.profiles[platform].nointro_dat
+    def _look_up(self, conn, library, platform, root, unmatched, found, refresh, dat) -> list[str]:
+        """Identification steps 3 and 4: hash what the DAT missed; ask Hasheous, then
+        ScreenScraper, for the services that are on."""
+        profile = self.settings.platforms.profiles[platform]
+        hasheous_on = library.lookups.hasheous
+        session = self._screenscraper(library, profile)
+        dat_names = {g.name for g in dat.games} if session else set()
+        services = [
+            service
+            for service, on in ((hasheous.SERVICE, hasheous_on), (screenscraper.SERVICE, session))
+            if on
+        ]
+        notes = []
         for f in unmatched:
             hashes = content_hashes(self.settings, platform, root / f.rel_path)
             found.hashes[f.rel_path] = hashes
-            if not library.lookups.hasheous:
-                continue
+            skipped = None
             if not hashes:
-                found.lookups[f.rel_path] = (hasheous.SKIPPED, "no ROM data to look up")
-                continue
-            if payload_count(hashes) > 1:
+                skipped = "no ROM data to look up"
+            elif payload_count(hashes) > 1:
                 # One answer would name one game and hide the others in the archive.
-                found.lookups[f.rel_path] = (hasheous.SKIPPED, "several ROM files in one archive")
+                skipped = "several ROM files in one archive"
+            if skipped:
+                for service in services:
+                    found.lookups[(f.rel_path, service)] = (hasheous.SKIPPED, skipped)
                 continue
-            try:
-                answer = hasheous.lookup(
-                    self.settings, conn, hashes, dat_name, self.lookup_post, refresh=refresh
+            if hasheous_on:
+                try:
+                    answer = hasheous.lookup(
+                        self.settings,
+                        conn,
+                        hashes,
+                        profile.nointro_dat,
+                        self.lookup_post,
+                        refresh=refresh,
+                    )
+                except hasheous.LookupError_ as exc:
+                    found.lookups[(f.rel_path, hasheous.SERVICE)] = (hasheous.ERROR, str(exc))
+                    notes.append(f"online lookups stopped: {exc}")
+                    hasheous_on = False
+                else:
+                    found.lookups[(f.rel_path, hasheous.SERVICE)] = (answer.status, answer.detail)
+                    if answer.status == hasheous.FOUND and answer.game_name:
+                        found.identify(f.rel_path, {answer.game_name}, METHOD_HASHEOUS)
+                        continue
+            if session and not session.stopped:
+                try:
+                    answer = screenscraper.lookup(
+                        session,
+                        conn,
+                        hashes,
+                        profile.screenscraper_id,
+                        dat_names,
+                        refresh=refresh,
+                    )
+                except screenscraper.LookupError_ as exc:
+                    found.lookups[(f.rel_path, screenscraper.SERVICE)] = (
+                        screenscraper.ERROR,
+                        str(exc),
+                    )
+                    notes.append(f"ScreenScraper lookups stopped: {exc}")
+                    continue
+                found.lookups[(f.rel_path, screenscraper.SERVICE)] = (
+                    answer.status,
+                    answer.detail,
                 )
-            except hasheous.LookupError_ as exc:
-                found.lookups[f.rel_path] = (hasheous.ERROR, str(exc))
-                return [f"online lookups stopped: {exc}"]
-            found.lookups[f.rel_path] = (answer.status, answer.detail)
-            if answer.status == hasheous.FOUND and answer.game_name:
-                found.identify(f.rel_path, {answer.game_name}, METHOD_HASHEOUS)
-        return []
+                if answer.status == screenscraper.FOUND and answer.game_name:
+                    found.identify(f.rel_path, {answer.game_name}, METHOD_SCREENSCRAPER)
+                elif answer.known_as:
+                    found.known_as[f.rel_path] = answer.known_as
+        return notes
+
+    def _screenscraper(self, library, profile) -> "screenscraper.Session | None":
+        """A session for this scan, when ScreenScraper is on, configured and knows the
+        platform."""
+        config = self.settings.lookups.screenscraper
+        if not library.lookups.screenscraper or profile.screenscraper_id is None:
+            return None
+        creds = screenscraper.credentials(config)
+        if creds is None:
+            return None
+        return screenscraper.Session(config, creds, self.screenscraper_get)
 
     def _duplicates(self, root: Path, platform: str, files, found: "Found") -> None:
         """Identification step 2: an unmatched file byte-identical to an identified one is
@@ -294,6 +353,14 @@ class Scanner:
         names = [g.name for g in dat.games]
         for f in unmatched:
             best = fuzzy.suggestions(config, f.rel_path, names)
+            known = found.known_as.get(f.rel_path)
+            if known:
+                # ScreenScraper's name for the data is a better hint than the file name.
+                scores = dict(best)
+                for name, score in fuzzy.suggestions(config, known, names):
+                    scores[name] = max(score, scores.get(name, 0))
+                best = sorted(scores.items(), key=lambda item: (-item[1], item[0]))
+                best = best[: config.max_suggestions]
             found.suggestions[f.rel_path] = best
             threshold = config.auto_match_threshold
             single = payload_count(found.hashes.get(f.rel_path, [])) <= 1
@@ -367,8 +434,8 @@ class Scanner:
             conn.executemany(
                 "INSERT INTO lookup_result VALUES (?, ?, ?, ?, ?)",
                 [
-                    (label, rel, hasheous.SERVICE, status, detail)
-                    for rel, (status, detail) in found.lookups.items()
+                    (label, rel, service, status, detail)
+                    for (rel, service), (status, detail) in found.lookups.items()
                 ],
             )
             conn.executemany(
@@ -400,7 +467,10 @@ class Found:
     # rel_path -> the method that identified it first
     identified: dict[str, str] = field(default_factory=dict)
     hashes: dict[str, list[ContentHash]] = field(default_factory=dict)
-    lookups: dict[str, tuple[str, str]] = field(default_factory=dict)
+    # (rel_path, service) -> (status, detail)
+    lookups: dict[tuple[str, str], tuple[str, str]] = field(default_factory=dict)
+    # rel_path -> ScreenScraper's name for data no DAT entry has: used for suggestions
+    known_as: dict[str, str] = field(default_factory=dict)
     suggestions: dict[str, list[tuple[str, float]]] = field(default_factory=dict)
     # rel_path -> (payload size, payload SHA1), where a duplicate was possible
     payloads: dict[str, tuple[int, str]] = field(default_factory=dict)

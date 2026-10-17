@@ -145,6 +145,7 @@ platforms:
       rom_extensions: [a26, bin]
       targets: [zip, plain]
       default_target: zip
+      screenscraper_id: 26
     atari5200:
       name: Atari 5200
       short: "5200"
@@ -153,6 +154,7 @@ platforms:
       rom_extensions: [a52, bin]
       targets: [zip, plain]
       default_target: zip
+      screenscraper_id: 40
     atari7800:
       name: Atari 7800
       short: "7800"
@@ -161,6 +163,7 @@ platforms:
       rom_extensions: [a78, bin]
       targets: [zip, plain]
       default_target: zip
+      screenscraper_id: 41
     colecovision:
       name: ColecoVision
       short: "CV"
@@ -169,6 +172,7 @@ platforms:
       rom_extensions: [col, rom, bin]
       targets: [zip, plain]
       default_target: zip
+      screenscraper_id: 48
     gamegear:
       name: Game Gear
       short: "GG"
@@ -177,6 +181,7 @@ platforms:
       rom_extensions: [gg]
       targets: [zip, plain]
       default_target: zip
+      screenscraper_id: 21
     gb:
       name: Game Boy
       short: "GB"
@@ -185,6 +190,7 @@ platforms:
       rom_extensions: [gb]
       targets: [zip, plain]
       default_target: zip
+      screenscraper_id: 9
     gba:
       name: Game Boy Advance
       short: "GBA"
@@ -193,6 +199,7 @@ platforms:
       rom_extensions: [gba]
       targets: [zip, plain]
       default_target: zip
+      screenscraper_id: 12
     gbc:
       name: Game Boy Color
       short: "GBC"
@@ -201,6 +208,7 @@ platforms:
       rom_extensions: [gbc]
       targets: [zip, plain]
       default_target: zip
+      screenscraper_id: 10
     genesis:
       name: Mega Drive / Genesis
       short: "MD"
@@ -209,6 +217,7 @@ platforms:
       rom_extensions: [md, gen, bin, smd]
       targets: [zip, plain]
       default_target: zip
+      screenscraper_id: 1
     jaguar:
       name: Atari Jaguar
       short: "JAG"
@@ -217,6 +226,7 @@ platforms:
       rom_extensions: [j64, jag, rom, abs, cof]
       targets: [zip, plain]
       default_target: zip
+      screenscraper_id: 27
     lynx:
       name: Atari Lynx
       short: "LNX"
@@ -225,6 +235,7 @@ platforms:
       rom_extensions: [lnx, lyx]
       targets: [zip, plain]
       default_target: zip
+      screenscraper_id: 28
     nds:
       name: Nintendo DS
       short: "NDS"
@@ -233,6 +244,7 @@ platforms:
       rom_extensions: [nds]
       targets: [zip, plain]
       default_target: zip
+      screenscraper_id: 15
     neo-geo-pocket:
       name: Neo Geo Pocket
       short: "NGP"
@@ -241,6 +253,7 @@ platforms:
       rom_extensions: [ngp]
       targets: [zip, plain]
       default_target: zip
+      screenscraper_id: 25
     neo-geo-pocket-color:
       name: Neo Geo Pocket Color
       short: "NGPC"
@@ -249,6 +262,7 @@ platforms:
       rom_extensions: [ngc, ngpc]
       targets: [zip, plain]
       default_target: zip
+      screenscraper_id: 82
     nes:
       name: Nintendo Entertainment System
       short: "NES"
@@ -257,6 +271,7 @@ platforms:
       rom_extensions: [nes]
       targets: [zip, plain]
       default_target: zip
+      screenscraper_id: 3
     sega32:
       name: Sega 32X
       short: "32X"
@@ -265,6 +280,7 @@ platforms:
       rom_extensions: [32x, bin]
       targets: [zip, plain]
       default_target: zip
+      screenscraper_id: 19
     sms:
       name: Master System
       short: "SMS"
@@ -273,6 +289,7 @@ platforms:
       rom_extensions: [sms]
       targets: [zip, plain]
       default_target: zip
+      screenscraper_id: 2
     snes:
       name: Super Nintendo
       short: "SNES"
@@ -281,6 +298,7 @@ platforms:
       rom_extensions: [sfc, smc]
       targets: [zip, plain]
       default_target: zip
+      screenscraper_id: 4
     tg16:
       name: PC Engine / TurboGrafx-16
       short: "PCE"
@@ -289,6 +307,7 @@ platforms:
       rom_extensions: [pce]
       targets: [zip, plain]
       default_target: zip
+      screenscraper_id: 31
     virtualboy:
       name: Virtual Boy
       short: "VB"
@@ -297,6 +316,7 @@ platforms:
       rom_extensions: [vb]
       targets: [zip, plain]
       default_target: zip
+      screenscraper_id: 11
     wonderswan:
       name: WonderSwan
       short: "WS"
@@ -305,6 +325,7 @@ platforms:
       rom_extensions: [ws]
       targets: [zip, plain]
       default_target: zip
+      screenscraper_id: 45
     wonderswan-color:
       name: WonderSwan Color
       short: "WSC"
@@ -313,6 +334,7 @@ platforms:
       rom_extensions: [wsc]
       targets: [zip, plain]
       default_target: zip
+      screenscraper_id: 46
 
 dats:
   # DAT files are stored under <data_dir>/<directory>/<platform>/<sha1>.dat.
@@ -366,6 +388,28 @@ lookups:
       Redump: {label: Redump, name_from: game}
     # A "not found" answer is asked again after this many days; found answers are kept.
     not_found_ttl_days: 30
+  # ScreenScraper (jeuInfos, API v2). Sends the CRC32, MD5, SHA1 and size of the ROM data and
+  # the platform's system id (platforms.profiles.<id>.screenscraper_id), never a file name.
+  screenscraper:
+    url: https://api.screenscraper.fr/api2/jeuInfos.php
+    site: https://www.screenscraper.fr
+    softname: 1g1r-webui
+    user_agent: 1g1r-webui
+    timeout_seconds: 30
+    # At most one request per this many seconds (free accounts get one thread).
+    min_interval_seconds: 1.5
+    # Stop asking for the day with this many requests of the daily quota left.
+    quota_reserve: 50
+    # ScreenScraper's own "quota used up" statuses.
+    quota_statuses: [430, 431]
+    not_found_ttl_days: 30
+    # The credentials are read from these environment variables (set in compose); the
+    # developer pair is required, the user account raises the quota.
+    environment:
+      devid: SCREENSCRAPER_DEVID
+      devpassword: SCREENSCRAPER_DEVPASSWORD
+      user: SCREENSCRAPER_USER
+      password: SCREENSCRAPER_PASSWORD
 
 # Name suggestions for unmatched files. They never identify anything unless
 # auto_match_threshold is set (a score from 0 to 1).

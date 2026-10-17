@@ -13,6 +13,7 @@ const FILES: UnmatchedFile[] = [
     size: 163856,
     hash: { crc32: "83348047", sha1: "71322777250ea6573554ea04538f1b2ae9b76b83" },
     hasheous: { status: "not found", detail: "" },
+    screenscraper: { status: "off", detail: "" },
     suggestions: [{ game_name: "Doraemon (Japan)", score: 0.84 }],
   },
 ];
@@ -26,7 +27,7 @@ const PREVIEW = {
   busy: null,
 };
 
-function renderSection(hasheousOn: boolean) {
+function renderSection(lookupsOn: boolean) {
   const calls: { url: string; init?: RequestInit }[] = [];
   vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
     calls.push({ url, init });
@@ -41,7 +42,7 @@ function renderSection(hasheousOn: boolean) {
   render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter>
-        <UnmatchedSection label="nes" meta={META} hasheousOn={hasheousOn} scanning={false} />
+        <UnmatchedSection label="nes" meta={META} lookupsOn={lookupsOn} scanning={false} />
       </MemoryRouter>
     </QueryClientProvider>,
   );

@@ -384,15 +384,18 @@ const SCORE = new Intl.NumberFormat("en-US", { style: "percent" });
 export function LookupsSettingsPage() {
   const data = useSettingsData();
   const save = useMutation({
-    mutationFn: (hasheous: boolean) => api("/settings/lookups", json("PUT", { hasheous })),
-    onSuccess: (_, hasheous) => {
-      toast.success(hasheous ? "Hasheous lookups on" : "Hasheous lookups off");
+    mutationFn: (change: { hasheous?: boolean; screenscraper?: boolean }) =>
+      api("/settings/lookups", json("PUT", change)),
+    onSuccess: (_, change) => {
+      const [name, on] = Object.entries(change)[0];
+      const service = name === "hasheous" ? "Hasheous" : "ScreenScraper";
+      toast.success(`${service} lookups ${on ? "on" : "off"}`);
       queryClient.invalidateQueries({ queryKey: keys.settings });
     },
     onError: (err) => toast.error(errorText(err)),
   });
   if (!data.data) return <p className="text-muted-foreground">Loading…</p>;
-  const { lookups, hasheous, fuzzy } = data.data;
+  const { lookups, hasheous, screenscraper, fuzzy } = data.data;
   return (
     <Page
       title="Online lookups"
@@ -405,7 +408,7 @@ export function LookupsSettingsPage() {
             className="mt-0.5 size-4 accent-primary"
             checked={lookups.hasheous}
             disabled={save.isPending}
-            onChange={(event) => save.mutate(event.target.checked)}
+            onChange={(event) => save.mutate({ hasheous: event.target.checked })}
           />
           <span>
             <span className="font-medium">Hasheous</span>{" "}
@@ -438,6 +441,66 @@ export function LookupsSettingsPage() {
           <dd>
             every answer; a "not found" is asked again after {hasheous.not_found_ttl_days} days, or
             when you click Look up again on a folder
+          </dd>
+        </dl>
+      </section>
+      <section className="max-w-3xl space-y-3 rounded-lg border border-border bg-card p-4 text-sm">
+        <label className="flex items-start gap-2">
+          <input
+            type="checkbox"
+            className="mt-0.5 size-4 accent-primary"
+            checked={lookups.screenscraper}
+            disabled={save.isPending || (!screenscraper.configured && !lookups.screenscraper)}
+            onChange={(event) => save.mutate({ screenscraper: event.target.checked })}
+          />
+          <span>
+            <span className="font-medium">ScreenScraper</span>{" "}
+            <a
+              href={screenscraper.site}
+              target="_blank"
+              rel="noreferrer"
+              className="text-muted-foreground underline underline-offset-2"
+            >
+              {screenscraper.site}
+            </a>
+            <span className="block text-muted-foreground">
+              Asked after Hasheous, for files it did not identify.
+            </span>
+          </span>
+        </label>
+        {screenscraper.configured ? null : (
+          <p className="text-status-warn" data-testid="screenscraper-credentials">
+            Needs credentials in the container's environment (compose):{" "}
+            <code className="text-xs">{screenscraper.environment.devid}</code> and{" "}
+            <code className="text-xs">{screenscraper.environment.devpassword}</code> (developer),
+            optionally <code className="text-xs">{screenscraper.environment.user}</code> and{" "}
+            <code className="text-xs">{screenscraper.environment.password}</code> (your account, a
+            larger daily quota).
+          </p>
+        )}
+        <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1.5 text-muted-foreground">
+          <dt>Sends</dt>
+          <dd>
+            the CRC32, MD5, SHA1 and size of each ROM file still unidentified, and the platform's
+            ScreenScraper system; never a file name
+          </dd>
+          <dt>To</dt>
+          <dd>
+            <code className="break-all text-xs">{screenscraper.url}</code>
+          </dd>
+          <dt>Trusts</dt>
+          <dd>
+            an answer only when the ROM it returns has the file's hash and is named like an entry of
+            the folder's DAT; any other name becomes a suggestion
+          </dd>
+          <dt>Pace</dt>
+          <dd>
+            one request every {screenscraper.min_interval_seconds} s, stopping for the day near the
+            quota ScreenScraper reports
+          </dd>
+          <dt>Caches</dt>
+          <dd>
+            every answer; a "not found" is asked again after {screenscraper.not_found_ttl_days} days
           </dd>
         </dl>
       </section>

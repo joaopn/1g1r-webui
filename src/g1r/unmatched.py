@@ -3,11 +3,13 @@ suggestions; and the manual assignments that take a file out of it."""
 
 import sqlite3
 
-from g1r import hasheous, scanner
+from g1r import hasheous, scanner, screenscraper
 from g1r.dats import Dat
 
 
-def rows(conn: sqlite3.Connection, label: str, hasheous_on: bool) -> list[dict]:
+def rows(
+    conn: sqlite3.Connection, label: str, hasheous_on: bool, screenscraper_on: bool = False
+) -> list[dict]:
     files = scanner.unmatched_files(conn, label)
     hashes: dict[str, dict] = {}
     for h in conn.execute(
@@ -17,11 +19,10 @@ def rows(conn: sqlite3.Connection, label: str, hasheous_on: bool) -> list[dict]:
     ):
         hashes.setdefault(h["rel_path"], {"crc32": h["crc32"], "sha1": h["sha1"]})
     lookups = {
-        r["rel_path"]: {"status": r["status"], "detail": r["detail"]}
+        (r["rel_path"], r["service"]): {"status": r["status"], "detail": r["detail"]}
         for r in conn.execute(
-            "SELECT rel_path, status, detail FROM lookup_result "
-            "WHERE folder_label = ? AND service = ?",
-            (label, hasheous.SERVICE),
+            "SELECT rel_path, service, status, detail FROM lookup_result WHERE folder_label = ?",
+            (label,),
         )
     }
     suggestions: dict[str, list[dict]] = {}
@@ -39,7 +40,12 @@ def rows(conn: sqlite3.Connection, label: str, hasheous_on: bool) -> list[dict]:
             "rel_path": f["rel_path"],
             "size": f["size"],
             "hash": hashes.get(f["rel_path"]),
-            "hasheous": lookups.get(f["rel_path"], off if not hasheous_on else None),
+            "hasheous": lookups.get(
+                (f["rel_path"], hasheous.SERVICE), off if not hasheous_on else None
+            ),
+            "screenscraper": lookups.get(
+                (f["rel_path"], screenscraper.SERVICE), off if not screenscraper_on else None
+            ),
             "suggestions": suggestions.get(f["rel_path"], []),
         }
         for f in files

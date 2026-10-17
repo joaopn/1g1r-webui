@@ -131,6 +131,8 @@ class PlatformProfile(_Strict):
     rom_extensions: list[str] = Field(min_length=1)
     targets: list[str] = Field(min_length=1)
     default_target: str
+    # ScreenScraper's systemeid for the platform; no ScreenScraper lookups without one.
+    screenscraper_id: int | None = None
 
 
 class PlatformsConfig(_Strict):
@@ -218,9 +220,34 @@ class HasheousConfig(_Strict):
     not_found_ttl_days: float = Field(ge=0)
 
 
+class ScreenScraperEnvironment(_Strict):
+    """Names of the environment variables holding the credentials (set them in compose)."""
+
+    devid: str
+    devpassword: str
+    user: str
+    password: str
+
+
+class ScreenScraperConfig(_Strict):
+    url: str
+    site: str
+    softname: str
+    user_agent: str
+    timeout_seconds: float = Field(gt=0)
+    min_interval_seconds: float = Field(ge=0)
+    # Stop when the daily quota left (as each answer reports it) is down to this many.
+    quota_reserve: int = Field(ge=0)
+    # HTTP statuses ScreenScraper answers with when the quota is used up.
+    quota_statuses: list[int]
+    not_found_ttl_days: float = Field(ge=0)
+    environment: ScreenScraperEnvironment
+
+
 class LookupsConfig(_Strict):
     max_hash_bytes: int = Field(gt=0)
     hasheous: HasheousConfig
+    screenscraper: ScreenScraperConfig
 
 
 class FuzzyConfig(_Strict):

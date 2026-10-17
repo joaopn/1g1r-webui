@@ -278,8 +278,12 @@ def test_unmatched_assign_and_lookup_settings(setup):
     client.put("/api/folders/nes/assign", json={"rel_path": "odd.nes", "game_name": None})
     assert len(client.get("/api/folders/nes/unmatched").json()) == 1
 
-    assert client.get("/api/settings").json()["lookups"] == {"hasheous": False}
-    assert client.put("/api/settings/lookups", json={"hasheous": True}).json() == {"hasheous": True}
+    assert client.get("/api/settings").json()["lookups"] == {
+        "hasheous": False,
+        "screenscraper": False,
+    }
+    switched = client.put("/api/settings/lookups", json={"hasheous": True}).json()
+    assert switched == {"hasheous": True, "screenscraper": False}
 
 
 def test_discarded_listing_and_home_warnings(setup, roms_root):

@@ -369,6 +369,7 @@ const PERCENT = new Intl.NumberFormat("en-US", { style: "percent" });
 
 const METHOD_ICONS: Record<string, LucideIcon> = {
   hasheous: Globe,
+  screenscraper: Globe,
   duplicate: Copy,
   fuzzy: Sparkles,
   manual: UserRound,

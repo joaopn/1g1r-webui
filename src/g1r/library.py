@@ -53,6 +53,7 @@ class LookupSwitches(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     hasheous: bool = False
+    screenscraper: bool = False
 
 
 class Library(BaseModel):

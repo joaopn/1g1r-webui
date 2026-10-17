@@ -11,7 +11,17 @@ import yaml
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel
 
-from g1r import conversion, dashboard, discarded, journal, matching, mounts, scanner, unmatched
+from g1r import (
+    conversion,
+    dashboard,
+    discarded,
+    journal,
+    matching,
+    mounts,
+    scanner,
+    screenscraper,
+    unmatched,
+)
 from g1r.config import RANKING_CRITERIA, RankingConfig, Settings
 from g1r.dat_registry import DatRegistry, RegistryError
 from g1r.library import FolderEntry, Library, LibraryStore
@@ -95,7 +105,8 @@ class Assignment(BaseModel):
 
 
 class Lookups(BaseModel):
-    hasheous: bool
+    hasheous: bool | None = None
+    screenscraper: bool | None = None
 
 
 class Targets(BaseModel):
@@ -663,7 +674,8 @@ def build_router(
     @router.get("/folders/{label}/unmatched")
     def folder_unmatched(label: str, conn: Conn):
         folder_or_404(label)
-        return unmatched.rows(conn, label, store.load().lookups.hasheous)
+        lookups = store.load().lookups
+        return unmatched.rows(conn, label, lookups.hasheous, lookups.screenscraper)
 
     @router.put("/folders/{label}/assign")
     def assign(label: str, body: Assignment, conn: Conn):
@@ -742,6 +754,18 @@ def build_router(
                 "sources": [s.label for s in settings.lookups.hasheous.sources.values()],
                 "not_found_ttl_days": settings.lookups.hasheous.not_found_ttl_days,
             },
+            "screenscraper": {
+                "site": settings.lookups.screenscraper.site,
+                "url": settings.lookups.screenscraper.url,
+                # Credentials are never sent to the page: only whether they are set.
+                "configured": screenscraper.credentials(settings.lookups.screenscraper) is not None,
+                "environment": settings.lookups.screenscraper.environment.model_dump(),
+                "min_interval_seconds": settings.lookups.screenscraper.min_interval_seconds,
+                "not_found_ttl_days": settings.lookups.screenscraper.not_found_ttl_days,
+                "platforms": sorted(
+                    p for p, profile in platforms.items() if profile.screenscraper_id is not None
+                ),
+            },
             "fuzzy": settings.fuzzy.model_dump(),
             "effective_yaml": yaml.safe_dump(settings.model_dump(mode="json"), sort_keys=False),
             "config_file": str(settings.paths.data_dir / settings.paths.user_config_file),
@@ -750,7 +774,18 @@ def build_router(
 
     @router.put("/settings/lookups")
     def save_lookups(body: Lookups):
-        store.update(lambda lib: setattr(lib.lookups, "hasheous", body.hasheous))
+        if body.screenscraper and screenscraper.credentials(settings.lookups.screenscraper) is None:
+            raise bad_request(
+                "ScreenScraper needs its credentials in the environment first (see compose)"
+            )
+
+        def change(library: Library) -> None:
+            for name in ("hasheous", "screenscraper"):
+                value = getattr(body, name)
+                if value is not None:
+                    setattr(library.lookups, name, value)
+
+        store.update(change)
         return store.load().lookups.model_dump()
 
     @router.put("/settings/targets")

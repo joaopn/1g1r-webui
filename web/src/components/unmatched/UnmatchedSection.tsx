@@ -20,6 +20,7 @@ const LOOKUP_TEXT: Record<LookupStatus, string> = {
   found: "found",
   "not found": "not found online",
   "other platform": "known for another platform",
+  "not in the DAT": "known, not under a DAT name",
   error: "lookup failed",
   skipped: "not asked",
 };
@@ -29,6 +30,7 @@ const LOOKUP_STYLE: Record<LookupStatus, string> = {
   found: "border-status-good/60 text-status-good",
   "not found": "border-border text-muted-foreground",
   "other platform": "border-status-warn text-status-warn",
+  "not in the DAT": "border-status-warn text-status-warn",
   error: "border-status-bad text-status-bad",
   skipped: "border-border text-muted-foreground",
 };
@@ -42,12 +44,12 @@ const errorText = (err: unknown) => (err instanceof ApiError ? err.message : Str
 export function UnmatchedSection({
   label,
   meta,
-  hasheousOn,
+  lookupsOn,
   scanning,
 }: {
   label: string;
   meta: Meta;
-  hasheousOn: boolean;
+  lookupsOn: boolean;
   scanning: boolean;
 }) {
   const files = useUnmatched(label);
@@ -102,13 +104,13 @@ export function UnmatchedSection({
               </Button>
             </>
           ) : null}
-          {hasheousOn ? (
+          {lookupsOn ? (
             <Button
               variant="outline"
               size="sm"
               disabled={scanning || retry.isPending || rows.length === 0}
               onClick={() => retry.mutate()}
-              title="Rescan, asking Hasheous again about files it did not know"
+              title="Rescan, asking the online lookups again about files they did not know"
             >
               <RefreshCw className="size-3.5" aria-hidden="true" /> Look up again
             </Button>
@@ -192,7 +194,6 @@ function UnmatchedRow({
   /** Review moving the file to discarded/, or deleting it (true). */
   onMove: (remove: boolean) => void;
 }) {
-  const lookup = file.hasheous;
   return (
     <li className="space-y-2 px-4 py-3 text-sm" data-testid={`unmatched-${file.rel_path}`}>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -205,15 +206,9 @@ function UnmatchedRow({
             CRC {file.hash.crc32} · SHA1 {file.hash.sha1.slice(0, hashLength)}
           </code>
         ) : null}
-        {lookup ? (
-          <Badge
-            variant="outline"
-            className={LOOKUP_STYLE[lookup.status]}
-            title={lookup.detail || undefined}
-          >
-            Hasheous: {LOOKUP_TEXT[lookup.status]}
-            {lookup.status === "skipped" && lookup.detail ? ` (${lookup.detail})` : ""}
-          </Badge>
+        <LookupBadge service="Hasheous" lookup={file.hasheous} />
+        {file.screenscraper?.status !== "off" ? (
+          <LookupBadge service="ScreenScraper" lookup={file.screenscraper} />
         ) : null}
       </div>
       <div className="flex flex-wrap items-center gap-1.5">
@@ -268,6 +263,21 @@ function UnmatchedRow({
         </span>
       </div>
     </li>
+  );
+}
+
+function LookupBadge({ service, lookup }: { service: string; lookup: UnmatchedFile["hasheous"] }) {
+  if (!lookup) return null;
+  const detailShown = lookup.status === "skipped" || lookup.status === "not in the DAT";
+  return (
+    <Badge
+      variant="outline"
+      className={LOOKUP_STYLE[lookup.status]}
+      title={lookup.detail || undefined}
+    >
+      {service}: {LOOKUP_TEXT[lookup.status]}
+      {detailShown && lookup.detail ? ` (${lookup.detail})` : ""}
+    </Badge>
   );
 }
 

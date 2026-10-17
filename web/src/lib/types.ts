@@ -239,8 +239,18 @@ export type DatRow = {
 export type SettingsData = {
   targets: Record<string, string>;
   ignored_filenames: string[];
-  lookups: { hasheous: boolean };
+  lookups: { hasheous: boolean; screenscraper: boolean };
   hasheous: { site: string; url: string; sources: string[]; not_found_ttl_days: number };
+  screenscraper: {
+    site: string;
+    url: string;
+    /** Whether the credentials are set in the environment (never the values). */
+    configured: boolean;
+    environment: { devid: string; devpassword: string; user: string; password: string };
+    min_interval_seconds: number;
+    not_found_ttl_days: number;
+    platforms: string[];
+  };
   fuzzy: { min_score: number; max_suggestions: number; auto_match_threshold: number | null };
   effective_yaml: string;
   config_file: string;
@@ -278,12 +288,20 @@ export type ConversionCounts = Record<ConversionStatus | "to_convert" | "all", n
 
 export type Conversion = { counts: ConversionCounts; rows: ConversionRow[] };
 
-export type LookupStatus = "off" | "found" | "not found" | "other platform" | "error" | "skipped";
+export type LookupStatus =
+  | "off"
+  | "found"
+  | "not found"
+  | "other platform"
+  | "not in the DAT"
+  | "error"
+  | "skipped";
 
 export type UnmatchedFile = {
   rel_path: string;
   size: number;
   hash: { crc32: string; sha1: string } | null;
   hasheous: { status: LookupStatus; detail: string } | null;
+  screenscraper: { status: LookupStatus; detail: string } | null;
   suggestions: { game_name: string; score: number }[];
 };

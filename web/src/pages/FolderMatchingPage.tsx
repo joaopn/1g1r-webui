@@ -199,7 +199,10 @@ export function FolderMatchingPage() {
       <UnmatchedSection
         label={label}
         meta={meta.data}
-        hasheousOn={settingsData.data?.lookups.hasheous ?? false}
+        lookupsOn={
+          !!settingsData.data &&
+          (settingsData.data.lookups.hasheous || settingsData.data.lookups.screenscraper)
+        }
         scanning={f.scan?.status === "running"}
       />
       {f.others.length > 0 ? (
