@@ -93,3 +93,39 @@ def test_game_plus_dlc_without_a_dat(switch):
     assert run["status"] == "done"
     assert (roms_root / "discarded/switch/updates" / f"{UPDATE}.nsp").exists()
     assert (folder / f"{DLC}.nsp").exists() and (folder / f"{BASE}.nsp").exists()
+
+
+def test_a_game_says_applied_once_its_update_is_in_discarded(folder_of, roms_root):
+    client, folder = folder_of("switch")
+    for name in (
+        BASE,
+        UPDATE,
+        "Second Game (USA) [0100CCCC00010000][v0]",
+        "Second Game - Pack [0100CCCC00011001][v0]",
+    ):
+        (folder / f"{name}.nsp").write_bytes(name.encode())
+
+    def games():
+        client.post("/api/folders/switch/scan")
+        for _ in range(500):
+            if client.get("/api/folders/switch/scan").json()["status"] != "running":
+                break
+        return {g["name"]: g for g in client.get("/api/folders/switch/games").json()}
+
+    found = games()
+    assert found["Super Game (USA)"]["status"] == "decided"
+    # A game and its DLC, no update: nothing to propose.
+    second = found["Second Game (USA)"]
+    assert (second["status"], second["reason"]) == ("single", "its DLC are kept")
+    assert not any(v["operation"] for v in second["versions"])
+
+    plan = client.post("/api/folders/switch/apply/preview", json={}).json()
+    assert [m["rel_path"] for m in plan["moves"]] == [f"{UPDATE}.nsp"]
+    client.post("/api/folders/switch/apply", json={"token": plan["token"]})
+    for _ in range(500):
+        run = client.get("/api/folders/switch/run").json()
+        if run and run["status"] != "running":
+            break
+    assert run["status"] == "done"
+    game = games()["Super Game (USA)"]
+    assert (game["status"], game["reason"]) == ("applied", "its updates are in discarded/")

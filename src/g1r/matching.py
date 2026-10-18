@@ -255,7 +255,14 @@ def game_rows(
                 set(),
             )
         if extras and status == STATUS_SINGLE:
-            status, reason = STATUS_DECIDED, "one base game: its DLC are kept, updates proposed"
+            # One base game: what is left to say depends on its updates.
+            updates = [r for r, role in extras.items() if role == titles.UPDATE]
+            if any(r not in gone for r in updates):
+                status, reason = STATUS_DECIDED, "one base game: its DLC are kept, updates proposed"
+            elif updates:
+                status, reason = STATUS_APPLIED, "its updates are in discarded/"
+            else:
+                reason = "its DLC are kept"
         if group.versions and all(v.bios for v in group.versions):
             # Every arcade game needs its BIOS set: never proposed for discarding.
             status, reason, winner, candidates = (
@@ -266,7 +273,7 @@ def game_rows(
             )
         if len(ranked.versions) == 1 and len(present.versions) > 1 and status == STATUS_SINGLE:
             status, reason = STATUS_DECIDED, "identical copies of one version"
-        if status == STATUS_SINGLE and len(present.versions) < len(group.versions):
+        if status == STATUS_SINGLE and any(v.rel_path in gone for v in group.versions):
             status, reason = STATUS_APPLIED, "the other versions are in discarded/"
         set_of = {v.rel_path: c for c in copies for v in c}
         rows = []
