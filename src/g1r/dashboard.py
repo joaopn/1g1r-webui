@@ -7,6 +7,9 @@ from g1r import hasheous
 
 WARN = "warn"
 BAD = "bad"
+# A hint, not a problem: shown small, with a link to where it is acted on.
+INFO = "info"
+LOOKUPS_PAGE = "/settings/lookups"
 
 
 def warnings(
@@ -17,11 +20,15 @@ def warnings(
     platform_short: str,
     scan: sqlite3.Row | None,
     dat: sqlite3.Row | None,
+    unmatched: int = 0,
+    screenscraper_offered: bool = False,
 ) -> list[dict]:
+    """`screenscraper_offered`: ScreenScraper knows the platform but is not looking files up
+    (no credentials, or switched off)."""
     found: list[dict] = []
 
-    def add(level: str, text: str) -> None:
-        found.append({"level": level, "text": text})
+    def add(level: str, text: str, link: dict | None = None) -> None:
+        found.append({"level": level, "text": text, "link": link})
 
     if location is not None and not Path(location).is_dir():
         add(BAD, f"The folder {location} no longer exists.")
@@ -55,6 +62,12 @@ def warnings(
     ).fetchone()
     if last is not None and last["status"] == "failed":
         add(BAD, f"The last {last['kind']} failed: {last['message']}")
+    if unmatched and screenscraper_offered:
+        add(
+            INFO,
+            f"Unmatched: {_files(unmatched)}. ScreenScraper may identify some.",
+            {"to": LOOKUPS_PAGE, "text": "Set up ScreenScraper"},
+        )
     return found
 
 

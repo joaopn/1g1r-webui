@@ -309,14 +309,15 @@ def test_discarded_listing_and_home_warnings(setup, roms_root):
 
     folder = client.get("/api/folders").json()[0]
     assert folder["discarded"] == {"files": 4, "bytes": 8}
-    assert folder["warnings"] == []
+    assert folder["warnings"] == [SCREENSCRAPER_HINT]
     (roms_root / "NES Set" / "game.sfc").write_bytes(b"x")
     client.post("/api/folders/nes/scan")
     for _ in range(500):
         if client.get("/api/folders/nes/scan").json()["status"] != "running":
             break
-    (warning,) = client.get("/api/folders").json()[0]["warnings"]
+    warning, hint = client.get("/api/folders").json()[0]["warnings"]
     assert warning["text"].startswith("Not NES ROMs or archives: 1 file.")
+    assert hint == SCREENSCRAPER_HINT
     new = client.post(
         "/api/dats/nes/upload", files={"file": ("nes.dat", dat_bytes([*NAMES, "New"]))}
     )
@@ -334,3 +335,23 @@ def test_folder_card_offers_the_default_dat_until_one_is_active(setup):
     assert client.post("/api/dats/nes/download?source=libretro").status_code == HTTPStatus.OK
     card = client.get("/api/folders").json()[0]
     assert (card["needs_dat"], card["dat_download"]) == (False, None)
+
+
+SCREENSCRAPER_HINT = {
+    "level": "info",
+    "text": "Unmatched: 1 file. ScreenScraper may identify some.",
+    "link": {"to": "/settings/lookups", "text": "Set up ScreenScraper"},
+}
+
+
+def test_unmatched_files_point_to_screenscraper_until_it_looks_them_up(setup, monkeypatch):
+    client, _, settings = setup
+    scanned(client)
+    assert SCREENSCRAPER_HINT in client.get("/api/folders").json()[0]["warnings"]
+    env = settings.lookups.screenscraper.environment
+    monkeypatch.setenv(env.devid, "dev")
+    monkeypatch.setenv(env.devpassword, "secret")
+    # Configured but switched off: still pointed there.
+    assert SCREENSCRAPER_HINT in client.get("/api/folders").json()[0]["warnings"]
+    assert client.put("/api/settings/lookups", json={"screenscraper": True}).status_code == 200
+    assert SCREENSCRAPER_HINT not in client.get("/api/folders").json()[0]["warnings"]

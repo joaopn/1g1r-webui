@@ -123,3 +123,26 @@ test("with a DAT there is no download button", async () => {
   expect(await screen.findByRole("button", { name: "Scan gb" })).toBeEnabled();
   expect(screen.queryByRole("button", { name: "Download DAT" })).toBeNull();
 });
+
+test("a hint links to where it is acted on, and the card still opens the set", async () => {
+  renderPage([
+    {
+      ...card("nes", "nes", SCAN),
+      warnings: [
+        {
+          level: "info",
+          text: "Unmatched: 3 files. ScreenScraper may identify some.",
+          link: { to: "/settings/lookups", text: "Set up ScreenScraper" },
+        },
+      ],
+    },
+  ]);
+  expect(await screen.findByRole("link", { name: "Set up ScreenScraper" })).toHaveAttribute(
+    "href",
+    "/settings/lookups",
+  );
+  expect(screen.getByRole("link", { name: META.platforms.nes.name })).toHaveAttribute(
+    "href",
+    "/folders/nes/matching",
+  );
+});

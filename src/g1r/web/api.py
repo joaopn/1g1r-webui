@@ -311,6 +311,13 @@ def build_router(
             return None
         return {"source": sources[0], "label": settings.dats.sources[sources[0]].label}
 
+    def screenscraper_offered(library, platform: str) -> bool:
+        """ScreenScraper knows the platform but is not looking its files up."""
+        if platform not in platforms or platforms[platform].screenscraper_id is None:
+            return False
+        configured = screenscraper.credentials(settings.lookups.screenscraper) is not None
+        return not (configured and library.lookups.screenscraper)
+
     def title_ids(platform: str) -> bool:
         """The platform identifies by title ID, so a scan needs no DAT."""
         return platform in platforms and platforms[platform].title_ids
@@ -330,12 +337,13 @@ def build_router(
             info = folder_info(library, folder)
             scan = scanner.latest_scan(conn, folder.label)
             dat = registry.active_version(conn, library, folder.platform)
+            summary = scanner.folder_summary(conn, folder.label, parts_of(folder))
             result.append(
                 {
                     **info,
                     "scan": row_dict(scan),
                     "dat": row_dict(dat),
-                    "summary": scanner.folder_summary(conn, folder.label, parts_of(folder)),
+                    "summary": summary,
                     "dat_download": default_download(folder.platform) if dat is None else None,
                     "needs_dat": dat is None and not title_ids(folder.platform),
                     "counts": table.counts,
@@ -353,6 +361,8 @@ def build_router(
                         ),
                         scan=scan,
                         dat=dat,
+                        unmatched=summary["unmatched"],
+                        screenscraper_offered=screenscraper_offered(library, folder.platform),
                     ),
                 }
             )

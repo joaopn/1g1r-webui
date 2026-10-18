@@ -1,5 +1,5 @@
 import { useMutation } from "@tanstack/react-query";
-import { Download, RefreshCw, TriangleAlert } from "lucide-react";
+import { Download, Info, RefreshCw, TriangleAlert } from "lucide-react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { PlatformIcon } from "@/components/PlatformIcon";
@@ -168,14 +168,20 @@ export function HomePage() {
                 className="group relative overflow-hidden rounded-lg border border-border bg-card transition-colors hover:border-primary/50 hover:bg-accent/30"
               >
                 <ScanBackground scan={folder.scan} />
-                <Link to={`/folders/${folder.label}/matching`} className="relative block p-4">
+                {/* The title's link covers the card (::after); links inside sit above it. */}
+                <div className="relative p-4">
                   <div className="flex min-w-0 items-center gap-2">
                     <PlatformIcon platform={platform} />
                     <h2
                       className="min-w-0 truncate font-medium group-hover:text-primary"
                       title={platform?.name ?? folder.platform}
                     >
-                      {platform?.name ?? folder.platform}
+                      <Link
+                        to={`/folders/${folder.label}/matching`}
+                        className="after:absolute after:inset-0 after:content-['']"
+                      >
+                        {platform?.name ?? folder.platform}
+                      </Link>
                     </h2>
                     <span className="shrink-0 text-muted-foreground text-sm">{folder.label}</span>
                   </div>
@@ -203,18 +209,41 @@ export function HomePage() {
                   </p>
                   {folder.warnings.length > 0 ? (
                     <ul className="mt-3 space-y-1 text-xs" data-testid={`warnings-${folder.label}`}>
-                      {folder.warnings.map((w) => (
-                        <li
-                          key={w.text}
-                          className={cn(
-                            "flex items-start gap-1.5",
-                            w.level === "bad" ? "text-status-bad" : "text-status-warn",
-                          )}
-                        >
-                          <TriangleAlert className="mt-px size-3.5 shrink-0" aria-hidden="true" />
-                          {w.text}
-                        </li>
-                      ))}
+                      {folder.warnings.map((w) =>
+                        w.level === "info" ? (
+                          <li
+                            key={w.text}
+                            className="flex items-start gap-1.5 rounded-md border border-border bg-muted/50 px-2 py-1.5 text-muted-foreground"
+                          >
+                            <Info className="mt-px size-3.5 shrink-0" aria-hidden="true" />
+                            <span>
+                              {w.text}
+                              {w.link ? (
+                                <>
+                                  {" "}
+                                  <Link
+                                    to={w.link.to}
+                                    className="relative z-10 text-primary underline underline-offset-2"
+                                  >
+                                    {w.link.text}
+                                  </Link>
+                                </>
+                              ) : null}
+                            </span>
+                          </li>
+                        ) : (
+                          <li
+                            key={w.text}
+                            className={cn(
+                              "flex items-start gap-1.5",
+                              w.level === "bad" ? "text-status-bad" : "text-status-warn",
+                            )}
+                          >
+                            <TriangleAlert className="mt-px size-3.5 shrink-0" aria-hidden="true" />
+                            {w.text}
+                          </li>
+                        ),
+                      )}
                     </ul>
                   ) : null}
                   {folder.summary.roms > 0 ? (
@@ -234,7 +263,7 @@ export function HomePage() {
                       ))}
                     </dl>
                   ) : null}
-                </Link>
+                </div>
                 <CardActions folder={folder} />
               </div>
             );

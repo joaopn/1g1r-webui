@@ -116,7 +116,12 @@ export type FolderCard = FolderInfo & {
   warnings: FolderWarning[];
 };
 
-export type FolderWarning = { level: "warn" | "bad"; text: string };
+/** "info" is a hint shown small, with a link to where it is acted on. */
+export type FolderWarning = {
+  level: "warn" | "bad" | "info";
+  text: string;
+  link?: { to: string; text: string } | null;
+};
 
 export type DiscardedFile = {
   rel_path: string;
