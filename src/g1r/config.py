@@ -1,6 +1,8 @@
-"""Configuration: packaged defaults, deep-merged with the user's config.yaml, validated.
+"""Configuration: the packaged defaults, validated.
 
-Unknown keys are rejected so a typo in config.yaml fails loudly instead of being ignored.
+Nothing about the app is configured from a file: what a user sets is in the compose file
+(mounts, port, environment) or in the web UI (kept in library.yaml). The data directory can
+be moved with G1R_DATA_DIR. Unknown keys are rejected so a typo in defaults.yaml fails loudly.
 """
 
 import os
@@ -11,7 +13,7 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-# The one value needed before any config file can be read: where the data directory is.
+# Where the data directory is (the compose file's /data mount).
 DATA_DIR_ENV = "G1R_DATA_DIR"
 
 
@@ -32,7 +34,6 @@ class ServerConfig(_Strict):
 class PathsConfig(_Strict):
     data_dir: Path
     database_file: str
-    user_config_file: str
     library_file: str
     # The built web app (index.html + assets/); nothing is served when it is missing.
     web_dist: Path
@@ -594,25 +595,16 @@ def deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]
     return merged
 
 
-def user_config_path(defaults: dict[str, Any], environ: dict[str, str] | None = None) -> Path:
+def load_settings(
+    environ: dict[str, str] | None = None, overrides: dict[str, Any] | None = None
+) -> Settings:
+    """The defaults, with the data directory from the environment. `overrides` (deep-merged)
+    is for tests only: nothing a user does reaches it."""
     environ = os.environ if environ is None else environ
-    data_dir = Path(environ.get(DATA_DIR_ENV, defaults["paths"]["data_dir"]))
-    return data_dir / defaults["paths"]["user_config_file"]
-
-
-def load_settings(environ: dict[str, str] | None = None) -> Settings:
-    environ = os.environ if environ is None else environ
-    defaults = load_defaults()
-    raw = defaults
-    path = user_config_path(defaults, environ)
-    if path.is_file():
-        override = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-        if not isinstance(override, dict):
-            raise ConfigError(f"{path}: the top level must be a mapping")
-        raw = deep_merge(defaults, override)
+    raw = deep_merge(load_defaults(), overrides or {})
     if DATA_DIR_ENV in environ:
         raw = deep_merge(raw, {"paths": {"data_dir": environ[DATA_DIR_ENV]}})
     try:
         return Settings.model_validate(raw)
     except ValueError as exc:
-        raise ConfigError(f"invalid configuration ({path}): {exc}") from exc
+        raise ConfigError(f"invalid configuration: {exc}") from exc

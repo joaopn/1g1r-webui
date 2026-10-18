@@ -59,5 +59,5 @@ COPY --from=web-build /web/dist /opt/app/web/dist
 
 ENV G1R_DATA_DIR=/data
 # The port is set in config (server.port); EXPOSE only documents the default.
-EXPOSE 8080
+EXPOSE 8077
 CMD ["/opt/app/venv/bin/python", "-m", "g1r"]

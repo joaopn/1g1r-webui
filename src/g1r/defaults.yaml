@@ -1,21 +1,19 @@
-# Shipped defaults. Every tunable value of the application lives here; code never
-# hardcodes one. Override any key in <data_dir>/config.yaml (deep-merged over this file).
+# Every tunable value of the application lives here; code never hardcodes one. What a
+# user sets is in the compose file or the web UI, not here.
 
 app:
   name: 1g1r-webui
-  # AGPL-3.0 §13: the running web UI links to its source. Set this to the public
-  # repository of the version you run.
-  source_url: ""
+  # AGPL-3.0 §13: the running web UI links to its source.
+  source_url: https://github.com/joaopn/1g1r-webui
 
 server:
   host: 0.0.0.0
-  port: 8080
+  port: 8077
 
 paths:
-  # Where config.yaml, the database, DATs and caches live (a bind mount).
+  # Where the database, DATs, caches and keys live (the compose file's data/ mount).
   data_dir: /data
   database_file: state.db
-  user_config_file: config.yaml
   # Written by the app: folders, per-platform targets, ignored filenames (human-readable).
   library_file: library.yaml
   # The built web app (index.html + assets/).

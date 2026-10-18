@@ -279,7 +279,6 @@ export type SettingsData = {
   };
   fuzzy: { min_score: number; max_suggestions: number; auto_match_threshold: number | null };
   effective_yaml: string;
-  config_file: string;
   library_file: string;
 };
 

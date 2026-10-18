@@ -952,7 +952,6 @@ def build_router(
             },
             "fuzzy": settings.fuzzy.model_dump(),
             "effective_yaml": yaml.safe_dump(settings.model_dump(mode="json"), sort_keys=False),
-            "config_file": str(settings.paths.data_dir / settings.paths.user_config_file),
             "library_file": str(settings.paths.library_path),
         }
 

@@ -543,10 +543,9 @@ export function AdvancedSettingsPage() {
       title="Advanced"
       intro={
         <>
-          The effective configuration: the shipped defaults merged with{" "}
-          <code className="text-xs">{data.data.config_file}</code>. Edit that file to change any
-          value; it is read at start-up. What you set in the UI is kept in{" "}
-          <code className="text-xs">{data.data.library_file}</code>.
+          The configuration in use, for reference. What you set in the UI is kept in{" "}
+          <code className="text-xs">{data.data.library_file}</code>; mounts, the port and
+          credentials are set in the compose file.
         </>
       }
     >

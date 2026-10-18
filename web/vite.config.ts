@@ -6,7 +6,7 @@ import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
 // The backend the dev server proxies to; same-origin in production (FastAPI serves dist/).
-const BACKEND = process.env.G1R_BACKEND ?? "http://127.0.0.1:8080";
+const BACKEND = process.env.G1R_BACKEND ?? "http://127.0.0.1:8077";
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],

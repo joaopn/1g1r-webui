@@ -1,6 +1,6 @@
 """Project rule: no hardcoded magic numbers in application code.
 
-Every tunable value lives in g1r/defaults.yaml (or the user's config.yaml). Application code
+Every tunable value lives in g1r/defaults.yaml. Application code
 may only use 0 and 1 (indices, counters, booleans-as-ints, "first"/"next"). Numbers that are
 part of a format rather than a choice (for example a file-format offset) belong in config too,
 named, so that every number in the code base has exactly one documented home.

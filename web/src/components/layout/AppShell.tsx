@@ -312,7 +312,7 @@ export function AppShell() {
               Source code
             </a>
           ) : (
-            <span className="text-status-warn">Source URL not configured (set app.source_url)</span>
+            <span className="text-status-warn">Source URL not configured</span>
           )}
         </footer>
       </div>

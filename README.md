@@ -1,120 +1,103 @@
 # 1g1r-webui
 
-A web UI for tidying ROM folders, one platform per folder: lossless conversion to the format your emulator plays, then checksum matching against DATs and one-game-one-ROM selection, reviewed in a table before anything is applied. Discarded files are moved, never deleted, and every reversible operation can be undone.
+A web UI for organizing ROMSET collections and creating one-game-one-rom (1G1R) collections.
 
-Status: early development. Scanning, conversion, 1G1R matching, apply and restore work for the platforms below.
+## What it does
 
-## Sets
+- Identifies files by checksum against the platform's DAT
+- Converts losslessly to the platform's target format (zip, CHD, RVZ or the bare file)
+- Groups the versions of each game and ranks them by region, language and revision for 1G1R
 
-A *set* is one platform folder with its label; the sidebar's **Add set** adds one. **Add sets from a folder** takes a folder that already holds one folder per platform (`roms/nes`, `roms/snes`…, as RomM, ES-DE or Batocera lay them out) and lists its subfolders, each matched to a platform by its name (the platform's id, name, DAT name or a known folder name, never a guess); fix the wrong matches, untick what should not be a set, and add them at once. A folder can be in one set only: a folder already a set, or inside or around one, cannot be added. Settings → Sets hides a set (out of the sidebar and Home) or removes it; removing touches no file.
-
-## Supported platforms and formats
-
-A folder holds one platform. The app reads the formats listed, bare or inside a `.zip` or `.7z`; anything else in the folder is listed on the folder's pages as "not in a supported format" and left alone (never converted, matched or moved). "Tested on real files" names the format of the real dumps each platform was checked with: scan and identification, plus conversion, 1G1R apply and restore wherever those dumps needed them. Everything else is covered by tests on synthetic files only.
-
-| Platform | Formats read | Becomes | DAT download | Tested on real files |
-|---|---|---|---|---|
-| Amiga | `ipf`; with a TOSEC DAT also `adf`, `adz`, `dms`, `lha`, `exe`, `hdf` | zip | libretro (No-Intro) or TOSEC | `ipf` in zip, multi-disk |
-| Atari 2600 | `a26`, `bin` | zip | libretro (No-Intro) | — |
-| Atari 5200 | `a52`, `bin` | zip | libretro (No-Intro) | — |
-| Atari 7800 | `a78`, `bin` | zip | libretro (No-Intro) | — |
-| Atari Jaguar | `j64`, `jag`, `rom`, `abs`, `cof` | zip | libretro (No-Intro) | `rom` in zip |
-| Atari Lynx | `lnx`, `lyx` | zip | libretro (No-Intro) | — |
-| ColecoVision | `col`, `rom`, `bin` | zip | libretro (No-Intro) | — |
-| Commodore 64 | `crt`, `d64`; with a TOSEC DAT also `d71`, `d81`, `g64`, `nib`, `t64`, `tap`, `prg`, `p00`, `lnx` | zip | libretro (No-Intro) or TOSEC | `crt` and `d64` in zip |
-| Dreamcast | `chd`, `cue`/`bin`, `gdi`/`bin`/`raw` | chd | redump.info | cue/bin in 7z |
-| Game Boy | `gb` | zip | libretro (No-Intro) | `gb` in zip |
-| Game Boy Advance | `gba` | zip | libretro (No-Intro) | — |
-| Game Boy Color | `gbc` | zip | libretro (No-Intro) | — |
-| Game Gear | `gg` | zip | libretro (No-Intro) | — |
-| GameCube | `rvz`, `iso`, `gcm` | rvz | redump.info | — |
-| Master System | `sms` | zip | libretro (No-Intro) | — |
-| Mega Drive / Genesis | `md`, `gen`, `bin`, `smd` | zip | libretro (No-Intro) | — |
-| Neo Geo CD | `chd`, `cue`/`bin`, `iso` | chd | redump.info | — |
-| Neo Geo MVS | FBNeo romset zips (split or non-merged) | zip | FBNeo | romset zips |
-| Neo Geo Pocket | `ngp` | zip | libretro (No-Intro) | — |
-| Neo Geo Pocket Color | `ngc`, `ngpc` | zip | libretro (No-Intro) | — |
-| Nintendo 3DS | `3ds`, `cci`, `cia` | bare file, decrypted | libretro (No-Intro) | encrypted `3ds`, decrypted with real keys |
-| Nintendo 64 | `z64`, `v64`, `n64` (any byte order) | zip, as `z64` | libretro (No-Intro) | `z64` in zip |
-| Nintendo DS | `nds` | zip | libretro (No-Intro) | — |
-| Nintendo Entertainment System | `nes` | zip | libretro (No-Intro) | `nes` in zip |
-| Nintendo Switch | `nsp`, `nsz`, `xci`, `xcz` | bare file | none (identified by title ID) | `nsp`: game and update |
-| PC Engine / TurboGrafx-16 | `pce` | zip | libretro (No-Intro) | — |
-| PlayStation | `chd`, `cue`/`bin`, `iso` | chd | redump.info | `chd` |
-| PlayStation 2 | `chd`, `cue`/`bin`, `iso`, `cso` | chd | redump.info | `cso` |
-| PlayStation Portable | `chd`, `iso`, `cso` | chd | redump.info | `chd` |
-| Saturn | `chd`, `cue`/`bin`, `iso` | chd | redump.info | — |
-| Sega 32X | `32x`, `bin` | zip | libretro (No-Intro) | — |
-| Sega CD | `chd`, `cue`/`bin`, `iso` | chd | redump.info | — |
-| Super Nintendo | `sfc`, `smc` | zip | libretro (No-Intro) | — |
-| Virtual Boy | `vb` | zip | libretro (No-Intro) | — |
-| Wii | `rvz`, `iso`, `wbfs` | rvz | redump.info | `rvz` in zip |
-| WonderSwan | `ws` | zip | libretro (No-Intro) | — |
-| WonderSwan Color | `wsc` | zip | libretro (No-Intro) | — |
-
-TOSEC is published as one pack of every system's DATs (about 100 MB); the TOSEC download takes the newest pack from tosecdev.org and merges the Amiga or C64 DATs in it into one (uploading the pack works too). With a TOSEC DAT active, names are read the TOSEC way and versions also rank by dump quality (verified, then clean, then alternate, cracked, trained, bad).
-
-Every platform's target can be changed in Settings → Platforms; the table shows the default. A DAT can always be uploaded instead of downloaded (DAT-o-MATIC's No-Intro DATs, for instance).
-
-Known limits:
-
-- The libretro mirror keeps one ROM per game. A multi-disk game zipped whole (Amiga, C64) does not match it and stays unmatched, so it is kept; upload the No-Intro DAT from DAT-o-MATIC to match it. Disc platforms download from redump.info for the same reason.
-- Encrypted 3DS card images never match the DAT, which lists decrypted images. Add your own console's keys on a 3DS folder's Conversion page (Console keys: `boot9.bin` or `boot9_prot.bin` dumped with GodMode9, plus `seeddb.bin` for seed-encrypted titles); they are checked, kept in the data folder (`/data/keys`, readable only by the app's user) and never sent anywhere. The Conversion page then proposes decrypting the images: the result is written as "<name> (Decrypted).3ds" and kept only if its SHA1 is the DAT's entry for the card's product code; the encrypted original goes to `discarded/<label>/originals/`, so it can be restored. The app ships no keys. Without keys, the image is flagged and the DAT entries with its product code are suggested for you to choose.
-- `.wbfs` and NKit images are identified but never converted (they are already stripped of data).
-- Not supported: PlayStation Vita, Atari Jaguar CD, CSO version 2 and ZSO.
-
-## Tool image
-
-```sh
-docker build -t 1g1r-webui .
-docker run --rm 1g1r-webui        # prints the version of every bundled tool
-```
-
-Bundled external tools, pinned in the `Dockerfile`:
-
-| Tool | Version | Licence | Used for |
-|---|---|---|---|
-| [igir](https://igir.io) | 5.7.2 | GPL-3.0-or-later | reading archives and disc images, DAT checksum matching, content hashes |
-| chdman (MAME, Debian `mame-tools`) | 0.276 | GPL-2.0-or-later | CHD creation, extraction, verification |
-| [dolphin-tool](https://github.com/emmercm/dolphin-tool-js) | 0.2606.2 | GPL-3.0-or-later wrapper, Dolphin GPL-2.0-or-later | RVZ conversion and verification |
-| 7-Zip (Debian `7zip`, binary `7z`) | 25.01 | LGPL-2.1-or-later with unRAR restriction | unpacking archives |
-| [Retool](https://github.com/unexpectedpanda/retool) | 2.4.9 | BSD-3-Clause | clone lists for grouping versions |
-
-They run as separate programs; their licences and sources are those of their upstream projects.
-
-3DS decryption uses the Python library [pyctr](https://github.com/ihaveamac/pyctr) (MIT) with keys you supply; none are included.
-
-## Licence
-
-AGPL-3.0-or-later. See [LICENSE](LICENSE). Because this is a network application, the running web UI links to its source.
 
 ## Running
 
 ```sh
-cp compose.example.yaml compose.yaml   # adjust the host paths
-docker compose up -d --build           # then open http://localhost:8080
+git clone <this repo> && cd 1g1r-webui
+ROMS=/path/to/roms docker compose up -d --build    # http://localhost:8077
 ```
 
-Configuration lives in `data/config.yaml` (mounted at `/data`). It is deep-merged over the shipped defaults in [`src/g1r/defaults.yaml`](src/g1r/defaults.yaml), which list and document every setting; unknown keys are rejected at start-up. Settings → Advanced shows the effective configuration.
-
-## Development
-
-Backend (Python, FastAPI):
+`ROMS` is the folder holding your ROMs; it is mounted at `/roms` in the container. Instead of passing it each time, put it in a `.env` file next to `compose.yaml`:
 
 ```sh
-python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'
-.venv/bin/ruff check . && .venv/bin/ruff format --check .
-.venv/bin/pytest
+ROMS=/path/to/roms
+PORT=8077        # optional, the host port
+PUID=1000        # optional, the user and group owning your ROM files
+PGID=1000
 ```
 
-Frontend (`web/`: React, Vite, TypeScript, Tailwind):
+To add another ROM folder (another disk), add a line under `volumes:` in `compose.yaml`, mounted under `/mnt/<name>`:
 
-```sh
-cd web && npm ci
-npm run check        # biome, tsc, vitest
-npm run dev          # dev server on :5173, proxying /api to a backend on :8080
+```yaml
+      - /mnt/disk2/roms:/mnt/disk2
 ```
 
-The Docker build runs the frontend checks and fails on any of them.
+The app keeps its database, DATs and caches in `data/` in the clone.
 
-Project rule: application code contains no magic numbers. Every tunable value goes in `defaults.yaml`; `tests/test_no_magic_numbers.py` and ruff's `PLR2004` enforce it.
+## Platforms
+
+Files are read bare or inside `.zip`/`.7z`. Files in other formats are listed and left alone.
+
+| Platform | Formats | Target | DAT |
+|---|---|---|---|
+| Amiga | `ipf`; with TOSEC also `adf`, `adz`, `dms`, `lha`, `exe`, `hdf` | zip | No-Intro or TOSEC |
+| Atari 2600 | `a26`, `bin` | zip | No-Intro |
+| Atari 5200 | `a52`, `bin` | zip | No-Intro |
+| Atari 7800 | `a78`, `bin` | zip | No-Intro |
+| Atari Jaguar | `j64`, `jag`, `rom`, `abs`, `cof` | zip | No-Intro |
+| Atari Lynx | `lnx`, `lyx` | zip | No-Intro |
+| ColecoVision | `col`, `rom`, `bin` | zip | No-Intro |
+| Commodore 64 | `crt`, `d64`; with TOSEC also `d71`, `d81`, `g64`, `nib`, `t64`, `tap`, `prg`, `p00`, `lnx` | zip | No-Intro or TOSEC |
+| Dreamcast | `chd`, `cue`/`bin`, `gdi` | chd | Redump |
+| Game Boy | `gb` | zip | No-Intro |
+| Game Boy Advance | `gba` | zip | No-Intro |
+| Game Boy Color | `gbc` | zip | No-Intro |
+| Game Gear | `gg` | zip | No-Intro |
+| GameCube | `rvz`, `iso`, `gcm` | rvz | Redump |
+| Master System | `sms` | zip | No-Intro |
+| Mega Drive / Genesis | `md`, `gen`, `bin`, `smd` | zip | No-Intro |
+| Neo Geo CD | `chd`, `cue`/`bin`, `iso` | chd | Redump |
+| Neo Geo MVS | romset zips | zip | FBNeo |
+| Neo Geo Pocket | `ngp` | zip | No-Intro |
+| Neo Geo Pocket Color | `ngc`, `ngpc` | zip | No-Intro |
+| Nintendo 3DS | `3ds`, `cci`, `cia` | bare file (decrypted) | No-Intro |
+| Nintendo 64 | `z64`, `v64`, `n64` | zip (`z64`) | No-Intro |
+| Nintendo DS | `nds` | zip | No-Intro |
+| NES | `nes` | zip | No-Intro |
+| Nintendo Switch | `nsp`, `nsz`, `xci`, `xcz` | bare file | none, title ID |
+| PC Engine / TurboGrafx-16 | `pce` | zip | No-Intro |
+| PlayStation | `chd`, `cue`/`bin`, `iso` | chd | Redump |
+| PlayStation 2 | `chd`, `cue`/`bin`, `iso`, `cso` | chd | Redump |
+| PlayStation Portable | `chd`, `iso`, `cso` | chd | Redump |
+| Saturn | `chd`, `cue`/`bin`, `iso` | chd | Redump |
+| Sega 32X | `32x`, `bin` | zip | No-Intro |
+| Sega CD | `chd`, `cue`/`bin`, `iso` | chd | Redump |
+| Super Nintendo | `sfc`, `smc` | zip | No-Intro |
+| Virtual Boy | `vb` | zip | No-Intro |
+| Wii | `rvz`, `iso`, `wbfs` | rvz | Redump |
+| WonderSwan | `ws` | zip | No-Intro |
+| WonderSwan Color | `wsc` | zip | No-Intro |
+
+The target can be changed per platform in Settings.
+
+- 3DS: encrypted images are decrypted with your own console's keys (`boot9.bin`, `seeddb.bin`), added in the UI. No keys are included.
+- Switch: no public DAT exists, so files are identified by title ID. DLC are kept; updates can be discarded.
+
+## Backend
+
+The work is done by existing tools and databases. 
+
+| | Used for |
+|---|---|
+| [igir](https://igir.io) 5.7.2 | checksum matching against DATs, reading archives and disc images |
+| chdman (MAME) 0.276 | CHD creation and verification |
+| [dolphin-tool](https://github.com/emmercm/dolphin-tool-js) 0.2606.2 | RVZ conversion and verification |
+| 7-Zip 25.01 | unpacking archives |
+| [Retool](https://github.com/unexpectedpanda/retool) 2.4.9 clone lists | grouping versions of a game |
+| [pyctr](https://github.com/ihaveamac/pyctr) | 3DS decryption |
+| No-Intro, Redump, FBNeo, TOSEC DATs | identification (downloaded from libretro-database, redump.info, FBNeo, tosecdev.org, or uploaded) |
+| [Hasheous](https://hasheous.org), [ScreenScraper](https://www.screenscraper.fr) | optional lookups for files the DAT does not know |
+
+
+## Licence
+
+AGPL-3.0.
