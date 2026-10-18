@@ -14,6 +14,8 @@ dependencies = [
     "pydantic~=2.14.1",
     "pyyaml~=6.0.3",
     "python-multipart~=0.0.32",
+    # Nintendo 3DS decryption with the user's own keys (MIT).
+    "pyctr~=0.7.6",
 ]
 
 [project.optional-dependencies]

@@ -5,6 +5,7 @@ import { Link, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { ConvertDialog } from "@/components/apply/ConvertDialog";
 import { RunPanel } from "@/components/apply/RunPanel";
+import { ConsoleKeys } from "@/components/conversion/ConsoleKeys";
 import { ConversionTable } from "@/components/conversion/ConversionTable";
 import { ScanPanel } from "@/components/ScanPanel";
 import { StatCard } from "@/components/StatCard";
@@ -56,6 +57,8 @@ export function FolderConversionPage() {
       </ScanPanel>
 
       <UnsupportedFiles files={f.unsupported} platform={f.platform} meta={meta.data} />
+
+      {meta.data.platforms[f.platform]?.decrypts ? <ConsoleKeys label={label} /> : null}
 
       {counts && counts.all > 0 ? (
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">

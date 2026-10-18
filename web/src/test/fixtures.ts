@@ -72,6 +72,7 @@ export const META: Meta = {
       rom_extensions: ["nes"],
       targets: ["zip", "plain"],
       default_target: "zip",
+      decrypts: false,
     },
     gb: {
       name: "Game Boy",
@@ -81,6 +82,7 @@ export const META: Meta = {
       rom_extensions: ["gb"],
       targets: ["zip", "plain"],
       default_target: "zip",
+      decrypts: false,
     },
   },
   targets: {

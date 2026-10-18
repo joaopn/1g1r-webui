@@ -11,8 +11,9 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
-from g1r import cards, cso, discs
+from g1r import cards, cso, decrypt, discs
 from g1r.config import PLAIN, Settings, TargetConfig
+from g1r.dats import Dat
 
 REASON_ORIGINALS = "originals"
 
@@ -24,21 +25,22 @@ MAKE_CHD = "make chd"
 MAKE_RVZ = "make rvz"
 # A ROM in a swapped byte order (N64 .v64) rewritten in the native one.
 BYTESWAP = "byteswap"
+# An encrypted 3DS card image decrypted with the user's own keys.
+DECRYPT = "decrypt"
 # What a card image's header says, as the Conversion table explains it.
 NOTE_TEXT = {
     cards.ENCRYPTED: (
         "encrypted: standalone Azahar plays it only with keys dumped from your console, the "
         "libretro core not at all; the DAT lists decrypted images, so it is not matched by "
-        "checksum (Unmatched suggests the entries with its product code); decrypting is not "
-        "done here"
+        "checksum (Unmatched suggests the entries with its product code)"
     ),
     cards.TRIMMED: "trimmed (the card's empty padding was cut off): it runs the same",
 }
 # A track file a cue sheet's conversion takes along.
 PART = "part"
 FLAGGED = "flagged"
-STATUSES = (WRAP, UNWRAP, MAKE_CHD, MAKE_RVZ, BYTESWAP, FLAGGED, PART, ACCEPTED, DONE)
-CONVERTING = (WRAP, UNWRAP, MAKE_CHD, MAKE_RVZ, BYTESWAP)
+STATUSES = (WRAP, UNWRAP, MAKE_CHD, MAKE_RVZ, BYTESWAP, DECRYPT, FLAGGED, PART, ACCEPTED, DONE)
+CONVERTING = (WRAP, UNWRAP, MAKE_CHD, MAKE_RVZ, BYTESWAP, DECRYPT)
 # The only archive the app writes; other targets are listed but never produced here.
 ZIP = "zip"
 ZIP_SUFFIX = f".{ZIP}"
@@ -55,6 +57,8 @@ RECIPE_DISC = "disc"
 RECIPE_ARCHIVE_DISC = "archive-disc"
 # The ROM (bare, or an archive's one ROM member) rewritten in the native byte order.
 RECIPE_BYTESWAP = "byteswap"
+# A bare card image decrypted (decrypt.decrypt_cci), proved by a DAT entry's SHA1.
+RECIPE_DECRYPT = "decrypt"
 
 
 @dataclass
@@ -79,6 +83,11 @@ class ConversionRow:
     source_member: dict | None = None
     # The ROM's name inside the output zip, when the output is a zip made from another name.
     output_member: str | None = None
+    # Decrypt: the SHA1s one of which the output must have (the DAT entries with the card's
+    # product code), and the card's full size (a trimmed output is padded to it to compare).
+    expect_sha1: list[str] = field(default_factory=list)
+    image_size: int | None = None
+    padding_hex: str | None = None
 
 
 def container_of(rel_path: str, kind: str, disc_formats=()) -> str:
@@ -114,8 +123,10 @@ def rows(
     *,
     delete_originals: bool,
     root: Path | None = None,
+    dat: Dat | None = None,
 ) -> list[ConversionRow]:
-    """`root`: the folder on disk, where loose cue sheets are read (None: not available)."""
+    """`root`: the folder on disk, where loose cue sheets and card headers are read (None:
+    not available). `dat`: the active DAT, which proves a decryption."""
     profile = settings.platforms.profiles[platform]
     rom_extensions = {e.lower() for e in profile.rom_extensions}
     part_extensions = {e.lower() for e in profile.part_extensions}
@@ -186,6 +197,8 @@ def rows(
         elif lossy(PurePosixPath(rel).name):
             row.status = FLAGGED
             row.note = "already stripped of data (scrubbed or trimmed): never converted further"
+        elif cards.ENCRYPTED in file_notes.get(rel, []) and row.container == PLAIN:
+            _decrypt(settings, label, row, profile, root, dat, delete_originals)
         elif to_disc and f["kind"] == "rom" and ext in discs.SHEETS:
             sheet = sheets.get(rel)
             if isinstance(sheet, str):
@@ -263,6 +276,8 @@ def rows(
             else:
                 planned.add(row.output.lower())
         notes = file_notes.get(rel, [])
+        if row.status == DECRYPT:
+            notes = [n for n in notes if n != cards.ENCRYPTED]
         if notes:
             if cards.ENCRYPTED in notes and row.status in (DONE, ACCEPTED):
                 row.status = FLAGGED
@@ -351,6 +366,48 @@ def _disc(settings, label, row, recipe, source, profile, target, delete_original
             row.note = f"with its {len(row.parts)} track file(s)"
         elif source == cso.CSO:
             row.note = "decoded to an ISO in a work folder first"
+    if delete_originals:
+        row.reversible = False
+    else:
+        row.originals_to = originals_path(settings, label, row.rel_path)
+
+
+def _decrypt(settings, label, row, profile, root, dat, delete_originals) -> None:
+    """An encrypted card image: decrypted when the user's boot9 is there and the DAT lists
+    the decrypted image (by the card's product code), else flagged with what is missing."""
+    row.status = FLAGGED
+    config = settings.card_images.get(profile.card_image or "")
+    if config is None or not profile.decrypts:
+        return
+    if decrypt.boot9_path(settings) is None:
+        row.note = "to decrypt it, add your console's boot9 under Console keys on this page"
+        return
+    if dat is None:
+        row.note = "decrypting needs an active DAT, whose entry proves the result"
+        return
+    info = (
+        cards.read_ncsd(config, root / row.rel_path, None, row.size) if root is not None else None
+    )
+    if info is None:
+        row.note = "its card header cannot be read"
+        return
+    code = info.product_code.upper()
+    games = [g for g in dat.games if (g.serial or "").upper() == code] if code else []
+    expected = sorted(
+        {r.sha1 for g in games for r in g.roms if r.sha1 and r.size == info.image_size}
+    )
+    if not expected:
+        row.note = f"the DAT has no decrypted image with product code {code or '(none)'}"
+        return
+    path = PurePosixPath(row.rel_path)
+    row.status, row.recipe = DECRYPT, RECIPE_DECRYPT
+    row.output = str(path.parent / f"{path.stem}{settings.decryption.output_suffix}{path.suffix}")
+    row.expect_sha1, row.image_size = expected, info.image_size
+    row.padding_hex = config.padding_hex
+    row.verify = "the decrypted image's SHA1 must be the DAT's for " + " or ".join(
+        g.name for g in games
+    )
+    row.note = "decrypted with your console's keys"
     if delete_originals:
         row.reversible = False
     else:

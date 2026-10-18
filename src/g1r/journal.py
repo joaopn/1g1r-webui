@@ -16,7 +16,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-from g1r import conversion, moves
+from g1r import cards, conversion, moves
 from g1r.config import ApplyConfig
 from g1r.converter import CRC_FORMAT
 
@@ -111,6 +111,10 @@ class Move:
     # output zip (None: the output is the bare ROM).
     word_bytes: int | None = None
     output_member: str | None = None
+    # Decrypt only: the SHA1s the output may have, and the size it is padded to to compare.
+    expect_sha1: tuple = ()
+    image_size: int | None = None
+    padding_hex: str | None = None
 
 
 def token(plan: list[Move]) -> str:
@@ -225,6 +229,9 @@ def plan_conversions(
                 space=_conversion_space(row, sources, member),
                 word_bytes=row.word_bytes,
                 output_member=row.output_member,
+                expect_sha1=tuple(row.expect_sha1),
+                image_size=row.image_size,
+                padding_hex=row.padding_hex,
             )
         )
         for source in sources:
@@ -591,6 +598,12 @@ def _settle(conn, kind: str, label: str, op_id: int, m: Move, moved) -> None:
             )
         elif m.action == CONVERT:
             carry_over(conn, label, m.rel_path, m.paired_rel, moved, members)
+            if m.recipe == conversion.RECIPE_DECRYPT:
+                # The output is the decrypted image: only "trimmed" still holds for it.
+                conn.execute(
+                    "DELETE FROM file_note WHERE folder_label = ? AND rel_path = ? AND note = ?",
+                    (label, m.paired_rel, cards.ENCRYPTED),
+                )
         elif m.action == DELETE and m.in_discarded:
             # Gone from discarded/: the table stops showing it as a discarded version.
             if m.paired_rel is not None:

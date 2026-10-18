@@ -28,6 +28,14 @@ def extra_root(tmp_path):
 
 
 @pytest.fixture
+def keys_root(data_dir):
+    """Where uploaded console keys are kept (in the data directory); empty in tests."""
+    root = data_dir / "keys"
+    root.mkdir(parents=True)
+    return root
+
+
+@pytest.fixture
 def make_settings(data_dir, roms_root, extra_root):
     """Settings with data and ROM mounts in a temp dir, plus an optional config.yaml override."""
 
@@ -60,3 +68,14 @@ def folder_of(make_settings, roms_root):
     yield make
     for client in clients:
         client.__exit__(None, None, None)
+
+
+@pytest.fixture
+def n3ds(make_settings, roms_root):
+    folder = roms_root / "3ds"
+    folder.mkdir()
+    (roms_root / "discarded").mkdir()
+    with TestClient(create_app(make_settings(), report_runner=lambda *a: [])) as client:
+        body = {"platform": "3ds", "mount": "roms", "path": "3ds", "label": "3ds"}
+        assert client.post("/api/folders", json=body).status_code == HTTPStatus.CREATED
+        yield client, folder

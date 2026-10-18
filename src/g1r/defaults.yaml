@@ -337,6 +337,8 @@ platforms:
       screenscraper_id: 17
       # Card images are read for encryption and trimming (`card_images`).
       card_image: ncsd
+      # Encrypted images are decrypted with your own keys (`decryption`).
+      decrypts: true
     nds:
       name: Nintendo DS
       short: "NDS"
@@ -807,6 +809,26 @@ card_images:
     padding_hex: ff
     product_code_offset: 336
     product_code_bytes: 16
+
+# Nintendo 3DS decryption (a conversion of encrypted card images). The keys are your own,
+# added on a 3DS folder's Conversion page and kept in the data directory: boot9 dumped from
+# your console (GodMode9 saves boot9.bin, or boot9_prot.bin, its protected half), and seeddb
+# for seed-encrypted titles. The app ships none. The decrypted image must have the SHA1 of
+# a DAT entry with the card's product code (the DAT lists decrypted images), or nothing
+# changes.
+decryption:
+  keys_dir: keys
+  boot9_file: boot9_prot.bin
+  boot9_sizes: [32768, 65536]
+  protected_bytes: 32768
+  seeddb_file: seeddb.bin
+  seeddb_header_bytes: 16
+  seeddb_count_bytes: 4
+  seeddb_entry_bytes: 32
+  max_upload_bytes: 16777216
+  # Octal: only the app's user may read the stored keys.
+  file_mode: 0600
+  output_suffix: " (Decrypted)"
 
 # CSO (CISO v0/v1), the PlayStation 2 and PSP compressed ISO: a header, then one index entry
 # per block plus one (the end), each the block's offset >> the header's index shift. A block

@@ -8,7 +8,12 @@ export type Platform = {
   rom_extensions: string[];
   targets: string[];
   default_target: string;
+  /** Encrypted images can be decrypted with console keys the user adds (3DS). */
+  decrypts: boolean;
 };
+
+/** Which console keys are stored (never the keys): boot9 there, and seeddb's seed count. */
+export type KeyStatus = { boot9: boolean; seeddb: number | null };
 
 export type Ranking = {
   criteria: string[];
@@ -292,6 +297,7 @@ export type ConversionStatus =
   | "make chd"
   | "make rvz"
   | "byteswap"
+  | "decrypt"
   | "flagged"
   | "part"
   | "accepted"

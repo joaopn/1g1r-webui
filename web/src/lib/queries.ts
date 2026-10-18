@@ -7,6 +7,7 @@ import type {
   FolderCard,
   FolderDetail,
   Game,
+  KeyStatus,
   Meta,
   Run,
   SettingsData,
@@ -28,6 +29,7 @@ export const keys = {
   run: (label: string) => ["run", label] as const,
   settings: ["settings"] as const,
   dats: ["dats"] as const,
+  consoleKeys: ["console-keys"] as const,
 };
 
 export const useMeta = () =>
@@ -38,6 +40,8 @@ export const useSettingsData = () =>
   useQuery({ queryKey: keys.settings, queryFn: () => api<SettingsData>("/settings") });
 export const useDats = () =>
   useQuery({ queryKey: keys.dats, queryFn: () => api<DatRow[]>("/dats") });
+export const useConsoleKeys = () =>
+  useQuery({ queryKey: keys.consoleKeys, queryFn: () => api<KeyStatus>("/keys") });
 export const useGames = (label: string) =>
   useQuery({ queryKey: keys.games(label), queryFn: () => api<Game[]>(`/folders/${label}/games`) });
 

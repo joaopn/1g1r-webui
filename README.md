@@ -30,7 +30,7 @@ A folder holds one platform. The app reads the formats listed, bare or inside a 
 | Neo Geo MVS | FBNeo romset zips (split or non-merged) | zip | FBNeo | romset zips |
 | Neo Geo Pocket | `ngp` | zip | libretro (No-Intro) | — |
 | Neo Geo Pocket Color | `ngc`, `ngpc` | zip | libretro (No-Intro) | — |
-| Nintendo 3DS | `3ds`, `cci`, `cia` | bare file | libretro (No-Intro) | encrypted `3ds` |
+| Nintendo 3DS | `3ds`, `cci`, `cia` | bare file, decrypted | libretro (No-Intro) | encrypted `3ds`, decrypted with real keys |
 | Nintendo 64 | `z64`, `v64`, `n64` (any byte order) | zip, as `z64` | libretro (No-Intro) | `z64` in zip |
 | Nintendo DS | `nds` | zip | libretro (No-Intro) | — |
 | Nintendo Entertainment System | `nes` | zip | libretro (No-Intro) | `nes` in zip |
@@ -55,7 +55,7 @@ Every platform's target can be changed in Settings → Platforms; the table show
 Known limits:
 
 - The libretro mirror keeps one ROM per game. A multi-disk game zipped whole (Amiga, C64) does not match it and stays unmatched, so it is kept; upload the No-Intro DAT from DAT-o-MATIC to match it. Disc platforms download from redump.info for the same reason.
-- Encrypted 3DS images never match the DAT, which lists decrypted images: they are flagged, and the DAT entries with the card's product code are suggested for you to choose. Decrypting needs your console's keys and is not done.
+- Encrypted 3DS card images never match the DAT, which lists decrypted images. Add your own console's keys on a 3DS folder's Conversion page (Console keys: `boot9.bin` or `boot9_prot.bin` dumped with GodMode9, plus `seeddb.bin` for seed-encrypted titles); they are checked, kept in the data folder (`/data/keys`, readable only by the app's user) and never sent anywhere. The Conversion page then proposes decrypting the images: the result is written as "<name> (Decrypted).3ds" and kept only if its SHA1 is the DAT's entry for the card's product code; the encrypted original goes to `discarded/<label>/originals/`, so it can be restored. The app ships no keys. Without keys, the image is flagged and the DAT entries with its product code are suggested for you to choose.
 - `.wbfs` and NKit images are identified but never converted (they are already stripped of data).
 - Not supported: PlayStation Vita, Atari Jaguar CD, CSO version 2 and ZSO.
 
@@ -77,6 +77,8 @@ Bundled external tools, pinned in the `Dockerfile`:
 | [Retool](https://github.com/unexpectedpanda/retool) | 2.4.9 | BSD-3-Clause | clone lists for grouping versions |
 
 They run as separate programs; their licences and sources are those of their upstream projects.
+
+3DS decryption uses the Python library [pyctr](https://github.com/ihaveamac/pyctr) (MIT) with keys you supply; none are included.
 
 ## Licence
 

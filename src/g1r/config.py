@@ -151,6 +151,8 @@ class PlatformProfile(_Strict):
     default_target: str
     # ScreenScraper's systemeid for the platform; no ScreenScraper lookups without one.
     screenscraper_id: int | None = None
+    # Encrypted card images can be decrypted with keys the user adds (3DS: `decryption`).
+    decrypts: bool = False
     # A card image header the scan reads (a key of `card_images`), or None.
     card_image: str | None = None
     # Arcade: each archive is a romset (many chip ROMs, one game), never split or unpacked.
@@ -427,6 +429,28 @@ class NcsdConfig(_Strict):
     product_code_bytes: int = Field(gt=0)
 
 
+class DecryptionConfig(_Strict):
+    # Where the keys uploaded in the web UI are kept, relative to the data directory.
+    keys_dir: str
+    # The ARM9 BootROM: a full dump or its protected half is accepted (the protected half
+    # is the last protected_bytes of a full one) and the protected half is stored as boot9_file.
+    boot9_file: str
+    boot9_sizes: list[int] = Field(min_length=1)
+    protected_bytes: int = Field(gt=0)
+    # Seeds for titles encrypted with one (digital releases): a header holding the entry
+    # count (little-endian u32), then one entry per seed.
+    seeddb_file: str
+    seeddb_header_bytes: int = Field(gt=0)
+    seeddb_count_bytes: int = Field(gt=0)
+    seeddb_entry_bytes: int = Field(gt=0)
+    max_upload_bytes: int = Field(gt=0)
+    # The stored keys' permission bits (only the app's user may read them).
+    file_mode: int = Field(gt=0)
+    # Added to the image's name for the decrypted output ("Game (Decrypted).3ds"), so it
+    # never takes the encrypted original's name, which a restore needs back.
+    output_suffix: str
+
+
 class CsoConfig(_Strict):
     magic: str
     # struct formats: the header (magic, header size, image size, block size, version,
@@ -535,6 +559,7 @@ class Settings(_Strict):
     byte_orders: dict[str, ByteOrderConfig] = Field(default_factory=dict)
     card_images: dict[str, NcsdConfig] = Field(default_factory=dict)
     cso: CsoConfig | None = None
+    decryption: DecryptionConfig
     title_ids: TitleIdConfig | None = None
     names: NamesConfig
     grouping: GroupingConfig

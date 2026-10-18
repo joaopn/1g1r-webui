@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from g1r import (
     conversion,
     dashboard,
+    decrypt,
     discarded,
     journal,
     matching,
@@ -236,6 +237,12 @@ def build_router(
             target,
             delete_originals=folder.delete_originals,
             root=root if root is not None and root.is_dir() else None,
+            # Only a card image's decryption needs the DAT here (it proves the result).
+            dat=(
+                registry.load_active(conn, library, folder.platform)
+                if platforms[folder.platform].card_image
+                else None
+            ),
         )
 
     # Meta ------------------------------------------------------------------------
@@ -254,6 +261,7 @@ def build_router(
                     "rom_extensions": p.rom_extensions,
                     "targets": p.targets,
                     "default_target": p.default_target,
+                    "decrypts": p.decrypts,
                 }
                 for pid, p in platforms.items()
             },
@@ -901,5 +909,29 @@ def build_router(
     def dat_pin(platform: str, body: Pinned):
         registry_call(lambda: registry.set_pinned(platform, body.pinned))
         return {"ok": True}
+
+    # Console keys (3DS decryption) ----------------------------------------------------
+    # Only whether each file is there is ever returned: the keys never leave the server.
+
+    @router.get("/keys")
+    def keys():
+        return decrypt.key_status(settings)
+
+    @router.post("/keys/{kind}")
+    async def add_key(kind: str, file: Annotated[UploadFile, File()]):
+        data = await file.read(settings.decryption.max_upload_bytes + 1)
+        try:
+            decrypt.store_key(settings, kind, data)
+        except decrypt.KeyFileError as exc:
+            raise bad_request(str(exc)) from exc
+        return decrypt.key_status(settings)
+
+    @router.delete("/keys/{kind}")
+    def remove_key(kind: str):
+        try:
+            decrypt.remove_key(settings, kind)
+        except decrypt.KeyFileError as exc:
+            raise not_found(str(exc)) from exc
+        return decrypt.key_status(settings)
 
     return router

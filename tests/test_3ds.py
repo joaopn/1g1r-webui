@@ -2,13 +2,8 @@ import os
 import struct
 import zipfile
 import zlib
-from http import HTTPStatus
-
-import pytest
-from fastapi.testclient import TestClient
 
 from g1r import cards
-from g1r.web.app import create_app
 
 UNITS = 8
 PARTITION_UNIT = 1
@@ -57,17 +52,6 @@ def test_the_header_tells_encryption_and_trimming(make_settings, tmp_path):
     assert info is not None and info.notes() == [cards.ENCRYPTED]
     (tmp_path / "c.3ds").write_bytes(b"not a card")
     assert cards.read_ncsd(config, tmp_path / "c.3ds", None, len(b"not a card")) is None
-
-
-@pytest.fixture
-def n3ds(make_settings, roms_root):
-    folder = roms_root / "3ds"
-    folder.mkdir()
-    (roms_root / "discarded").mkdir()
-    with TestClient(create_app(make_settings(), report_runner=lambda *a: [])) as client:
-        body = {"platform": "3ds", "mount": "roms", "path": "3ds", "label": "3ds"}
-        assert client.post("/api/folders", json=body).status_code == HTTPStatus.CREATED
-        yield client, folder
 
 
 def test_trimmed_images_match_and_encrypted_ones_are_flagged(n3ds, make_settings):

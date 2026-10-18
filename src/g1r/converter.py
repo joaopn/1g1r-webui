@@ -17,7 +17,7 @@ import zlib
 from collections.abc import Callable
 from pathlib import Path, PurePosixPath
 
-from g1r import conversion, cso, discs, hashing, moves
+from g1r import conversion, cso, decrypt, discs, hashing, moves
 from g1r.config import Settings
 
 CRC_FORMAT = "08x"
@@ -83,6 +83,8 @@ class Converter:
                 self._disc(step, temp)
             elif step.recipe == conversion.RECIPE_BYTESWAP:
                 self._byteswap(step, temp)
+            elif step.recipe == conversion.RECIPE_DECRYPT:
+                self._decrypt(step, temp)
             elif step.member is None:
                 self._wrap(step.source, temp)
             else:
@@ -170,6 +172,30 @@ class Converter:
         again = hashlib.sha1(hashing.swap_words(back, word), usedforsecurity=False).hexdigest()
         if len(back) % word or again != original:
             raise moves.MoveError(f"the rewritten {step.source.name} does not hold the same ROM")
+
+    def _decrypt(self, step, temp: Path) -> None:
+        """Decrypt the card image with the user's keys; the result, padded back to the card's
+        size when trimmed, must have the SHA1 of one of the DAT entries the plan named."""
+        try:
+            decrypt.decrypt_cci(self.settings, step.source, temp)
+        except decrypt.DecryptError as exc:
+            temp.unlink(missing_ok=True)
+            raise moves.MoveError(str(exc)) from exc
+        digest = hashlib.sha1(usedforsecurity=False)
+        size = 0
+        with temp.open("rb") as handle:
+            while chunk := handle.read(self.config.copy_chunk_bytes):
+                digest.update(chunk)
+                size += len(chunk)
+        padding = bytes.fromhex(step.padding_hex or "")
+        while padding and step.image_size and size < step.image_size:
+            count = min(self.config.copy_chunk_bytes, step.image_size - size)
+            digest.update(padding * count)
+            size += count
+        if digest.hexdigest() not in step.expect_sha1:
+            raise moves.MoveError(
+                f"the decrypted {step.source.name} is not the DAT's image: nothing was changed"
+            )
 
     def _disc(self, step, temp: Path) -> None:
         """chdman makes the CHD; it must pass `verify`, and its tracks extracted back must

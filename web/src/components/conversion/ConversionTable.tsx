@@ -13,6 +13,7 @@ const STATUS_STYLE: Record<ConversionStatus, string> = {
   "make chd": "border-primary text-primary",
   "make rvz": "border-primary text-primary",
   byteswap: "border-primary text-primary",
+  decrypt: "border-primary text-primary",
   part: "border-border text-muted-foreground",
   flagged: "border-status-warn text-status-warn",
   accepted: "border-border text-muted-foreground",

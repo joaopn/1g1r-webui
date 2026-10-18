@@ -27,6 +27,7 @@ const FOLDERS = [
       "make chd": 0,
       "make rvz": 0,
       byteswap: 0,
+      decrypt: 0,
       flagged: 0,
       part: 0,
       accepted: 0,
