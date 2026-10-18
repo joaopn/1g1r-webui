@@ -93,6 +93,8 @@ export type FolderInfo = {
   target: string;
   discarded_to: string;
   delete_originals: boolean;
+  /** Hidden from the sidebar and Home; still a set (Settings → Sets). */
+  hidden: boolean;
 };
 
 export type FolderCard = FolderInfo & {
@@ -288,6 +290,21 @@ export type Browse = {
   children: string[];
   suggested_label: string;
 };
+
+/** One subfolder offered by "Add sets from a folder". */
+export type SetCandidate = {
+  name: string;
+  path: string;
+  /** The platform its name matches exactly, or null. */
+  platform: string | null;
+  note: string;
+  label: string;
+  /** Why it cannot be a set (already one, or overlapping one), or null. */
+  problem: string | null;
+  items: number | null;
+};
+
+export type SetCandidates = { mount: string; path: string; location: string; rows: SetCandidate[] };
 
 export type Target = { label: string; description: string; produces: string; accepts: string[] };
 

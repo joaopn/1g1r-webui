@@ -3,6 +3,7 @@ import {
   Archive,
   ChevronRight,
   FileCog,
+  FolderTree,
   House,
   ListChecks,
   Menu,
@@ -12,6 +13,7 @@ import {
 import { type ReactNode, useEffect, useId, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { AddPlatformDialog } from "@/components/AddPlatformDialog";
+import { AddSetsDialog } from "@/components/AddSetsDialog";
 import { PlatformIcon } from "@/components/PlatformIcon";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
@@ -76,6 +78,7 @@ export function navGroups(folders: FolderCard[], meta: Meta | undefined): NavGro
       label: "Settings",
       icon: SettingsIcon,
       children: [
+        { to: "/settings/sets", label: "Sets", title: "Sets" },
         { to: "/settings/platforms", label: "Platforms & files", title: "Platforms & files" },
         { to: "/settings/dats", label: "DATs", title: "DATs" },
         { to: "/settings/lookups", label: "Online lookups", title: "Online lookups" },
@@ -165,7 +168,11 @@ function NavGroup({ group, onNavigate }: { group: NavGroupItem; onNavigate?: () 
 function NavItems({ onNavigate }: { onNavigate?: () => void }) {
   const meta = useMeta();
   const folders = useFolders();
-  const groups = navGroups(folders.data ?? [], meta.data);
+  // Hidden sets stay out of the sidebar (Settings → Sets lists them).
+  const groups = navGroups(
+    (folders.data ?? []).filter((f) => !f.hidden),
+    meta.data,
+  );
   return (
     <nav aria-label="Main" className="flex flex-col gap-0.5">
       <NavLink to="/" end onClick={onNavigate} className={({ isActive }) => rowClass(isActive)}>
@@ -179,12 +186,23 @@ function NavItems({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-function SidebarFoot({ onAdd }: { onAdd: () => void }) {
+type Adding = "one" | "many" | null;
+
+function SidebarFoot({ onAdd }: { onAdd: (what: Exclude<Adding, null>) => void }) {
   return (
     <div className="mt-auto flex flex-col gap-1 pt-4">
-      <Button onClick={onAdd} className="justify-center gap-2" data-testid="add-platform">
+      <Button onClick={() => onAdd("one")} className="justify-center gap-2" data-testid="add-set">
         <Plus className="size-4" aria-hidden="true" />
-        Add platform
+        Add set
+      </Button>
+      <Button
+        variant="outline"
+        onClick={() => onAdd("many")}
+        className="justify-center gap-2"
+        data-testid="add-sets"
+      >
+        <FolderTree className="size-4" aria-hidden="true" />
+        Add sets from a folder
       </Button>
       <ThemeToggle />
     </div>
@@ -196,7 +214,7 @@ export function AppShell() {
   const meta = useMeta();
   const bounds = meta.data?.ui.sidebar;
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [adding, setAdding] = useState(false);
+  const [adding, setAdding] = useState<Adding>(null);
   const [stored, setStored] = useState<number | null>(() => {
     const value = readJson<number | null>(WIDTH_KEY, null, (v): v is number => isNumber(v));
     return value;
@@ -238,7 +256,7 @@ export function AppShell() {
         <div className="min-h-0 flex-1 overflow-y-auto">
           <NavItems />
         </div>
-        <SidebarFoot onAdd={() => setAdding(true)} />
+        <SidebarFoot onAdd={setAdding} />
         {bounds ? (
           // biome-ignore lint/a11y/useSemanticElements: an <hr> cannot take focus or a value; a focusable separator is the ARIA splitter.
           <div
@@ -275,9 +293,9 @@ export function AppShell() {
               </SheetHeader>
               <NavItems onNavigate={() => setMobileOpen(false)} />
               <SidebarFoot
-                onAdd={() => {
+                onAdd={(what) => {
                   setMobileOpen(false);
-                  setAdding(true);
+                  setAdding(what);
                 }}
               />
             </SheetContent>
@@ -298,7 +316,14 @@ export function AppShell() {
           )}
         </footer>
       </div>
-      <AddPlatformDialog open={adding} onOpenChange={setAdding} />
+      <AddPlatformDialog
+        open={adding === "one"}
+        onOpenChange={(open) => setAdding(open ? "one" : null)}
+      />
+      <AddSetsDialog
+        open={adding === "many"}
+        onOpenChange={(open) => setAdding(open ? "many" : null)}
+      />
     </div>
   );
 }

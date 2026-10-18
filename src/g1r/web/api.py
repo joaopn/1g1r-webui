@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel
 
 from g1r import (
+    automatch,
     conversion,
     dashboard,
     decrypt,
@@ -36,6 +37,14 @@ def suggest_label(path: str) -> str:
     return _LABEL_UNSAFE.sub("-", name).strip("-._")
 
 
+class BatchError(Exception):
+    """Some rows of a batch were refused: (path, reason) each."""
+
+    def __init__(self, problems: list[tuple[str, str]]):
+        super().__init__(f"{len(problems)} rows refused")
+        self.problems = problems
+
+
 def bad_request(message: str) -> HTTPException:
     return HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=message)
 
@@ -52,6 +61,21 @@ class NewFolder(BaseModel):
     mount: str
     path: str
     label: str = ""
+
+
+class NewSet(BaseModel):
+    path: str
+    platform: str
+    label: str
+
+
+class NewSets(BaseModel):
+    mount: str
+    sets: list[NewSet]
+
+
+class Hidden(BaseModel):
+    hidden: bool
 
 
 class ApplyScope(BaseModel):
@@ -205,6 +229,7 @@ def build_router(
             "target": store.target_for(library, folder.platform),
             "discarded_to": f"{settings.paths.discarded_root}/{folder.label}/",
             "delete_originals": folder.delete_originals,
+            "hidden": folder.hidden,
         }
 
     def parts_of(folder: FolderEntry) -> frozenset[str]:
@@ -348,11 +373,131 @@ def build_router(
         return folder_info(library, library.folder(label))
 
     @router.delete("/folders/{label}", status_code=HTTPStatus.NO_CONTENT)
-    def remove_folder(label: str):
+    def remove_folder(label: str, conn: Conn):
+        """The set leaves the library; no file is touched (discarded/<label>/ stays)."""
         folder_or_404(label)
+        busy = journal.busy(conn, label)
+        if busy:
+            raise HTTPException(status_code=HTTPStatus.CONFLICT, detail=busy)
         store.update(
             lambda lib: setattr(lib, "folders", [f for f in lib.folders if f.label != label])
         )
+
+    @router.put("/folders/{label}/hidden")
+    def hide_folder(label: str, body: Hidden):
+        folder_or_404(label)
+        library = store.update(lambda lib: setattr(lib.folder(label), "hidden", body.hidden))
+        return folder_info(library, library.folder(label))
+
+    # Sets from a folder of platform folders ------------------------------------------
+
+    def unique_label(wanted: str, used: set[str]) -> str:
+        label, n = wanted, 1
+        while label in used:
+            n += 1
+            label = f"{wanted}-{n}"
+        return label
+
+    @router.get("/set-candidates")
+    def set_candidates(mount: str = mounts.MAIN_MOUNT, path: str = ""):
+        """Each subfolder of mount/path with the platform its name matches, a free label, and
+        why it cannot be added when it cannot (already a set, or overlapping one)."""
+        try:
+            relative = mounts.normalise_relative(path)
+            root = mounts.get_mount(settings, mount).root
+            children = mounts.subdirectories(settings, mount, relative)
+        except mounts.FolderPathError as exc:
+            raise bad_request(str(exc)) from exc
+        library = store.load()
+        matcher = automatch.Matcher(platforms, settings.folders.unsupported_names)
+        used = {f.label for f in library.folders}
+        rows = []
+        for name in children:
+            child = f"{relative}/{name}" if relative else name
+            found = matcher.match(name)
+            try:
+                target = mounts.check_new_folder(settings, mount, child, library.folders)
+            except mounts.FolderPathError as exc:
+                problem, items = str(exc), None
+            else:
+                problem = None
+                items = sum(1 for e in target.iterdir() if not e.name.startswith("."))
+            label = unique_label(suggest_label(child), used) if problem is None else ""
+            used.add(label)
+            rows.append(
+                {
+                    "name": name,
+                    "path": child,
+                    "platform": found.platform,
+                    "note": found.note,
+                    "label": label,
+                    "problem": problem,
+                    "items": items,
+                }
+            )
+        return {
+            "mount": mount,
+            "path": relative,
+            "location": str(root / relative) if relative else str(root),
+            "rows": rows,
+        }
+
+    @router.post("/sets", status_code=HTTPStatus.CREATED)
+    def add_sets(body: NewSets):
+        """Add several sets at once: all of them, or none when any is refused."""
+
+        def checked(library: Library) -> list[FolderEntry]:
+            problems: list[tuple[str, str]] = []
+            entries: list[FolderEntry] = []
+            labels = {f.label for f in library.folders}
+            for item in body.sets:
+                try:
+                    relative = mounts.normalise_relative(item.path)
+                    label = item.label.strip() or suggest_label(relative)
+                    if item.platform not in platforms:
+                        raise mounts.FolderPathError("choose a supported platform")
+                    if not label_pattern.match(label):
+                        raise mounts.FolderPathError(
+                            f"the label {label!r} may use lowercase letters, digits, "
+                            "'.', '_' and '-' only"
+                        )
+                    if label in labels:
+                        raise mounts.FolderPathError(f"the label {label!r} is already used")
+                    # Earlier rows of this batch count as sets: no folder in two labels.
+                    mounts.check_new_folder(
+                        settings, body.mount, relative, [*library.folders, *entries]
+                    )
+                except mounts.FolderPathError as exc:
+                    problems.append((item.path, str(exc)))
+                    continue
+                labels.add(label)
+                entries.append(
+                    FolderEntry(
+                        label=label, platform=item.platform, mount=body.mount, path=relative
+                    )
+                )
+            if problems:
+                raise BatchError(problems)
+            return entries
+
+        if not body.sets:
+            raise bad_request("choose at least one folder")
+        added: list[str] = []
+
+        def change(library: Library) -> None:
+            entries = checked(library)
+            library.folders.extend(entries)
+            added.extend(e.label for e in entries)
+
+        try:
+            library = store.update(change)
+        except BatchError as exc:
+            detail = {
+                "message": "nothing was added: some folders cannot be sets",
+                "problems": [{"rel_path": p, "problem": text} for p, text in exc.problems],
+            }
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=detail) from exc
+        return [folder_info(library, library.folder(label)) for label in added]
 
     @router.get("/folders/{label}")
     def folder_detail(label: str, conn: Conn):

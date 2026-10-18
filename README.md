@@ -4,6 +4,10 @@ A web UI for tidying ROM folders, one platform per folder: lossless conversion t
 
 Status: early development. Scanning, conversion, 1G1R matching, apply and restore work for the platforms below.
 
+## Sets
+
+A *set* is one platform folder with its label; the sidebar's **Add set** adds one. **Add sets from a folder** takes a folder that already holds one folder per platform (`roms/nes`, `roms/snes`…, as RomM, ES-DE or Batocera lay them out) and lists its subfolders, each matched to a platform by its name (the platform's id, name, DAT name or a known folder name, never a guess); fix the wrong matches, untick what should not be a set, and add them at once. A folder can be in one set only: a folder already a set, or inside or around one, cannot be added. Settings → Sets hides a set (out of the sidebar and Home) or removes it; removing touches no file.
+
 ## Supported platforms and formats
 
 A folder holds one platform. The app reads the formats listed, bare or inside a `.zip` or `.7z`; anything else in the folder is listed on the folder's pages as "not in a supported format" and left alone (never converted, matched or moved). "Tested on real files" names the format of the real dumps each platform was checked with: scan and identification, plus conversion, 1G1R apply and restore wherever those dumps needed them. Everything else is covered by tests on synthetic files only.

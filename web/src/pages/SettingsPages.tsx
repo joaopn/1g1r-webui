@@ -13,7 +13,7 @@ import type { DatRow, Meta } from "@/lib/types";
 
 const errorText = (err: unknown) => (err instanceof ApiError ? err.message : String(err));
 
-function Page({
+export function Page({
   title,
   intro,
   children,

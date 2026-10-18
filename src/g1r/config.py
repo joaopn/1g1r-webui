@@ -106,6 +106,8 @@ class UiConfig(_Strict):
 
 class FoldersConfig(_Strict):
     label_pattern: str
+    # Folder names of platforms not supported yet -> the platform's name ("not supported yet").
+    unsupported_names: dict[str, str] = Field(default_factory=dict)
 
 
 # The container name for a bare, unarchived ROM file.
@@ -151,6 +153,8 @@ class PlatformProfile(_Strict):
     default_target: str
     # ScreenScraper's systemeid for the platform; no ScreenScraper lookups without one.
     screenscraper_id: int | None = None
+    # Other folder names this platform's folders go by (RomM, ES-DE, Batocera...).
+    aliases: list[str] = Field(default_factory=list)
     # Encrypted card images can be decrypted with keys the user adds (3DS: `decryption`).
     decrypts: bool = False
     # A card image header the scan reads (a key of `card_images`), or None.

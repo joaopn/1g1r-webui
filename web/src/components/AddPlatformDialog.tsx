@@ -1,8 +1,9 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { ChevronRight, Folder, TriangleAlert } from "lucide-react";
+import { useMutation } from "@tanstack/react-query";
+import { TriangleAlert } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { FolderBrowser, useBrowse } from "@/components/FolderBrowser";
 import { PlatformCombobox } from "@/components/PlatformCombobox";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,10 +19,7 @@ import { Label } from "@/components/ui/label";
 import { ApiError, api, json } from "@/lib/api";
 import { platformsByName } from "@/lib/platforms";
 import { keys, queryClient, useMeta } from "@/lib/queries";
-import type { Browse, FolderInfo } from "@/lib/types";
-
-const FIELD =
-  "h-9 w-full rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+import type { FolderInfo } from "@/lib/types";
 
 export function AddPlatformDialog({
   open,
@@ -46,16 +44,7 @@ export function AddPlatformDialog({
     setError(null);
   }, [open]);
 
-  const mounts = useQuery({
-    queryKey: ["mounts"],
-    queryFn: () => api<{ id: string; root: string }[]>("/mounts"),
-    enabled: open,
-  });
-  const browse = useQuery({
-    queryKey: ["browse", mount, path],
-    queryFn: () => api<Browse>(`/browse?${new URLSearchParams({ mount, path })}`),
-    enabled: open,
-  });
+  const browse = useBrowse(mount, path, open);
 
   const add = useMutation({
     mutationFn: () => api<FolderInfo>("/folders", json("POST", { platform, mount, path, label })),
@@ -69,16 +58,16 @@ export function AddPlatformDialog({
   });
 
   const platforms = platformsByName(meta.data?.platforms ?? {});
-  const crumbs = path ? path.split("/") : [];
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Add platform</DialogTitle>
+          <DialogTitle>Add set</DialogTitle>
           <DialogDescription>
-            A folder must contain games of <strong>one platform only</strong>. Every folder is
-            handled on its own, even when two folders have the same platform.
+            A set is one folder of games of <strong>one platform only</strong>, with its label.
+            Every set is handled on its own, even when two have the same platform, and a folder can
+            be in one set only.
           </DialogDescription>
         </DialogHeader>
 
@@ -111,70 +100,13 @@ export function AddPlatformDialog({
             </p>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="mount">Mount</Label>
-            <select
-              id="mount"
-              className={FIELD}
-              value={mount}
-              onChange={(event) => {
-                setMount(event.target.value);
-                setPath("");
-              }}
-            >
-              {(mounts.data ?? []).map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.root}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="space-y-2">
-            <p className="font-medium text-sm">Folder</p>
-            <div className="rounded-md border border-border">
-              <div className="flex flex-wrap items-center gap-1 border-border border-b px-3 py-1.5 text-sm">
-                <button type="button" className="hover:underline" onClick={() => setPath("")}>
-                  {mount}
-                </button>
-                {crumbs.map((part, index) => (
-                  <span
-                    key={crumbs.slice(0, index + 1).join("/")}
-                    className="flex items-center gap-1"
-                  >
-                    <ChevronRight className="size-3 text-muted-foreground" aria-hidden="true" />
-                    <button
-                      type="button"
-                      className="hover:underline"
-                      onClick={() => setPath(crumbs.slice(0, index + 1).join("/"))}
-                    >
-                      {part}
-                    </button>
-                  </span>
-                ))}
-              </div>
-              <ul className="max-h-56 overflow-y-auto py-1" aria-label="Subfolders">
-                {(browse.data?.children ?? []).map((child) => (
-                  <li key={child}>
-                    <button
-                      type="button"
-                      onClick={() => setPath(path ? `${path}/${child}` : child)}
-                      className="flex w-full items-center gap-2 px-3 py-1 text-left text-sm hover:bg-accent/60"
-                    >
-                      <Folder className="size-4 text-muted-foreground" aria-hidden="true" />
-                      {child}
-                    </button>
-                  </li>
-                ))}
-                {browse.data && browse.data.children.length === 0 ? (
-                  <li className="px-3 py-1 text-muted-foreground text-sm">No subfolders</li>
-                ) : null}
-              </ul>
-              <p className="border-border border-t px-3 py-1.5 text-sm">
-                Selected: <code className="text-xs">{browse.data?.location ?? "…"}</code>
-              </p>
-            </div>
-          </div>
+          <FolderBrowser
+            mount={mount}
+            path={path}
+            onMount={setMount}
+            onPath={setPath}
+            enabled={open}
+          />
 
           <div className="space-y-2">
             <Label htmlFor="label">Label</Label>
@@ -195,7 +127,7 @@ export function AddPlatformDialog({
               Cancel
             </Button>
             <Button type="submit" disabled={!platform || add.isPending}>
-              Add platform
+              Add set
             </Button>
           </DialogFooter>
         </form>

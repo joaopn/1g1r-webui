@@ -21,6 +21,7 @@ const FOLDERS = [
     counts: {},
     reclaim_bytes: 0,
     delete_originals: false,
+    hidden: false,
     conversion: {
       wrap: 0,
       unwrap: 0,
@@ -40,9 +41,9 @@ const FOLDERS = [
   },
 ];
 
-function renderShell(path = "/") {
+function renderShell(path = "/", folders = FOLDERS) {
   vi.stubGlobal("fetch", async (url: string) => {
-    const body = url.endsWith("/meta") ? META : url.endsWith("/folders") ? FOLDERS : [];
+    const body = url.endsWith("/meta") ? META : url.endsWith("/folders") ? folders : [];
     return new Response(JSON.stringify(body), { status: 200 });
   });
   const client = new QueryClient();
@@ -110,4 +111,13 @@ test("folders are listed by platform name, then label", () => {
     "Game Boy · gb-2",
     "Nintendo Entertainment System · nes",
   ]);
+});
+
+test("hidden sets stay out of the sidebar, and both ways to add sets are at its foot", async () => {
+  renderShell("/", [...FOLDERS, { ...FOLDERS[0], label: "gb", platform: "gb", hidden: true }]);
+  await userEvent.click((await screen.findAllByRole("button", { name: /Matching & 1G1R/ }))[0]);
+  expect(await screen.findAllByTitle("Nintendo Entertainment System · nes")).not.toHaveLength(0);
+  expect(screen.queryByTitle("Game Boy · gb")).not.toBeInTheDocument();
+  expect(screen.getAllByTestId("add-set")[0]).toHaveTextContent("Add set");
+  expect(screen.getAllByTestId("add-sets")[0]).toHaveTextContent("Add sets from a folder");
 });

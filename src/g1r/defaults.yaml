@@ -98,6 +98,18 @@ ui:
 folders:
   # Folder labels name the folder in the UI and its discarded/<label>/ directory.
   label_pattern: "^[a-z0-9][a-z0-9._-]*$"
+  # "Add sets from a folder": a subfolder named after a platform (its id, short name, name,
+  # DAT name or one of platforms.profiles.<id>.aliases, compared without case, spaces or
+  # punctuation) is matched to it. These names belong to platforms not supported yet: the
+  # table says so instead of leaving them unmatched.
+  unsupported_names:
+    psvita: PlayStation Vita
+    vita: PlayStation Vita
+    atari-jaguar-cd: Atari Jaguar CD
+    atarijaguarcd: Atari Jaguar CD
+    jaguarcd: Atari Jaguar CD
+    ps3: PlayStation 3
+    wiiu: Wii U
 
 # Filenames that are never touched or counted as ROMs (glob patterns, case-insensitive).
 # This is the starting list; Settings edits the live copy in library.yaml.
@@ -191,6 +203,7 @@ platforms:
       name: Amiga
       short: "AMI"
       kind: computer
+      aliases: ["amiga500", "amiga1200", "amigaocs", "commodore amiga"]
       # No-Intro's Amiga set is floppy images in IPF (SPS) form.
       dat_name: Commodore - Amiga
       # No-Intro formats first; the rest are TOSEC formats (synthetic tests only).
@@ -206,6 +219,7 @@ platforms:
       name: Commodore 64
       short: "C64"
       kind: computer
+      aliases: ["commodore 64", "commodore64"]
       # No-Intro's C64 set: cartridges (.crt) and disk images (.d64).
       dat_name: Commodore - 64
       # No-Intro formats first; the rest are TOSEC formats (synthetic tests only).
@@ -221,6 +235,7 @@ platforms:
       name: Atari 2600
       short: "2600"
       kind: console
+      aliases: ["a2600", "vcs", "atari vcs"]
       dat_name: Atari - 2600
       rom_extensions: [a26, bin]
       targets: [zip, plain]
@@ -230,6 +245,7 @@ platforms:
       name: Atari 5200
       short: "5200"
       kind: console
+      aliases: ["a5200"]
       dat_name: Atari - 5200
       rom_extensions: [a52, bin]
       targets: [zip, plain]
@@ -239,6 +255,7 @@ platforms:
       name: Atari 7800
       short: "7800"
       kind: console
+      aliases: ["a7800"]
       dat_name: Atari - 7800
       rom_extensions: [a78, bin]
       targets: [zip, plain]
@@ -248,6 +265,7 @@ platforms:
       name: ColecoVision
       short: "CV"
       kind: console
+      aliases: ["coleco"]
       dat_name: Coleco - ColecoVision
       rom_extensions: [col, rom, bin]
       targets: [zip, plain]
@@ -257,6 +275,7 @@ platforms:
       name: Game Gear
       short: "GG"
       kind: handheld
+      aliases: ["gg", "sega game gear"]
       dat_name: Sega - Game Gear
       rom_extensions: [gg]
       targets: [zip, plain]
@@ -266,6 +285,7 @@ platforms:
       name: Game Boy
       short: "GB"
       kind: handheld
+      aliases: ["gameboy", "nintendo game boy"]
       dat_name: Nintendo - Game Boy
       rom_extensions: [gb]
       targets: [zip, plain]
@@ -275,6 +295,7 @@ platforms:
       name: Game Boy Advance
       short: "GBA"
       kind: handheld
+      aliases: ["gameboy advance", "nintendo game boy advance"]
       dat_name: Nintendo - Game Boy Advance
       rom_extensions: [gba]
       targets: [zip, plain]
@@ -284,6 +305,7 @@ platforms:
       name: Game Boy Color
       short: "GBC"
       kind: handheld
+      aliases: ["gameboy color", "nintendo game boy color"]
       dat_name: Nintendo - Game Boy Color
       rom_extensions: [gbc]
       targets: [zip, plain]
@@ -293,6 +315,7 @@ platforms:
       name: Mega Drive / Genesis
       short: "MD"
       kind: console
+      aliases: ["megadrive", "genesis-slash-megadrive", "md", "sega genesis", "sega mega drive"]
       dat_name: Sega - Mega Drive - Genesis
       rom_extensions: [md, gen, bin, smd]
       targets: [zip, plain]
@@ -302,6 +325,7 @@ platforms:
       name: Atari Jaguar
       short: "JAG"
       kind: console
+      aliases: ["atarijaguar", "atari jaguar"]
       dat_name: Atari - Jaguar
       rom_extensions: [j64, jag, rom, abs, cof]
       targets: [zip, plain]
@@ -311,6 +335,7 @@ platforms:
       name: Atari Lynx
       short: "LNX"
       kind: handheld
+      aliases: ["atarilynx", "atari lynx"]
       dat_name: Atari - Lynx
       rom_extensions: [lnx, lyx]
       targets: [zip, plain]
@@ -320,6 +345,7 @@ platforms:
       name: Nintendo 64
       short: "N64"
       kind: console
+      aliases: ["nintendo64"]
       dat_name: Nintendo - Nintendo 64
       rom_extensions: [z64, v64, n64]
       targets: [zip, plain]
@@ -329,6 +355,7 @@ platforms:
       name: Nintendo 3DS
       short: "3DS"
       kind: handheld
+      aliases: ["n3ds", "nintendo3ds"]
       dat_name: Nintendo - Nintendo 3DS
       rom_extensions: [3ds, cci, cia]
       # Azahar/Citra do not read zips: the target is the bare card image.
@@ -343,6 +370,7 @@ platforms:
       name: Nintendo DS
       short: "NDS"
       kind: handheld
+      aliases: ["nintendods", "ds"]
       dat_name: Nintendo - Nintendo DS
       rom_extensions: [nds]
       targets: [zip, plain]
@@ -352,6 +380,7 @@ platforms:
       name: Neo Geo MVS
       short: "MVS"
       kind: arcade
+      aliases: ["neogeo", "mvs", "neo geo"]
       dat_name: FinalBurn Neo - Neo Geo Games
       dat_family: fbneo
       dat_file: "FinalBurn Neo (ClrMame Pro XML, Neogeo only)"
@@ -369,6 +398,7 @@ platforms:
       name: Neo Geo Pocket
       short: "NGP"
       kind: handheld
+      aliases: ["ngp", "neogeopocket"]
       dat_name: SNK - Neo Geo Pocket
       rom_extensions: [ngp]
       targets: [zip, plain]
@@ -378,6 +408,7 @@ platforms:
       name: Neo Geo Pocket Color
       short: "NGPC"
       kind: handheld
+      aliases: ["ngpc", "neogeopocketcolor"]
       dat_name: SNK - Neo Geo Pocket Color
       rom_extensions: [ngc, ngpc]
       targets: [zip, plain]
@@ -387,6 +418,7 @@ platforms:
       name: Nintendo Entertainment System
       short: "NES"
       kind: console
+      aliases: ["famicom", "fc", "nintendo entertainment system"]
       dat_name: Nintendo - Nintendo Entertainment System
       rom_extensions: [nes]
       targets: [zip, plain]
@@ -396,6 +428,7 @@ platforms:
       name: Sega 32X
       short: "32X"
       kind: console
+      aliases: ["sega32x", "32x", "sega 32x"]
       dat_name: Sega - 32X
       rom_extensions: [32x, bin]
       targets: [zip, plain]
@@ -405,6 +438,7 @@ platforms:
       name: Master System
       short: "SMS"
       kind: console
+      aliases: ["mastersystem", "sega master system", "mark iii"]
       dat_name: Sega - Master System - Mark III
       rom_extensions: [sms]
       targets: [zip, plain]
@@ -414,6 +448,7 @@ platforms:
       name: Super Nintendo
       short: "SNES"
       kind: console
+      aliases: ["sfc", "superfamicom", "super nintendo", "supernintendo"]
       dat_name: Nintendo - Super Nintendo Entertainment System
       rom_extensions: [sfc, smc]
       targets: [zip, plain]
@@ -423,6 +458,7 @@ platforms:
       name: Nintendo Switch
       short: "NSW"
       kind: handheld
+      aliases: ["nsw", "nintendo switch"]
       dat_name: Nintendo - Nintendo Switch
       rom_extensions: [nsp, nsz, xci, xcz]
       # Emulators read these as they are, never from a zip.
@@ -436,6 +472,7 @@ platforms:
       name: PC Engine / TurboGrafx-16
       short: "PCE"
       kind: console
+      aliases: ["pcengine", "pce", "turbografx16", "turbografx", "turbografx-16"]
       dat_name: NEC - PC Engine - TurboGrafx 16
       rom_extensions: [pce]
       targets: [zip, plain]
@@ -445,6 +482,7 @@ platforms:
       name: Virtual Boy
       short: "VB"
       kind: handheld
+      aliases: ["vb", "nintendo virtual boy"]
       dat_name: Nintendo - Virtual Boy
       rom_extensions: [vb]
       targets: [zip, plain]
@@ -454,6 +492,7 @@ platforms:
       name: Dreamcast
       short: "DC"
       kind: console
+      aliases: ["dreamcast", "sega dreamcast"]
       dat_name: Sega - Dreamcast
       dat_family: redump
       redump_system: dc
@@ -467,6 +506,7 @@ platforms:
       name: PlayStation
       short: "PS1"
       kind: console
+      aliases: ["ps1", "ps", "playstation", "sony playstation"]
       dat_name: Sony - PlayStation
       dat_family: redump
       redump_system: psx
@@ -479,6 +519,7 @@ platforms:
       name: Saturn
       short: "SAT"
       kind: console
+      aliases: ["ss", "sega saturn"]
       dat_name: Sega - Saturn
       dat_family: redump
       redump_system: ss
@@ -491,6 +532,7 @@ platforms:
       name: Sega CD
       short: "SCD"
       kind: console
+      aliases: ["megacd", "sega cd", "mega cd"]
       dat_name: Sega - Mega CD & Sega CD
       dat_family: redump
       redump_system: mcd
@@ -503,6 +545,7 @@ platforms:
       name: Neo Geo CD
       short: "NGCD"
       kind: console
+      aliases: ["neogeocd"]
       dat_name: SNK - Neo Geo CD
       dat_family: redump
       redump_system: ngcd
@@ -515,6 +558,7 @@ platforms:
       name: GameCube
       short: "GC"
       kind: console
+      aliases: ["gc", "gamecube", "nintendo gamecube"]
       dat_name: Nintendo - GameCube
       dat_family: redump
       redump_system: gc
@@ -526,6 +570,7 @@ platforms:
       name: Wii
       short: "Wii"
       kind: console
+      aliases: ["nintendo wii"]
       dat_name: Nintendo - Wii
       dat_family: redump
       redump_system: wii
@@ -537,6 +582,7 @@ platforms:
       name: PlayStation 2
       short: "PS2"
       kind: console
+      aliases: ["playstation2", "sony playstation 2"]
       dat_name: Sony - PlayStation 2
       dat_family: redump
       redump_system: ps2
@@ -550,6 +596,7 @@ platforms:
       name: PlayStation Portable
       short: "PSP"
       kind: handheld
+      aliases: ["playstationportable", "sony playstation portable"]
       dat_name: Sony - PlayStation Portable
       dat_family: redump
       redump_system: psp
@@ -562,6 +609,7 @@ platforms:
       name: WonderSwan
       short: "WS"
       kind: handheld
+      aliases: ["ws", "wswan"]
       dat_name: Bandai - WonderSwan
       rom_extensions: [ws]
       targets: [zip, plain]
@@ -571,6 +619,7 @@ platforms:
       name: WonderSwan Color
       short: "WSC"
       kind: handheld
+      aliases: ["wsc", "wswanc", "wonderswancolor"]
       dat_name: Bandai - WonderSwan Color
       rom_extensions: [wsc]
       targets: [zip, plain]

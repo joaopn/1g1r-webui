@@ -32,6 +32,8 @@ class FolderEntry(BaseModel):
     ranking: RankingConfig | None = None
     # Conversion: delete replaced originals instead of moving them to discarded/ (irreversible).
     delete_originals: bool = False
+    # Hidden from the sidebar and Home (Settings → Sets shows it again); still a set.
+    hidden: bool = False
 
 
 class ActiveDat(BaseModel):

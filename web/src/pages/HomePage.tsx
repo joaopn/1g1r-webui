@@ -11,25 +11,38 @@ export function HomePage() {
   const folders = useFolders();
   if (!meta.data || !folders.data) return <p className="text-muted-foreground">Loading…</p>;
   const ui = meta.data.ui;
+  const shown = folders.data.filter((f) => !f.hidden);
+  const hidden = folders.data.length - shown.length;
   return (
     <div className="space-y-6">
       <header>
         <h1 className="font-semibold text-2xl tracking-tight">Home</h1>
         <p className="text-muted-foreground text-sm">
-          Read-only build: everything here is a proposal. Nothing in your ROM folders is changed.
+          Everything here is a proposal until you apply it, and what is applied can be undone.
+          {hidden > 0 ? (
+            <>
+              {" "}
+              {formatCount(hidden)} hidden {hidden === 1 ? "set is" : "sets are"} left out (
+              <Link to="/settings/sets" className="underline underline-offset-2">
+                Settings → Sets
+              </Link>
+              ).
+            </>
+          ) : null}
         </p>
       </header>
-      {folders.data.length === 0 ? (
+      {shown.length === 0 ? (
         <div className="max-w-xl rounded-lg border border-border bg-card p-6">
-          <h2 className="font-medium">No platforms yet</h2>
+          <h2 className="font-medium">No sets yet</h2>
           <p className="mt-1 text-muted-foreground text-sm">
-            Add a platform folder with <strong>Add platform</strong> at the bottom of the sidebar.
-            Each folder holds exactly one platform.
+            Add a platform folder with <strong>Add set</strong> at the bottom of the sidebar, or a
+            folder holding one folder per platform with <strong>Add sets from a folder</strong>.
+            Each set holds exactly one platform.
           </p>
         </div>
       ) : (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(20rem,1fr))] gap-4">
-          {foldersByName(folders.data, meta.data.platforms).map((folder) => {
+          {foldersByName(shown, meta.data.platforms).map((folder) => {
             const platform = meta.data.platforms[folder.platform];
             const stats = [
               {
