@@ -18,6 +18,8 @@ const FOLDERS = [
     scan: null,
     dat: null,
     summary: { counts: {}, roms: 0, identified: 0, unmatched: 0, methods: {} },
+    dat_download: null,
+    needs_dat: false,
     counts: {},
     reclaim_bytes: 0,
     delete_originals: false,

@@ -304,6 +304,17 @@ def build_router(
 
     # Folders -----------------------------------------------------------------------
 
+    def default_download(platform: str) -> dict | None:
+        """The first source the platform's DAT downloads from (as Settings → DATs lists them)."""
+        sources = registry.downloads(platform) if platform in platforms else []
+        if not sources:
+            return None
+        return {"source": sources[0], "label": settings.dats.sources[sources[0]].label}
+
+    def title_ids(platform: str) -> bool:
+        """The platform identifies by title ID, so a scan needs no DAT."""
+        return platform in platforms and platforms[platform].title_ids
+
     @router.get("/folders")
     def list_folders(conn: Conn):
         library = store.load()
@@ -325,6 +336,8 @@ def build_router(
                     "scan": row_dict(scan),
                     "dat": row_dict(dat),
                     "summary": scanner.folder_summary(conn, folder.label, parts_of(folder)),
+                    "dat_download": default_download(folder.platform) if dat is None else None,
+                    "needs_dat": dat is None and not title_ids(folder.platform),
                     "counts": table.counts,
                     "reclaim_bytes": table.reclaim_bytes,
                     "conversion": conversion.counts(conversion_rows(library, folder, conn)),

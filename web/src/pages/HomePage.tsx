@@ -1,12 +1,15 @@
-import { RefreshCw, TriangleAlert } from "lucide-react";
+import { useMutation } from "@tanstack/react-query";
+import { Download, RefreshCw, TriangleAlert } from "lucide-react";
 import { Link } from "react-router-dom";
+import { toast } from "sonner";
 import { PlatformIcon } from "@/components/PlatformIcon";
 import { Button } from "@/components/ui/button";
+import { ApiError, api } from "@/lib/api";
 import { formatBytes, formatCount, formatFiles, formatWhen } from "@/lib/format";
 import { foldersByName } from "@/lib/platforms";
-import { useFolders, useMeta } from "@/lib/queries";
+import { invalidateFolder, useFolders, useMeta } from "@/lib/queries";
 import { scanProgress, useStartScan } from "@/lib/scan";
-import type { Scan } from "@/lib/types";
+import type { FolderCard, Scan } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /** The card's scan button and, behind the card, the running scan's progress. */
@@ -26,21 +29,52 @@ function ScanBackground({ scan }: { scan: Scan | null }) {
   );
 }
 
-function ScanButton({ label, scan }: { label: string; scan: Scan | null }) {
-  const start = useStartScan(label);
-  const running = scan?.status === "running";
+/** Scan, and before it the platform's default DAT when the set has none. */
+function CardActions({ folder }: { folder: FolderCard }) {
+  const scan = useStartScan(folder.label);
+  const download = useMutation({
+    mutationFn: (source: string) =>
+      api(`/dats/${folder.platform}/download?source=${encodeURIComponent(source)}`, {
+        method: "POST",
+      }),
+    onSuccess: () => {
+      toast.success(`${folder.label}: DAT downloaded from ${folder.dat_download?.label}`);
+      invalidateFolder(folder.label);
+    },
+    onError: (err) => toast.error(err instanceof ApiError ? err.message : String(err)),
+  });
+  const running = folder.scan?.status === "running";
+  const guard = folder.needs_dat
+    ? folder.dat_download
+      ? "Download the DAT first"
+      : "Upload a DAT in Settings → DATs first"
+    : undefined;
   return (
-    <Button
-      variant="ghost"
-      size="icon-sm"
-      className="absolute top-3 right-3"
-      aria-label={`Scan ${label}`}
-      title="Scan for conversion and matching"
-      disabled={running || start.isPending}
-      onClick={() => start.mutate()}
-    >
-      <RefreshCw className={running ? "size-4 animate-spin" : "size-4"} aria-hidden="true" />
-    </Button>
+    <div className="relative flex flex-wrap items-center gap-2 px-4 pb-4">
+      {folder.dat_download ? (
+        <Button
+          size="sm"
+          disabled={download.isPending}
+          title={`From ${folder.dat_download.label}`}
+          onClick={() => folder.dat_download && download.mutate(folder.dat_download.source)}
+        >
+          <Download className="size-4" aria-hidden="true" />
+          {download.isPending ? "Downloading DAT…" : "Download DAT"}
+        </Button>
+      ) : null}
+      <Button
+        size="sm"
+        variant="outline"
+        aria-label={`Scan ${folder.label}`}
+        title={guard ?? "Scan for conversion and matching"}
+        disabled={Boolean(guard) || running || scan.isPending}
+        onClick={() => scan.mutate()}
+      >
+        <RefreshCw className={running ? "size-4 animate-spin" : "size-4"} aria-hidden="true" />
+        Scan
+      </Button>
+      {guard ? <span className="text-muted-foreground text-xs">{guard}</span> : null}
+    </div>
   );
 }
 
@@ -134,7 +168,7 @@ export function HomePage() {
                 className="group relative overflow-hidden rounded-lg border border-border bg-card transition-colors hover:border-primary/50 hover:bg-accent/30"
               >
                 <ScanBackground scan={folder.scan} />
-                <Link to={`/folders/${folder.label}/matching`} className="relative block p-4 pr-12">
+                <Link to={`/folders/${folder.label}/matching`} className="relative block p-4">
                   <div className="flex min-w-0 items-center gap-2">
                     <PlatformIcon platform={platform} />
                     <h2
@@ -201,7 +235,7 @@ export function HomePage() {
                     </dl>
                   ) : null}
                 </Link>
-                <ScanButton label={folder.label} scan={folder.scan} />
+                <CardActions folder={folder} />
               </div>
             );
           })}

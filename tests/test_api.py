@@ -323,3 +323,14 @@ def test_discarded_listing_and_home_warnings(setup, roms_root):
     client.put("/api/dats/nes/active", json={"version_id": new.json()["version_id"]})
     texts = [w["text"] for w in client.get("/api/folders").json()[0]["warnings"]]
     assert "The active DAT changed since the last scan. Rescan to use it." in texts
+
+
+def test_folder_card_offers_the_default_dat_until_one_is_active(setup):
+    client, _, _ = setup
+    add_nes(client, label="nes")
+    card = client.get("/api/folders").json()[0]
+    assert card["needs_dat"] is True
+    assert card["dat_download"] == {"source": "libretro", "label": "libretro-database mirror"}
+    assert client.post("/api/dats/nes/download?source=libretro").status_code == HTTPStatus.OK
+    card = client.get("/api/folders").json()[0]
+    assert (card["needs_dat"], card["dat_download"]) == (False, None)

@@ -105,6 +105,10 @@ export type FolderCard = FolderInfo & {
   scan: Scan | null;
   dat: DatVersion | null;
   summary: Summary;
+  /** Without an active DAT: where the platform's DAT downloads from by default. */
+  dat_download: { source: string; label: string } | null;
+  /** No active DAT, and the platform needs one to identify anything. */
+  needs_dat: boolean;
   counts: Record<string, number>;
   reclaim_bytes: number;
   conversion: ConversionCounts;

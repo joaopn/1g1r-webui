@@ -32,6 +32,8 @@ const card = (label: string, platform: string, scan: Scan | null): FolderCard =>
   scan,
   dat: null,
   summary: { counts: {}, roms: 0, identified: 0, unmatched: 0, methods: {} },
+  dat_download: null,
+  needs_dat: false,
   counts: {},
   reclaim_bytes: 0,
   conversion: { to_convert: 0, flagged: 0 } as FolderCard["conversion"],
@@ -96,4 +98,28 @@ test("the scan button starts the set's scan", async () => {
     true,
   );
   expect(screen.queryByTestId("scan-progress")).toBeNull();
+});
+
+test("without a DAT the card offers the default one and holds the scan back", async () => {
+  const calls = renderPage([
+    {
+      ...card("nes", "nes", null),
+      needs_dat: true,
+      dat_download: { source: "libretro", label: "libretro-database mirror" },
+    },
+  ]);
+  expect(await screen.findByRole("button", { name: "Scan nes" })).toBeDisabled();
+  expect(screen.getByText("Download the DAT first")).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Download DAT" }));
+  expect(
+    calls.some(
+      (c) => c.url.endsWith("/dats/nes/download?source=libretro") && c.init?.method === "POST",
+    ),
+  ).toBe(true);
+});
+
+test("with a DAT there is no download button", async () => {
+  renderPage([card("gb", "gb", SCAN)]);
+  expect(await screen.findByRole("button", { name: "Scan gb" })).toBeEnabled();
+  expect(screen.queryByRole("button", { name: "Download DAT" })).toBeNull();
 });
