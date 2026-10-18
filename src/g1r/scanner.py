@@ -524,7 +524,7 @@ class Scanner:
         config = self.settings.lookups.screenscraper
         if not library.lookups.screenscraper or profile.screenscraper_id is None:
             return None
-        creds = screenscraper.credentials(config)
+        creds = screenscraper.credentials(self.settings)
         if creds is None:
             return None
         return screenscraper.Session(config, creds, self.screenscraper_get)

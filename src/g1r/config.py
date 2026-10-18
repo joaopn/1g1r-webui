@@ -303,7 +303,8 @@ class HasheousConfig(_Strict):
 
 
 class ScreenScraperEnvironment(_Strict):
-    """Names of the environment variables holding the credentials (set them in compose)."""
+    """Names of environment variables that, when set, override the credentials entered in
+    the app."""
 
     devid: str
     devpassword: str
@@ -324,6 +325,9 @@ class ScreenScraperConfig(_Strict):
     quota_statuses: list[int]
     not_found_ttl_days: float = Field(ge=0)
     environment: ScreenScraperEnvironment
+    # Credentials entered in Settings -> Online lookups, relative to the data directory.
+    credentials_file: str
+    file_mode: int
 
 
 class LookupsConfig(_Strict):

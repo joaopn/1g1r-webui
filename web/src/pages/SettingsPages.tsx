@@ -3,6 +3,7 @@ import { Download, Pin, PinOff, Upload } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { PlatformIcon } from "@/components/PlatformIcon";
+import { ScreenScraperCredentials } from "@/components/ScreenScraperCredentials";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ApiError, api, json, upload } from "@/lib/api";
@@ -476,16 +477,10 @@ export function LookupsSettingsPage() {
             </span>
           </span>
         </label>
-        {screenscraper.configured ? null : (
-          <p className="text-status-warn" data-testid="screenscraper-credentials">
-            Needs credentials in the container's environment (compose):{" "}
-            <code className="text-xs">{screenscraper.environment.devid}</code> and{" "}
-            <code className="text-xs">{screenscraper.environment.devpassword}</code> (developer),
-            optionally <code className="text-xs">{screenscraper.environment.user}</code> and{" "}
-            <code className="text-xs">{screenscraper.environment.password}</code> (your account, a
-            larger daily quota).
-          </p>
-        )}
+        <ScreenScraperCredentials
+          sources={screenscraper.credentials}
+          environment={screenscraper.environment}
+        />
         <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1.5 text-muted-foreground">
           <dt>Sends</dt>
           <dd>

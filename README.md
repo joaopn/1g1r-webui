@@ -31,7 +31,7 @@ To add another ROM folder (another disk), add a line under `volumes:` in `compos
       - /mnt/disk2/roms:/mnt/disk2
 ```
 
-The app keeps its database, DATs and caches in `data/` in the clone.
+The app keeps its database, DATs, caches, console keys and ScreenScraper credentials in `data/` in the clone. Keys and credentials are entered in the web UI.
 
 ## Platforms
 

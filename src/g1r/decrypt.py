@@ -11,7 +11,6 @@ here: the converter compares its SHA1 with the DAT (which lists decrypted images
 """
 
 import hashlib
-import os
 from pathlib import Path
 
 from pyctr.common import PyCTRError
@@ -22,6 +21,7 @@ from pyctr.type.cci import CCIReader
 from pyctr.type.ncch import NCCHReader, NCCHSection, NCCHSeedError
 
 from g1r.config import Settings
+from g1r.private_files import write_private
 
 BOOT9 = "boot9"
 SEEDDB = "seeddb"
@@ -68,14 +68,7 @@ def _seed_count(settings: Settings, data: bytes) -> int | None:
 
 
 def _write_private(settings: Settings, path: Path, data: bytes) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temp = path.with_name(path.name + ".new")
-    fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, settings.decryption.file_mode)
-    with os.fdopen(fd, "wb") as handle:
-        handle.write(data)
-        handle.flush()
-        os.fsync(handle.fileno())
-    os.replace(temp, path)
+    write_private(path, data, settings.decryption.file_mode)
 
 
 def store_key(settings: Settings, kind: str, data: bytes) -> None:

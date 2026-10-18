@@ -283,9 +283,11 @@ export type SettingsData = {
   screenscraper: {
     site: string;
     url: string;
-    /** Whether the credentials are set in the environment (never the values). */
+    /** Whether the developer credentials are set (never the values). */
     configured: boolean;
-    environment: { devid: string; devpassword: string; user: string; password: string };
+    credentials: CredentialSources;
+    /** Environment variables that override a field when set. */
+    environment: Record<CredentialField, string>;
     min_interval_seconds: number;
     not_found_ttl_days: number;
     platforms: string[];
@@ -372,3 +374,7 @@ export type UnmatchedFile = {
   screenscraper: { status: LookupStatus; detail: string } | null;
   suggestions: { game_name: string; score: number }[];
 };
+
+export type CredentialField = "devid" | "devpassword" | "user" | "password";
+/** Where each credential is set: in the app, by an environment variable, or not at all. */
+export type CredentialSources = Record<CredentialField, "app" | "environment" | null>;

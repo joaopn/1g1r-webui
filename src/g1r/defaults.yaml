@@ -729,8 +729,12 @@ lookups:
     # ScreenScraper's own "quota used up" statuses.
     quota_statuses: [430, 431]
     not_found_ttl_days: 30
-    # The credentials are read from these environment variables (set in compose); the
-    # developer pair is required, the user account raises the quota.
+    # The credentials are entered in Settings -> Online lookups and kept in this file in
+    # the data directory; the developer pair is required, the user account raises the quota.
+    credentials_file: keys/screenscraper.json
+    # Octal: only the app's user may read the stored credentials.
+    file_mode: 0600
+    # An environment variable of these names, when set, overrides the stored value.
     environment:
       devid: SCREENSCRAPER_DEVID
       devpassword: SCREENSCRAPER_DEVPASSWORD

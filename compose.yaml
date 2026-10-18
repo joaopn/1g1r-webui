@@ -9,17 +9,10 @@ services:
     ports:
       - "${PORT:-8077}:8077"
     volumes:
-      # Database, DATs, caches and console keys (kept in this clone's data/).
+      # Database, DATs, caches, console keys and ScreenScraper credentials (this clone's data/).
       - ./data:/data
       # Your ROM folder. Sets are picked inside it; discarded files go to its discarded/.
       - ${ROMS:?set ROMS to your ROM folder, e.g. ROMS=/srv/roms docker compose up -d}:/roms
       # More ROM folders (other disks): add a line per folder, mounted under /mnt/<name>.
       # - /mnt/disk2/roms:/mnt/disk2
-    environment:
-      # Optional ScreenScraper lookups: developer credentials, and your account for a
-      # higher daily quota.
-      SCREENSCRAPER_DEVID: ${SCREENSCRAPER_DEVID:-}
-      SCREENSCRAPER_DEVPASSWORD: ${SCREENSCRAPER_DEVPASSWORD:-}
-      SCREENSCRAPER_USER: ${SCREENSCRAPER_USER:-}
-      SCREENSCRAPER_PASSWORD: ${SCREENSCRAPER_PASSWORD:-}
     restart: unless-stopped

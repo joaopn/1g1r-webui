@@ -5,8 +5,9 @@ file name, so an answer is about the data. Even so it identifies a file only whe
 it returns has our hash and its file name is an entry of the folder's DAT; ScreenScraper's
 own game names are not DAT names, so anything else becomes name suggestions.
 
-Credentials come from the environment (compose), never from the config file, so they are
-not shown in Settings → Advanced. Requests are spaced by `min_interval_seconds` and stop for
+Credentials are entered in Settings → Online lookups and kept in a private file in the data
+directory (an environment variable overrides a field); they are never sent back to the page
+nor shown in Settings → Advanced. Requests are spaced by `min_interval_seconds` and stop for
 the scan once the daily quota ScreenScraper reports in each answer is reached.
 """
 
@@ -21,10 +22,11 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from http import HTTPStatus
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 
-from g1r.config import ScreenScraperConfig
+from g1r.config import ScreenScraperConfig, Settings
 from g1r.hashing import ContentHash
+from g1r.private_files import write_private
 
 SERVICE = "screenscraper"
 
@@ -59,15 +61,71 @@ class Credentials:
     sspassword: str | None
 
 
-def credentials(config: ScreenScraperConfig, environ=None) -> Credentials | None:
-    """The developer credentials (required) and the user account (optional) from the env."""
+# The credential fields, as stored and as named in `environment`.
+FIELDS = ("devid", "devpassword", "user", "password")
+FROM_ENVIRONMENT = "environment"
+FROM_APP = "app"
+
+
+def credentials_path(settings: Settings) -> Path:
+    return settings.paths.data_dir / settings.lookups.screenscraper.credentials_file
+
+
+def stored_credentials(settings: Settings) -> dict[str, str]:
+    """What was entered in the app; nothing when the file is missing or unreadable."""
+    try:
+        data = json.loads(credentials_path(settings).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {k: v for k, v in data.items() if k in FIELDS and isinstance(v, str) and v}
+
+
+def store_credentials(settings: Settings, changes: dict[str, str | None]) -> None:
+    """Set the given fields; an empty value removes one."""
+    values = stored_credentials(settings)
+    for name, value in changes.items():
+        if name not in FIELDS:
+            raise ValueError(f"unknown credential {name!r}")
+        if value:
+            values[name] = value
+        else:
+            values.pop(name, None)
+    write_private(
+        credentials_path(settings),
+        json.dumps(values).encode(),
+        settings.lookups.screenscraper.file_mode,
+    )
+
+
+def _values(settings: Settings, environ) -> dict[str, tuple[str, str]]:
+    """field -> (value, where it comes from): the environment over the app."""
     environ = os.environ if environ is None else environ
-    env = config.environment
-    devid, devpassword = environ.get(env.devid), environ.get(env.devpassword)
-    if not devid or not devpassword:
+    names = settings.lookups.screenscraper.environment.model_dump()
+    stored = stored_credentials(settings)
+    found = {}
+    for name in FIELDS:
+        if environ.get(names[name]):
+            found[name] = (environ[names[name]], FROM_ENVIRONMENT)
+        elif stored.get(name):
+            found[name] = (stored[name], FROM_APP)
+    return found
+
+
+def credential_sources(settings: Settings, environ=None) -> dict[str, str | None]:
+    """For the settings page: where each field is set, never its value."""
+    found = _values(settings, environ)
+    return {name: found[name][1] if name in found else None for name in FIELDS}
+
+
+def credentials(settings: Settings, environ=None) -> Credentials | None:
+    """The developer credentials (required) and the user account (optional)."""
+    found = {name: value for name, (value, _) in _values(settings, environ).items()}
+    if not found.get("devid") or not found.get("devpassword"):
         return None
     return Credentials(
-        devid, devpassword, environ.get(env.user) or None, environ.get(env.password) or None
+        found["devid"], found["devpassword"], found.get("user"), found.get("password")
     )
 
 

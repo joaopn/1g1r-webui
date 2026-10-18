@@ -74,6 +74,8 @@ def config(**changes) -> ScreenScraperConfig:
         "quota_reserve": 5,
         "quota_statuses": [430, 431],
         "not_found_ttl_days": 30,
+        "credentials_file": "keys/screenscraper.json",
+        "file_mode": 0o600,
         "environment": ScreenScraperEnvironment(
             devid="SCREENSCRAPER_DEVID",
             devpassword="SCREENSCRAPER_DEVPASSWORD",
@@ -84,10 +86,29 @@ def config(**changes) -> ScreenScraperConfig:
     return ScreenScraperConfig(**(values | changes))
 
 
-def test_credentials_come_from_the_environment():
-    assert screenscraper.credentials(config(), {}) is None
-    creds = screenscraper.credentials(config(), CREDENTIALS)
-    assert (creds.devid, creds.ssid) == ("dev", "me")
+def creds():
+    return screenscraper.Credentials("dev", "devpass", "me", "mine")
+
+
+def test_credentials_entered_in_the_app_are_private_and_the_environment_wins(make_settings):
+    settings = make_settings()
+    assert screenscraper.credentials(settings, {}) is None
+    screenscraper.store_credentials(settings, {"devid": "dev", "devpassword": "devpass"})
+    path = screenscraper.credentials_path(settings)
+    assert path.stat().st_mode & 0o777 == settings.lookups.screenscraper.file_mode
+    found = screenscraper.credentials(settings, {})
+    assert (found.devid, found.ssid) == ("dev", None)
+    environ = {"SCREENSCRAPER_DEVID": "other", "SCREENSCRAPER_USER": "me"}
+    found = screenscraper.credentials(settings, environ)
+    assert (found.devid, found.devpassword, found.ssid) == ("other", "devpass", "me")
+    assert screenscraper.credential_sources(settings, environ) == {
+        "devid": "environment",
+        "devpassword": "app",
+        "user": "environment",
+        "password": None,
+    }
+    screenscraper.store_credentials(settings, {"devpassword": ""})
+    assert screenscraper.credentials(settings, {}) is None
 
 
 def test_requests_are_spaced_and_stop_at_the_quota():
@@ -101,7 +122,7 @@ def test_requests_are_spaced_and_stop_at_the_quota():
 
     session = screenscraper.Session(
         config(),
-        screenscraper.credentials(config(), CREDENTIALS),
+        creds(),
         get,
         clock=lambda: now[0],
         sleep=lambda s: (slept.append(s), now.__setitem__(0, now[0] + s)),
@@ -117,7 +138,7 @@ def test_requests_are_spaced_and_stop_at_the_quota():
 def test_a_quota_status_stops_the_session():
     session = screenscraper.Session(
         config(min_interval_seconds=0),
-        screenscraper.credentials(config(), CREDENTIALS),
+        creds(),
         lambda url, headers, timeout: (430, b"quota"),
     )
     with pytest.raises(screenscraper.LookupError_, match="quota"):
@@ -189,3 +210,33 @@ def test_without_credentials_screenscraper_cannot_be_switched_on(make_settings):
         assert refused.status_code == HTTPStatus.BAD_REQUEST
         info = client.get("/api/settings").json()["screenscraper"]
         assert info["configured"] is False and "nes" in info["platforms"]
+
+
+def test_credentials_are_entered_in_the_app_and_never_sent_back(make_settings, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from g1r.web.app import create_app
+
+    for name in CREDENTIALS:
+        monkeypatch.delenv(name, raising=False)
+    with TestClient(create_app(make_settings())) as client:
+        saved = client.put(
+            "/api/settings/screenscraper-credentials",
+            json={"devid": "dev-7f3a", "devpassword": "secret-9c1e", "user": "me-4b2d"},
+        )
+        assert saved.json() == {
+            "devid": "app",
+            "devpassword": "app",
+            "user": "app",
+            "password": None,
+        }
+        page = client.get("/api/settings").text
+        assert '"configured":true' in page
+        assert not any(v in page for v in ("dev-7f3a", "secret-9c1e", "me-4b2d"))
+        assert client.put("/api/settings/lookups", json={"screenscraper": True}).status_code == 200
+        # A field left out is kept; an empty one is removed.
+        client.put("/api/settings/screenscraper-credentials", json={"user": ""})
+        sources = client.get("/api/settings").json()["screenscraper"]["credentials"]
+        assert (sources["devid"], sources["user"]) == ("app", None)
+        client.delete("/api/settings/screenscraper-credentials")
+        assert client.get("/api/settings").json()["screenscraper"]["configured"] is False
