@@ -185,3 +185,45 @@ def test_real_igir_report(env, roms_root):
     real.run(conn, real.start(conn, "nes"), "nes")
     rows = dict(conn.execute("SELECT rel_path, method FROM identity").fetchall())
     assert rows["Known (USA).zip"] == "dat-checksum"
+
+
+def test_scan_writes_its_progress(env):
+    settings, store, registry, conn, _ = env
+    seen = []
+
+    def report(settings_, dat_file, input_dir):
+        row = conn.execute("SELECT stage, files_done, files_total FROM scan").fetchone()
+        seen.append(tuple(row))
+        return []
+
+    folder_scanner = scanner.Scanner(settings, store, registry, report)
+    scan_id = folder_scanner.start(conn, "nes")
+    assert tuple(conn.execute("SELECT stage, files_done FROM scan").fetchone()) == (None, None)
+    folder_scanner.run(conn, scan_id, "nes")
+    # igir counts nothing; the steps after it have files.
+    assert seen == [("Matching checksums with igir", None, None)]
+    scan = scanner.latest_scan(conn, "nes")
+    assert scan["status"] == "done" and scan["stage"] is None and scan["files_total"] is None
+
+
+def test_progress_writes_at_most_every_interval(env):
+    _, _, _, conn, folder_scanner = env
+    scan_id = folder_scanner.start(conn, "nes")
+    now = [0.0]
+    progress = scanner.Progress(conn, scan_id, interval=10, clock=lambda: now[0])
+
+    def row():
+        return tuple(conn.execute("SELECT stage, files_done, files_total FROM scan").fetchone())
+
+    items = progress.each("Reading archives", range(3))
+    next(items)
+    assert row() == ("Reading archives", 0, 3)
+    next(items)  # one done, too soon to write
+    assert row() == ("Reading archives", 0, 3)
+    now[0] = 10
+    next(items)
+    assert row() == ("Reading archives", 2, 3)
+    assert list(items) == []  # the last file is always written
+    assert row() == ("Reading archives", 3, 3)
+    progress.stage("Matching checksums with igir")
+    assert row() == ("Matching checksums with igir", None, None)

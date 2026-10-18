@@ -1,10 +1,48 @@
-import { TriangleAlert } from "lucide-react";
+import { RefreshCw, TriangleAlert } from "lucide-react";
 import { Link } from "react-router-dom";
 import { PlatformIcon } from "@/components/PlatformIcon";
+import { Button } from "@/components/ui/button";
 import { formatBytes, formatCount, formatFiles, formatWhen } from "@/lib/format";
 import { foldersByName } from "@/lib/platforms";
 import { useFolders, useMeta } from "@/lib/queries";
+import { scanProgress, useStartScan } from "@/lib/scan";
+import type { Scan } from "@/lib/types";
 import { cn } from "@/lib/utils";
+
+/** The card's scan button and, behind the card, the running scan's progress. */
+function ScanBackground({ scan }: { scan: Scan | null }) {
+  const progress = scanProgress(scan);
+  if (!progress) return null;
+  return (
+    <div
+      aria-hidden="true"
+      data-testid="scan-progress"
+      className={cn(
+        "pointer-events-none absolute inset-0 origin-left bg-primary/10 transition-transform duration-500",
+        progress.fraction === null && "animate-pulse",
+      )}
+      style={progress.fraction === null ? undefined : { transform: `scaleX(${progress.fraction})` }}
+    />
+  );
+}
+
+function ScanButton({ label, scan }: { label: string; scan: Scan | null }) {
+  const start = useStartScan(label);
+  const running = scan?.status === "running";
+  return (
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      className="absolute top-3 right-3"
+      aria-label={`Scan ${label}`}
+      title="Scan for conversion and matching"
+      disabled={running || start.isPending}
+      onClick={() => start.mutate()}
+    >
+      <RefreshCw className={running ? "size-4 animate-spin" : "size-4"} aria-hidden="true" />
+    </Button>
+  );
+}
 
 export function HomePage() {
   const meta = useMeta();
@@ -89,78 +127,82 @@ export function HomePage() {
                     : "nothing",
               },
             ];
+            const progress = scanProgress(folder.scan);
             return (
-              <Link
+              <div
                 key={folder.label}
-                to={`/folders/${folder.label}/matching`}
-                className="group rounded-lg border border-border bg-card p-4 transition-colors hover:border-primary/50 hover:bg-accent/30"
+                className="group relative overflow-hidden rounded-lg border border-border bg-card transition-colors hover:border-primary/50 hover:bg-accent/30"
               >
-                <div className="flex min-w-0 items-center gap-2">
-                  <PlatformIcon platform={platform} />
-                  <h2
-                    className="min-w-0 truncate font-medium group-hover:text-primary"
-                    title={platform?.name ?? folder.platform}
-                  >
-                    {platform?.name ?? folder.platform}
-                  </h2>
-                  <span className="shrink-0 text-muted-foreground text-sm">{folder.label}</span>
-                </div>
-                <p className="mt-1 truncate text-muted-foreground text-xs">
-                  {folder.location ?? `mount ${folder.mount} unavailable`}
-                </p>
-                <p className="mt-2 text-xs">
-                  {folder.dat ? (
-                    `DAT ${folder.dat.header_name} · ${folder.dat.version ?? "?"}`
-                  ) : (
-                    <span className="text-status-warn">No DAT yet</span>
-                  )}
-                  <br />
-                  {folder.scan ? (
-                    folder.scan.status === "done" ? (
-                      `Scanned ${formatWhen(folder.scan.finished_at)}`
-                    ) : folder.scan.status === "running" ? (
-                      "Scanning…"
+                <ScanBackground scan={folder.scan} />
+                <Link to={`/folders/${folder.label}/matching`} className="relative block p-4 pr-12">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <PlatformIcon platform={platform} />
+                    <h2
+                      className="min-w-0 truncate font-medium group-hover:text-primary"
+                      title={platform?.name ?? folder.platform}
+                    >
+                      {platform?.name ?? folder.platform}
+                    </h2>
+                    <span className="shrink-0 text-muted-foreground text-sm">{folder.label}</span>
+                  </div>
+                  <p className="mt-1 truncate text-muted-foreground text-xs">
+                    {folder.location ?? `mount ${folder.mount} unavailable`}
+                  </p>
+                  <p className="mt-2 text-xs">
+                    {folder.dat ? (
+                      `DAT ${folder.dat.header_name} · ${folder.dat.version ?? "?"}`
                     ) : (
-                      <span className="text-status-bad">Last scan failed</span>
-                    )
-                  ) : (
-                    <span className="text-muted-foreground">Not scanned yet</span>
-                  )}
-                </p>
-                {folder.warnings.length > 0 ? (
-                  <ul className="mt-3 space-y-1 text-xs" data-testid={`warnings-${folder.label}`}>
-                    {folder.warnings.map((w) => (
-                      <li
-                        key={w.text}
-                        className={cn(
-                          "flex items-start gap-1.5",
-                          w.level === "bad" ? "text-status-bad" : "text-status-warn",
-                        )}
-                      >
-                        <TriangleAlert className="mt-px size-3.5 shrink-0" aria-hidden="true" />
-                        {w.text}
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-                {folder.summary.roms > 0 ? (
-                  <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2">
-                    {stats.map((s) => (
-                      <div key={s.label}>
-                        <dt className="text-muted-foreground text-xs">{s.label}</dt>
-                        <dd
+                      <span className="text-status-warn">No DAT yet</span>
+                    )}
+                    <br />
+                    {folder.scan ? (
+                      folder.scan.status === "done" ? (
+                        `Scanned ${formatWhen(folder.scan.finished_at)}`
+                      ) : progress ? (
+                        <span data-testid={`scan-status-${folder.label}`}>{progress.text}</span>
+                      ) : (
+                        <span className="text-status-bad">Last scan failed</span>
+                      )
+                    ) : (
+                      <span className="text-muted-foreground">Not scanned yet</span>
+                    )}
+                  </p>
+                  {folder.warnings.length > 0 ? (
+                    <ul className="mt-3 space-y-1 text-xs" data-testid={`warnings-${folder.label}`}>
+                      {folder.warnings.map((w) => (
+                        <li
+                          key={w.text}
                           className={cn(
-                            "font-semibold tabular-nums",
-                            s.attention && "text-status-warn",
+                            "flex items-start gap-1.5",
+                            w.level === "bad" ? "text-status-bad" : "text-status-warn",
                           )}
                         >
-                          {s.value}
-                        </dd>
-                      </div>
-                    ))}
-                  </dl>
-                ) : null}
-              </Link>
+                          <TriangleAlert className="mt-px size-3.5 shrink-0" aria-hidden="true" />
+                          {w.text}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  {folder.summary.roms > 0 ? (
+                    <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2">
+                      {stats.map((s) => (
+                        <div key={s.label}>
+                          <dt className="text-muted-foreground text-xs">{s.label}</dt>
+                          <dd
+                            className={cn(
+                              "font-semibold tabular-nums",
+                              s.attention && "text-status-warn",
+                            )}
+                          >
+                            {s.value}
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
+                  ) : null}
+                </Link>
+                <ScanButton label={folder.label} scan={folder.scan} />
+              </div>
             );
           })}
         </div>

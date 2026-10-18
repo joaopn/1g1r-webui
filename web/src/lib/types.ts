@@ -58,6 +58,10 @@ export type Scan = {
   started_at: string;
   finished_at: string | null;
   message: string | null;
+  /** While running: the step it is on (null until it starts) and that step's file count. */
+  stage: string | null;
+  files_done: number | null;
+  files_total: number | null;
 };
 
 export type DatVersion = {

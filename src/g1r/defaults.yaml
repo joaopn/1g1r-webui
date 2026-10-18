@@ -768,6 +768,8 @@ dolphin:
 jobs:
   # Folder scans run in the background, this many at a time.
   workers: 1
+  # A running scan writes how far it is at most this often.
+  progress_interval_seconds: 0.5
 
 apply:
   # Moves to another disk copy in chunks of this many bytes, hashing as they go.

@@ -1,0 +1,99 @@
+import { QueryClientProvider } from "@tanstack/react-query";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
+import { queryClient } from "@/lib/queries";
+import type { FolderCard, Scan } from "@/lib/types";
+import { META } from "@/test/fixtures";
+import { HomePage } from "./HomePage";
+
+const SCAN: Scan = {
+  id: 1,
+  status: "done",
+  started_at: "2026-10-18T10:00:00Z",
+  finished_at: "2026-10-18T10:01:00Z",
+  message: "done",
+  stage: null,
+  files_done: null,
+  files_total: null,
+};
+
+const card = (label: string, platform: string, scan: Scan | null): FolderCard => ({
+  label,
+  platform,
+  mount: "roms",
+  path: label,
+  location: `/roms/${label}`,
+  on_main_mount: true,
+  target: "zip",
+  discarded_to: `/roms/discarded/${label}/`,
+  delete_originals: false,
+  hidden: false,
+  scan,
+  dat: null,
+  summary: { counts: {}, roms: 0, identified: 0, unmatched: 0, methods: {} },
+  counts: {},
+  reclaim_bytes: 0,
+  conversion: { to_convert: 0, flagged: 0 } as FolderCard["conversion"],
+  discarded: { files: 0, bytes: 0 },
+  warnings: [],
+});
+
+function renderPage(folders: FolderCard[]) {
+  const calls: { url: string; init?: RequestInit }[] = [];
+  vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+    calls.push({ url, init });
+    const body = url.endsWith("/meta") ? META : url.endsWith("/folders") ? folders : {};
+    return new Response(JSON.stringify(body), { status: 200 });
+  });
+  queryClient.clear();
+  render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>
+        <HomePage />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+  return calls;
+}
+
+test("a running scan fills the card by file count and its button waits", async () => {
+  renderPage([
+    card("nes", "nes", {
+      ...SCAN,
+      status: "running",
+      finished_at: null,
+      stage: "Reading archives",
+      files_done: 25,
+      files_total: 100,
+    }),
+  ]);
+  expect(await screen.findByTestId("scan-status-nes")).toHaveTextContent(
+    "Reading archives: 25 / 100 files",
+  );
+  expect(screen.getByTestId("scan-progress")).toHaveStyle({ transform: "scaleX(0.25)" });
+  expect(screen.getByRole("button", { name: "Scan nes" })).toBeDisabled();
+});
+
+test("a step without a file count pulses the whole card", async () => {
+  renderPage([
+    card("nes", "nes", {
+      ...SCAN,
+      status: "running",
+      stage: "Matching checksums with igir",
+    }),
+  ]);
+  expect(await screen.findByTestId("scan-status-nes")).toHaveTextContent(
+    "Matching checksums with igir…",
+  );
+  expect(screen.getByTestId("scan-progress")).toHaveClass("animate-pulse");
+});
+
+test("the scan button starts the set's scan", async () => {
+  const calls = renderPage([card("gb", "gb", SCAN)]);
+  await userEvent.click(await screen.findByRole("button", { name: "Scan gb" }));
+  expect(calls.some((c) => c.url.endsWith("/folders/gb/scan") && c.init?.method === "POST")).toBe(
+    true,
+  );
+  expect(screen.queryByTestId("scan-progress")).toBeNull();
+});

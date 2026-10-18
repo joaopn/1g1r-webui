@@ -10,10 +10,11 @@ Without an active DAT the scan still takes the inventory, which is all conversio
 import fnmatch
 import os
 import sqlite3
+import time
 import zipfile
 import zlib
 from collections import Counter
-from collections.abc import Callable
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
@@ -70,6 +71,52 @@ ReportRunner = Callable[..., list[igir.ReportRow]]
 
 class ScanError(RuntimeError):
     """The scan could not start or finish; the message is shown on the folder page."""
+
+
+class Progress:
+    """How far a running scan is: its step and, for a step that goes file by file, how many
+    files are done. Written to the scan's row at most every `interval` seconds, and always
+    when a step starts or ends. Without a connection nothing is written."""
+
+    def __init__(
+        self,
+        conn: sqlite3.Connection | None = None,
+        scan_id: int | None = None,
+        interval: float = 0,
+        clock: Callable[[], float] = time.monotonic,
+    ):
+        self.conn = conn
+        self.scan_id = scan_id
+        self.interval = interval
+        self.clock = clock
+        self.name: str | None = None
+        self.done: int | None = None
+        self.total: int | None = None
+        self.written = clock()
+
+    def stage(self, name: str, total: int | None = None) -> None:
+        self.name, self.total = name, total
+        self.done = None if total is None else 0
+        self._write()
+
+    def each[T](self, name: str, items: Iterable[T]) -> Iterator[T]:
+        """The items, counting each one done as the loop moves past it."""
+        items = list(items)
+        self.stage(name, len(items))
+        for item in items:
+            yield item
+            self.done = (self.done or 0) + 1
+            if self.done == self.total or self.clock() - self.written >= self.interval:
+                self._write()
+
+    def _write(self) -> None:
+        self.written = self.clock()
+        if self.conn is None:
+            return
+        self.conn.execute(
+            "UPDATE scan SET stage = ?, files_done = ?, files_total = ? WHERE id = ?",
+            (self.name, self.done, self.total, self.scan_id),
+        )
 
 
 @dataclass(frozen=True)
@@ -169,7 +216,9 @@ def byte_order_matches(
 # Byte orders ----------------------------------------------------------------------
 
 
-def read_byte_orders(settings: Settings, platform: str, root: Path, files, members) -> dict:
+def read_byte_orders(
+    settings: Settings, platform: str, root: Path, files, members, progress=None
+) -> dict:
     """rel_path -> word length to reverse, for each file whose single ROM (bare, or the one
     ROM member of a zip) starts with a swapped order's magic. 7z is not read."""
     config = settings.byte_orders.get(platform)
@@ -182,7 +231,7 @@ def read_byte_orders(settings: Settings, platform: str, root: Path, files, membe
             roms_inside.setdefault(rel, []).append(member.name)
     length = magic_length(config)
     found = {}
-    for f in files:
+    for f in (progress or Progress()).each("Reading byte orders", files):
         head = None
         try:
             if f.kind == "rom":
@@ -208,7 +257,9 @@ def read_byte_orders(settings: Settings, platform: str, root: Path, files, membe
 # Card images ----------------------------------------------------------------------
 
 
-def read_cards(settings: Settings, platform: str, root: Path, files, members) -> dict:
+def read_cards(
+    settings: Settings, platform: str, root: Path, files, members, progress=None
+) -> dict:
     """rel_path -> (CardInfo, zip member or None) for each card image the platform's header
     format recognises: a bare file, or a zip's one ROM member."""
     profile = settings.platforms.profiles[platform]
@@ -221,7 +272,7 @@ def read_cards(settings: Settings, platform: str, root: Path, files, members) ->
         if PurePosixPath(member.name).suffix.lower().lstrip(".") in exts:
             inside.setdefault(rel, []).append(member)
     found = {}
-    for f in files:
+    for f in (progress or Progress()).each("Reading card headers", files):
         if f.kind == "rom":
             member, size = None, f.size
         elif f.rel_path.lower().endswith(ZIP_SUFFIX) and len(inside.get(f.rel_path, [])) == 1:
@@ -271,8 +322,9 @@ class Scanner:
     def run(
         self, conn: sqlite3.Connection, scan_id: int, label: str, refresh_lookups: bool = False
     ) -> None:
+        progress = Progress(conn, scan_id, self.settings.jobs.progress_interval_seconds)
         try:
-            message = self._scan(conn, label, refresh_lookups)
+            message = self._scan(conn, label, refresh_lookups, progress)
             self._finish(conn, scan_id, "done", message)
         except (ScanError, igir.IgirError, mounts.FolderPathError, OSError) as exc:
             self._finish(conn, scan_id, "failed", str(exc))
@@ -283,11 +335,14 @@ class Scanner:
     def _finish(self, conn, scan_id, status, message) -> None:
         conn.execute(
             "UPDATE scan SET status = ?, message = ?, "
+            "stage = NULL, files_done = NULL, files_total = NULL, "
             "finished_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?",
             (status, message, scan_id),
         )
 
-    def _scan(self, conn: sqlite3.Connection, label: str, refresh_lookups: bool) -> str:
+    def _scan(
+        self, conn: sqlite3.Connection, label: str, refresh_lookups: bool, progress: Progress
+    ) -> str:
         library = self.store.load()
         folder: FolderEntry | None = library.folder(label)
         if folder is None:
@@ -295,23 +350,28 @@ class Scanner:
         root = mounts.resolve(self.settings, folder.mount, folder.path)
         if not root.is_dir():
             raise ScanError(f"{root} is not available")
+        progress.stage("Listing files")
         files = inventory(
             self.settings, root, folder.platform, self.store.ignored_filenames(library)
         )
-        found = Found(*self._members(root, files))
+        found = Found(*self._members(root, files, progress))
         found.byte_orders = read_byte_orders(
-            self.settings, folder.platform, root, files, found.members
+            self.settings, folder.platform, root, files, found.members, progress
         )
-        found.cards = read_cards(self.settings, folder.platform, root, files, found.members)
+        found.cards = read_cards(
+            self.settings, folder.platform, root, files, found.members, progress
+        )
         if self.settings.platforms.profiles[folder.platform].title_ids:
-            self._title_ids(root, files, found)
+            self._title_ids(root, files, found, progress)
         active = self.registry.active_version(conn, library, folder.platform)
         if active is None and found.identified:
             # Title IDs identify without a DAT.
+            progress.stage("Saving")
             self._store(conn, label, files, NO_DAT, found)
             candidates = sum(1 for f in files if f.kind in ("rom", "archive"))
             return f"{len(found.identified)} of {candidates} files identified by title ID"
         if active is None:
+            progress.stage("Saving")
             self._store(conn, label, files, None, found)
             return (
                 f"inventory only, {len(files)} files: this platform has no active DAT, so "
@@ -319,6 +379,8 @@ class Scanner:
             )
         dat_file = self.settings.paths.data_dir / active["file"]
         modes = self.settings.platforms.profiles[folder.platform].igir_merge_modes
+        # igir reports nothing until it is done: this step has no file count.
+        progress.stage("Matching checksums with igir")
         if modes:
             # Arcade: each mode identifies the sets built its way; none misidentifies.
             by_path: dict[str, set[str]] = {}
@@ -346,27 +408,28 @@ class Scanner:
                 unmatched.append(f)
         dat = self.registry.load_active(conn, library, folder.platform)
         if unmatched and self.settings.headers.get(folder.platform):
-            for f in unmatched:
+            for f in progress.each("Checking header-stripped data", unmatched):
                 games = headerless_matches(self.settings, folder.platform, root / f.rel_path, dat)
                 found.identify(f.rel_path, games, METHOD_HEADERLESS)
         unmatched = [f for f in unmatched if f.rel_path not in found.identified]
         if self.settings.byte_orders.get(folder.platform):
-            for f in unmatched:
+            for f in progress.each("Checking byte orders", unmatched):
                 as_is, native = byte_order_matches(
                     self.settings, folder.platform, root / f.rel_path, dat
                 )
                 found.identify(f.rel_path, as_is, METHOD_CHECKSUM)
                 found.identify(f.rel_path, native - as_is, METHOD_BYTESWAPPED)
         unmatched = [f for f in unmatched if f.rel_path not in found.identified]
-        self._untrimmed(folder.platform, root, unmatched, dat, found)
+        self._untrimmed(folder.platform, root, unmatched, dat, found, progress)
         unmatched = [f for f in unmatched if f.rel_path not in found.identified]
-        self._duplicates(root, folder.platform, files, found)
+        self._duplicates(root, folder.platform, files, found, progress)
         unmatched = [f for f in unmatched if f.rel_path not in found.identified]
         notes = self._look_up(
-            conn, library, folder.platform, root, unmatched, found, refresh_lookups, dat
+            conn, library, folder.platform, root, unmatched, found, refresh_lookups, dat, progress
         )
         unmatched = [f for f in unmatched if f.rel_path not in found.identified]
-        self._suggest(dat, unmatched, found)
+        self._suggest(dat, unmatched, found, progress)
+        progress.stage("Saving")
         self._apply_manual(conn, label, files, found)
         self._store(conn, label, files, active["sha1"], found)
         conn.execute(
@@ -380,7 +443,9 @@ class Scanner:
             parts.append(f"{online} of them via Hasheous")
         return "; ".join(parts + notes)
 
-    def _look_up(self, conn, library, platform, root, unmatched, found, refresh, dat) -> list[str]:
+    def _look_up(
+        self, conn, library, platform, root, unmatched, found, refresh, dat, progress
+    ) -> list[str]:
         """Identification steps 3 and 4: hash what the DAT missed; ask Hasheous, then
         ScreenScraper, for the services that are on."""
         profile = self.settings.platforms.profiles[platform]
@@ -393,7 +458,8 @@ class Scanner:
             if on
         ]
         notes = []
-        for f in unmatched:
+        step = "Looking up unmatched files online" if services else "Hashing unmatched files"
+        for f in progress.each(step, unmatched):
             hashes = content_hashes(self.settings, platform, root / f.rel_path)
             found.hashes[f.rel_path] = hashes
             skipped = None
@@ -463,7 +529,7 @@ class Scanner:
             return None
         return screenscraper.Session(config, creds, self.screenscraper_get)
 
-    def _duplicates(self, root: Path, platform: str, files, found: "Found") -> None:
+    def _duplicates(self, root: Path, platform: str, files, found: "Found", progress) -> None:
         """Identification step 2: an unmatched file byte-identical to an identified one is
         a version of that file's game. Also hashes identified files that may be identical
         copies of each other (same game, same payload size), for the 1G1R table.
@@ -506,7 +572,7 @@ class Scanner:
             if size in unmatched_sizes or any(per_game[(g, size)] > 1 for g in games[f.rel_path])
         ] + [(f, size) for f, size in unmatched if size in identified_sizes]
         limit = self.settings.lookups.max_hash_bytes
-        for f, size in wanted:
+        for f, size in progress.each("Looking for duplicates", wanted):
             sha1 = payload_sha1(
                 root / f.rel_path,
                 rom_extensions,
@@ -527,27 +593,29 @@ class Scanner:
             if original is not None:
                 found.identify(f.rel_path, games[original], METHOD_DUPLICATE)
 
-    def _title_ids(self, root: Path, files, found: "Found") -> None:
+    def _title_ids(self, root: Path, files, found: "Found", progress) -> None:
         """Switch: every file with a title ID (ticket or name) is identified by it; the
         identity's name carries the ID, which matching groups by."""
         config = self.settings.title_ids
         if config is None:
             return
-        for f in files:
+        for f in progress.each("Reading title IDs", files):
             if f.kind not in ("rom", "archive"):
                 continue
             title = titles.read_title(root / f.rel_path, PurePosixPath(f.rel_path).name, config)
             if title is not None:
                 found.identify(f.rel_path, {titles.identity_name(title, config)}, METHOD_TITLE_ID)
 
-    def _untrimmed(self, platform, root: Path, unmatched, dat: Dat, found: "Found") -> None:
+    def _untrimmed(
+        self, platform, root: Path, unmatched, dat: Dat, found: "Found", progress
+    ) -> None:
         """A trimmed card image is the DAT's entry once padded back to the card's size."""
         profile = self.settings.platforms.profiles[platform]
         config = self.settings.card_images.get(profile.card_image or "")
         if config is None:
             return
         index = _crc_index(dat)
-        for f in unmatched:
+        for f in progress.each("Checking trimmed images", unmatched):
             card = found.cards.get(f.rel_path)
             if card is None or not card[0].trimmed:
                 continue
@@ -571,14 +639,14 @@ class Scanner:
         except discs.DiscError:
             return None
 
-    def _suggest(self, dat: Dat, unmatched: list[InventoryFile], found: "Found") -> None:
+    def _suggest(self, dat: Dat, unmatched: list[InventoryFile], found: "Found", progress) -> None:
         config = self.settings.fuzzy
         names = [g.name for g in dat.games]
         by_serial: dict[str, list[str]] = {}
         for g in dat.games:
             if g.serial:
                 by_serial.setdefault(g.serial.upper(), []).append(g.name)
-        for f in unmatched:
+        for f in progress.each("Suggesting names", unmatched):
             best = fuzzy.suggestions(config, f.rel_path, names)
             card = found.cards.get(f.rel_path)
             code = card[0].product_code.upper() if card else ""
@@ -616,12 +684,11 @@ class Scanner:
                 found.forget(rel_path)
                 found.identify(rel_path, {game}, METHOD_MANUAL)
 
-    def _members(self, root: Path, files: list[InventoryFile]):
+    def _members(self, root: Path, files: list[InventoryFile], progress: Progress):
         members: list[tuple[str, archives.Member]] = []
         problems: list[tuple[str, str]] = []
-        for f in files:
-            if f.kind != "archive":
-                continue
+        in_archives = [f for f in files if f.kind == "archive"]
+        for f in progress.each("Reading archives", in_archives):
             try:
                 found = archives.list_members(self.settings, root / f.rel_path, self.seven_zip)
             except archives.ArchiveError as exc:

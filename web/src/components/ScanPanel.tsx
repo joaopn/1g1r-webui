@@ -1,11 +1,9 @@
-import { useMutation } from "@tanstack/react-query";
 import { RefreshCw } from "lucide-react";
 import { type ReactNode, useEffect, useRef } from "react";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { ApiError, api } from "@/lib/api";
 import { formatWhen } from "@/lib/format";
 import { invalidateFolder } from "@/lib/queries";
+import { scanProgress, useStartScan } from "@/lib/scan";
 import type { Scan } from "@/lib/types";
 
 /** The folder's last scan, with the button that starts a new one; `children` goes above. */
@@ -18,11 +16,8 @@ export function ScanPanel({
   scan: Scan | null;
   children: ReactNode;
 }) {
-  const start = useMutation({
-    mutationFn: () => api(`/folders/${label}/scan`, { method: "POST" }),
-    onSuccess: () => invalidateFolder(label),
-    onError: (err) => toast.error(err instanceof ApiError ? err.message : String(err)),
-  });
+  const start = useStartScan(label);
+  const progress = scanProgress(scan);
   const running = scan?.status === "running";
   // When a scan ends, every table of the folder is stale.
   const wasRunning = useRef(running);
@@ -37,8 +32,8 @@ export function ScanPanel({
         <div className="text-muted-foreground">
           {!scan ? (
             "Not scanned yet."
-          ) : running ? (
-            `Scanning since ${formatWhen(scan.started_at)}…`
+          ) : progress ? (
+            `Scanning since ${formatWhen(scan.started_at)}. ${progress.text}`
           ) : scan.status === "done" ? (
             `Last scan ${formatWhen(scan.finished_at)}: ${scan.message}.`
           ) : (

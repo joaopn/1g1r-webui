@@ -34,8 +34,16 @@ export const keys = {
 
 export const useMeta = () =>
   useQuery({ queryKey: keys.meta, queryFn: () => api<Meta>("/meta"), staleTime: Infinity });
+/** Every set; polled while one of them is scanning. */
 export const useFolders = () =>
-  useQuery({ queryKey: keys.folders, queryFn: () => api<FolderCard[]>("/folders") });
+  useQuery({
+    queryKey: keys.folders,
+    queryFn: () => api<FolderCard[]>("/folders"),
+    refetchInterval: (query) =>
+      query.state.data?.some((f) => f.scan?.status === "running")
+        ? (queryClient.getQueryData<Meta>(keys.meta)?.ui.poll_interval_ms ?? false)
+        : false,
+  });
 export const useSettingsData = () =>
   useQuery({ queryKey: keys.settings, queryFn: () => api<SettingsData>("/settings") });
 export const useDats = () =>
