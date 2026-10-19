@@ -3,7 +3,7 @@ suggestions; and the manual assignments that take a file out of it."""
 
 import sqlite3
 
-from g1r import hasheous, scanner, screenscraper
+from g1r import hasheous, scanner
 from g1r.dats import Dat
 
 
@@ -11,7 +11,6 @@ def rows(
     conn: sqlite3.Connection,
     label: str,
     hasheous_on: bool,
-    screenscraper_on: bool = False,
     parts: frozenset[str] = frozenset(),
 ) -> list[dict]:
     files = scanner.unmatched_files(conn, label, parts)
@@ -46,9 +45,6 @@ def rows(
             "hash": hashes.get(f["rel_path"]),
             "hasheous": lookups.get(
                 (f["rel_path"], hasheous.SERVICE), off if not hasheous_on else None
-            ),
-            "screenscraper": lookups.get(
-                (f["rel_path"], screenscraper.SERVICE), off if not screenscraper_on else None
             ),
             "suggestions": suggestions.get(f["rel_path"], []),
         }

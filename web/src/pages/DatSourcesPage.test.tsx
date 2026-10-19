@@ -19,7 +19,7 @@ test("explains each source and saves the global order", async () => {
   vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
     if (init?.method === "PUT") sent.push(JSON.parse(String(init.body)));
     if (url.endsWith("/dat-order")) return new Response(JSON.stringify(ORDER));
-    return new Response(JSON.stringify({ lookups: { hasheous: false, screenscraper: false } }));
+    return new Response(JSON.stringify({ lookups: { hasheous: false } }));
   });
   queryClient.clear();
   render(
@@ -46,7 +46,7 @@ test("the questions and answers start collapsed", async () => {
   vi.stubGlobal("fetch", async (url: string) =>
     url.endsWith("/dat-order")
       ? new Response(JSON.stringify(ORDER))
-      : new Response(JSON.stringify({ lookups: { hasheous: true, screenscraper: true } })),
+      : new Response(JSON.stringify({ lookups: { hasheous: true } })),
   );
   queryClient.clear();
   render(

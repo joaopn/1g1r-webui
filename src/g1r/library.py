@@ -76,7 +76,14 @@ class LookupSwitches(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     hasheous: bool = False
-    screenscraper: bool = False
+
+    @model_validator(mode="before")
+    @classmethod
+    def _no_screenscraper(cls, data):
+        """ScreenScraper was a lookup until it was dropped; its old switch is ignored."""
+        if isinstance(data, dict):
+            data = {k: v for k, v in data.items() if k != "screenscraper"}
+        return data
 
 
 class Library(BaseModel):

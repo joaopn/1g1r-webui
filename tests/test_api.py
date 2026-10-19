@@ -141,7 +141,6 @@ def test_dats_download_upload_activate_pin(setup):
         ("nointro", nointro),
         ("libretro", libretro),
         ("hasheous", None),
-        ("screenscraper", None),
     ]
     # A newer No-Intro DAT waits to be chosen; a pinned source refuses it.
     newer = client.post(
@@ -170,15 +169,14 @@ def test_dat_order_is_saved_per_platform(setup):
     )
     order = client.put(
         "/api/dats/nes/order",
-        json={"order": ["hasheous", "libretro", "nointro", "screenscraper"], "off": ["nointro"]},
+        json={"order": ["hasheous", "libretro", "nointro"], "off": ["nointro"]},
     ).json()
     assert [(e["id"], e["on"]) for e in order] == [
         ("hasheous", True),
         ("libretro", True),
         ("nointro", False),
-        ("screenscraper", True),
     ]
-    assert store.load().dats["nes"].order == ["hasheous", "libretro", "nointro", "screenscraper"]
+    assert store.load().dats["nes"].order == ["hasheous", "libretro", "nointro"]
     detail = client.get("/api/folders/nes").json()
     assert detail["dat"]["source"] == "libretro"
     assert [e["id"] for e in detail["dat_order"]][:2] == ["hasheous", "libretro"]
@@ -317,12 +315,9 @@ def test_unmatched_assign_and_lookup_settings(setup):
     client.put("/api/folders/nes/assign", json={"rel_path": "odd.nes", "game_name": None})
     assert len(client.get("/api/folders/nes/unmatched").json()) == 1
 
-    assert client.get("/api/settings").json()["lookups"] == {
-        "hasheous": False,
-        "screenscraper": False,
-    }
+    assert client.get("/api/settings").json()["lookups"] == {"hasheous": False}
     switched = client.put("/api/settings/lookups", json={"hasheous": True}).json()
-    assert switched == {"hasheous": True, "screenscraper": False}
+    assert switched == {"hasheous": True}
 
 
 def test_discarded_listing_and_home_warnings(setup, roms_root):
@@ -348,7 +343,7 @@ def test_discarded_listing_and_home_warnings(setup, roms_root):
 
     folder = client.get("/api/folders").json()[0]
     assert folder["discarded"] == {"files": 4, "bytes": 8}
-    assert folder["warnings"] == [SCREENSCRAPER_HINT]
+    assert folder["warnings"] == [HASHEOUS_HINT]
     (roms_root / "NES Set" / "game.sfc").write_bytes(b"x")
     client.post("/api/folders/nes/scan")
     for _ in range(500):
@@ -356,7 +351,7 @@ def test_discarded_listing_and_home_warnings(setup, roms_root):
             break
     warning, hint = client.get("/api/folders").json()[0]["warnings"]
     assert warning["text"].startswith("Not NES ROMs or archives: 1 file.")
-    assert hint == SCREENSCRAPER_HINT
+    assert hint == HASHEOUS_HINT
     new = client.post(
         "/api/dats/nes/upload", files={"file": ("nes.dat", dat_bytes([*NAMES, "New"]))}
     )
@@ -376,24 +371,19 @@ def test_folder_card_offers_the_default_dat_until_one_is_active(setup):
     assert (card["needs_dat"], card["dat_download"]) == (False, None)
 
 
-SCREENSCRAPER_HINT = {
+HASHEOUS_HINT = {
     "level": "info",
-    "text": "Unmatched: 1 file. ScreenScraper may identify some.",
-    "link": {"to": "/settings/lookups", "text": "Set up ScreenScraper"},
+    "text": "Unmatched: 1 file. Hasheous may identify some.",
+    "link": {"to": "/settings/lookups", "text": "Switch on Hasheous"},
 }
 
 
-def test_unmatched_files_point_to_screenscraper_until_it_looks_them_up(setup, monkeypatch):
-    client, _, settings = setup
+def test_unmatched_files_point_to_hasheous_until_it_is_switched_on(setup):
+    client, _, _ = setup
     scanned(client)
-    assert SCREENSCRAPER_HINT in client.get("/api/folders").json()[0]["warnings"]
-    env = settings.lookups.screenscraper.environment
-    monkeypatch.setenv(env.devid, "dev")
-    monkeypatch.setenv(env.devpassword, "secret")
-    # Configured but switched off: still pointed there.
-    assert SCREENSCRAPER_HINT in client.get("/api/folders").json()[0]["warnings"]
-    assert client.put("/api/settings/lookups", json={"screenscraper": True}).status_code == 200
-    assert SCREENSCRAPER_HINT not in client.get("/api/folders").json()[0]["warnings"]
+    assert HASHEOUS_HINT in client.get("/api/folders").json()[0]["warnings"]
+    assert client.put("/api/settings/lookups", json={"hasheous": True}).status_code == 200
+    assert HASHEOUS_HINT not in client.get("/api/folders").json()[0]["warnings"]
 
 
 def test_each_version_names_the_dat_that_identified_it(setup):

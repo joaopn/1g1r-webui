@@ -15,7 +15,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from g1r import db, hasheous, journal, scanner, screenscraper
+from g1r import db, hasheous, journal, scanner
 from g1r.config import Settings, load_settings
 from g1r.dat_registry import DatRegistry, Fetch
 from g1r.jobs import Jobs
@@ -28,7 +28,6 @@ def create_app(
     fetch: Fetch | None = None,
     report_runner: scanner.ReportRunner | None = None,
     lookup_post: hasheous.Post = hasheous.http_post,
-    screenscraper_get: screenscraper.Get = screenscraper.http_get,
 ) -> FastAPI:
     settings = settings or load_settings()
     store = LibraryStore(settings)
@@ -39,7 +38,6 @@ def create_app(
         registry,
         report_runner,
         lookup_post=lookup_post,
-        screenscraper_get=screenscraper_get,
     )
 
     @asynccontextmanager

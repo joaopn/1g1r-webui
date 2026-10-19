@@ -314,20 +314,8 @@ export type DatRow = {
 export type SettingsData = {
   targets: Record<string, string>;
   ignored_filenames: string[];
-  lookups: { hasheous: boolean; screenscraper: boolean };
+  lookups: { hasheous: boolean };
   hasheous: { site: string; url: string; sources: string[]; not_found_ttl_days: number };
-  screenscraper: {
-    site: string;
-    url: string;
-    /** Whether the developer credentials are set (never the values). */
-    configured: boolean;
-    credentials: CredentialSources;
-    /** Environment variables that override a field when set. */
-    environment: Record<CredentialField, string>;
-    min_interval_seconds: number;
-    not_found_ttl_days: number;
-    platforms: string[];
-  };
   fuzzy: { min_score: number; max_suggestions: number; auto_match_threshold: number | null };
   effective_yaml: string;
   library_file: string;
@@ -407,10 +395,5 @@ export type UnmatchedFile = {
   size: number;
   hash: { crc32: string; sha1: string } | null;
   hasheous: { status: LookupStatus; detail: string } | null;
-  screenscraper: { status: LookupStatus; detail: string } | null;
   suggestions: { game_name: string; score: number }[];
 };
-
-export type CredentialField = "devid" | "devpassword" | "user" | "password";
-/** Where each credential is set: in the app, by an environment variable, or not at all. */
-export type CredentialSources = Record<CredentialField, "app" | "environment" | null>;

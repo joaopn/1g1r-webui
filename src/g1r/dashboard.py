@@ -21,10 +21,9 @@ def warnings(
     scan: sqlite3.Row | None,
     dat: sqlite3.Row | None,
     unmatched: int = 0,
-    screenscraper_offered: bool = False,
+    hasheous_offered: bool = False,
 ) -> list[dict]:
-    """`screenscraper_offered`: ScreenScraper knows the platform but is not looking files up
-    (no credentials, or switched off)."""
+    """`hasheous_offered`: Hasheous is switched off, so it is not looking files up."""
     found: list[dict] = []
 
     def add(level: str, text: str, link: dict | None = None) -> None:
@@ -62,11 +61,11 @@ def warnings(
     ).fetchone()
     if last is not None and last["status"] == "failed":
         add(BAD, f"The last {last['kind']} failed: {last['message']}")
-    if unmatched and screenscraper_offered:
+    if unmatched and hasheous_offered:
         add(
             INFO,
-            f"Unmatched: {_files(unmatched)}. ScreenScraper may identify some.",
-            {"to": LOOKUPS_PAGE, "text": "Set up ScreenScraper"},
+            f"Unmatched: {_files(unmatched)}. Hasheous may identify some.",
+            {"to": LOOKUPS_PAGE, "text": "Switch on Hasheous"},
         )
     return found
 

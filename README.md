@@ -31,7 +31,7 @@ To add another ROM folder (another disk), add a line under `volumes:` in `compos
       - /mnt/disk2/roms:/mnt/disk2
 ```
 
-The app keeps its database, DATs, caches, console keys and ScreenScraper credentials in `data/` in the clone. Keys and credentials are entered in the web UI.
+The app keeps its database, DATs, caches and console keys in `data/` in the clone. Keys are entered in the web UI.
 
 ## Platforms
 
@@ -95,7 +95,7 @@ The work is done by existing tools and databases.
 | [Retool](https://github.com/unexpectedpanda/retool) 2.4.9 clone lists | grouping versions of a game |
 | [pyctr](https://github.com/ihaveamac/pyctr) | 3DS decryption |
 | No-Intro, Redump, FBNeo, TOSEC DATs | identification (downloaded from libretro-database, redump.info, FBNeo, tosecdev.org, or uploaded) |
-| [Hasheous](https://hasheous.org), [ScreenScraper](https://www.screenscraper.fr) | optional lookups for files the DAT does not know |
+| [Hasheous](https://hasheous.org) | optional lookup for files the DATs do not know |
 
 
 ## Licence

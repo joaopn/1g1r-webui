@@ -22,7 +22,6 @@ from g1r import (
     matching,
     mounts,
     scanner,
-    screenscraper,
     unmatched,
 )
 from g1r.config import RANKING_CRITERIA, RankingConfig, Settings
@@ -30,9 +29,8 @@ from g1r.dat_registry import DatRegistry, RegistryError, name_style
 from g1r.hasheous import SERVICE as HASHEOUS
 from g1r.library import FolderEntry, Library, LibraryStore
 from g1r.ranking import LABELS as RANKING_LABELS
-from g1r.screenscraper import SERVICE as SCREENSCRAPER
 
-LOOKUP_LABELS = {HASHEOUS: "Hasheous", SCREENSCRAPER: "ScreenScraper"}
+LOOKUP_LABELS = {HASHEOUS: "Hasheous"}
 
 _LABEL_UNSAFE = re.compile(r"[^a-z0-9._-]+")
 
@@ -136,16 +134,6 @@ class Assignment(BaseModel):
 
 class Lookups(BaseModel):
     hasheous: bool | None = None
-    screenscraper: bool | None = None
-
-
-class ScreenScraperCredentials(BaseModel):
-    """A field left out is kept; an empty one is removed."""
-
-    devid: str | None = None
-    devpassword: str | None = None
-    user: str | None = None
-    password: str | None = None
 
 
 class Targets(BaseModel):
@@ -380,13 +368,6 @@ def build_router(
             return None
         return {"source": sources[0], "label": settings.dats.sources[sources[0]].label}
 
-    def screenscraper_offered(library, platform: str) -> bool:
-        """ScreenScraper knows the platform but is not looking its files up."""
-        if platform not in platforms or platforms[platform].screenscraper_id is None:
-            return False
-        configured = screenscraper.credentials(settings) is not None
-        return not (configured and library.lookups.screenscraper)
-
     def title_ids(platform: str) -> bool:
         """The platform identifies by title ID, so a scan needs no DAT."""
         return platform in platforms and platforms[platform].title_ids
@@ -431,7 +412,7 @@ def build_router(
                         scan=scan,
                         dat=dat,
                         unmatched=summary["unmatched"],
-                        screenscraper_offered=screenscraper_offered(library, folder.platform),
+                        hasheous_offered=not library.lookups.hasheous,
                     ),
                 }
             )
@@ -953,9 +934,7 @@ def build_router(
     def folder_unmatched(label: str, conn: Conn):
         folder = folder_or_404(label)
         lookups = store.load().lookups
-        return unmatched.rows(
-            conn, label, lookups.hasheous, lookups.screenscraper, parts_of(folder)
-        )
+        return unmatched.rows(conn, label, lookups.hasheous, parts_of(folder))
 
     @router.put("/folders/{label}/assign")
     def assign(label: str, body: Assignment, conn: Conn):
@@ -1047,19 +1026,6 @@ def build_router(
                 "sources": [s.label for s in settings.lookups.hasheous.sources.values()],
                 "not_found_ttl_days": settings.lookups.hasheous.not_found_ttl_days,
             },
-            "screenscraper": {
-                "site": settings.lookups.screenscraper.site,
-                "url": settings.lookups.screenscraper.url,
-                # Credentials are never sent to the page: only whether they are set.
-                "configured": screenscraper.credentials(settings) is not None,
-                "credentials": screenscraper.credential_sources(settings),
-                "environment": settings.lookups.screenscraper.environment.model_dump(),
-                "min_interval_seconds": settings.lookups.screenscraper.min_interval_seconds,
-                "not_found_ttl_days": settings.lookups.screenscraper.not_found_ttl_days,
-                "platforms": sorted(
-                    p for p, profile in platforms.items() if profile.screenscraper_id is not None
-                ),
-            },
             "fuzzy": settings.fuzzy.model_dump(),
             "effective_yaml": yaml.safe_dump(settings.model_dump(mode="json"), sort_keys=False),
             "library_file": str(settings.paths.library_path),
@@ -1067,28 +1033,12 @@ def build_router(
 
     @router.put("/settings/lookups")
     def save_lookups(body: Lookups):
-        if body.screenscraper and screenscraper.credentials(settings) is None:
-            raise bad_request("ScreenScraper needs its developer credentials first")
-
         def change(library: Library) -> None:
-            for name in ("hasheous", "screenscraper"):
-                value = getattr(body, name)
-                if value is not None:
-                    setattr(library.lookups, name, value)
+            if body.hasheous is not None:
+                library.lookups.hasheous = body.hasheous
 
         store.update(change)
         return store.load().lookups.model_dump()
-
-    @router.put("/settings/screenscraper-credentials")
-    def save_screenscraper_credentials(body: ScreenScraperCredentials):
-        screenscraper.store_credentials(settings, body.model_dump(exclude_none=True))
-        # Only where each field is set: the values never leave the server.
-        return screenscraper.credential_sources(settings)
-
-    @router.delete("/settings/screenscraper-credentials")
-    def remove_screenscraper_credentials():
-        screenscraper.store_credentials(settings, dict.fromkeys(screenscraper.FIELDS))
-        return screenscraper.credential_sources(settings)
 
     @router.put("/settings/targets")
     def save_targets(body: Targets):

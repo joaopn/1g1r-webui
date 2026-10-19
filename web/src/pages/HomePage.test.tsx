@@ -131,13 +131,13 @@ test("a hint links to where it is acted on, and the card still opens the set", a
       warnings: [
         {
           level: "info",
-          text: "Unmatched: 3 files. ScreenScraper may identify some.",
-          link: { to: "/settings/lookups", text: "Set up ScreenScraper" },
+          text: "Unmatched: 3 files. Hasheous may identify some.",
+          link: { to: "/settings/lookups", text: "Switch on Hasheous" },
         },
       ],
     },
   ]);
-  expect(await screen.findByRole("link", { name: "Set up ScreenScraper" })).toHaveAttribute(
+  expect(await screen.findByRole("link", { name: "Switch on Hasheous" })).toHaveAttribute(
     "href",
     "/settings/lookups",
   );

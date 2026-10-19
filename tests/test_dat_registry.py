@@ -57,7 +57,7 @@ def test_each_source_has_its_active_dat_and_the_order_puts_complete_dats_first(e
     row = conn.execute("SELECT * FROM dat_version WHERE id = ?", (second,)).fetchone()
     assert row["source"] == "nointro" and row["has_parent_clone"] and row["matches_platform"]
     assert registry.load_active(conn, library, "nes").has_parent_clone
-    assert registry.order(library, "nes") == ["nointro", "libretro", "hasheous", "screenscraper"]
+    assert registry.order(library, "nes") == ["nointro", "libretro", "hasheous"]
 
 
 def test_a_newer_version_of_a_source_waits_for_a_click(env):
@@ -72,16 +72,12 @@ def test_a_newer_version_of_a_source_waits_for_a_click(env):
 def test_a_source_added_after_the_order_was_chosen_takes_its_default_place(env):
     _, store, registry, conn, _ = env
     registry.download_libretro(conn, "nes")
-    registry.set_order("nes", ["screenscraper", "libretro", "hasheous"], [])
+    registry.set_order("nes", ["hasheous", "libretro"], [])
     registry.add_upload(conn, "nes", NOINTRO, "nes.dat")
-    # No-Intro comes before libretro by default: it goes right before it.
-    assert registry.order(store.load(), "nes") == [
-        "screenscraper",
-        "nointro",
-        "libretro",
-        "hasheous",
-    ]
-    registry.set_order("nes", ["libretro", "nointro", "hasheous", "screenscraper"], ["libretro"])
+    # No-Intro comes before libretro by default: it goes right before it, after the lookup
+    # placed first.
+    assert registry.order(store.load(), "nes") == ["hasheous", "nointro", "libretro"]
+    registry.set_order("nes", ["libretro", "nointro", "hasheous"], ["libretro"])
     assert [v["source"] for v in registry.active_versions(conn, store.load(), "nes")] == ["nointro"]
     with pytest.raises(RegistryError):
         registry.set_order("nes", ["libretro", "libretro"], [])
@@ -219,13 +215,12 @@ def test_platforms_follow_the_global_order_until_they_have_their_own(env):
         "redump",
         "fbneo",
         "tosec",
-        "screenscraper",
     ]
     registry.set_global_order(everything, ["hasheous"])
     library = store.load()
-    assert registry.order(library, "nes") == ["libretro", "hasheous", "nointro", "screenscraper"]
+    assert registry.order(library, "nes") == ["libretro", "hasheous", "nointro"]
     assert [e.id for e in registry.entries(conn, library, "nes") if not e.on] == ["hasheous"]
-    registry.set_order("nes", ["nointro", "libretro", "hasheous", "screenscraper"], [])
+    registry.set_order("nes", ["nointro", "libretro", "hasheous"], [])
     library = store.load()
     assert registry.order(library, "nes")[0] == "nointro"
     assert all(e.on for e in registry.entries(conn, library, "nes"))
@@ -235,5 +230,18 @@ def test_platforms_follow_the_global_order_until_they_have_their_own(env):
         "nointro",
         "libretro",
         "hasheous",
-        "screenscraper",
     ]
+
+
+def test_a_library_from_when_screenscraper_was_a_lookup_still_loads(env):
+    settings, store, registry, conn, _ = env
+    registry.download_libretro(conn, "nes")
+    library = settings.paths.library_path.read_text()
+    library += (
+        "lookups:\n  hasheous: true\n  screenscraper: true\n"
+        "dat_order: [screenscraper, libretro, hasheous]\n"
+    )
+    settings.paths.library_path.write_text(library)
+    loaded = store.load()
+    assert loaded.lookups.hasheous is True
+    assert registry.order(loaded, "nes") == ["libretro", "hasheous"]

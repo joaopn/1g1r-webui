@@ -152,8 +152,6 @@ class PlatformProfile(_Strict):
     rom_extensions: list[str] = Field(min_length=1)
     targets: list[str] = Field(min_length=1)
     default_target: str
-    # ScreenScraper's systemeid for the platform; no ScreenScraper lookups without one.
-    screenscraper_id: int | None = None
     # Other folder names this platform's folders go by (RomM, ES-DE, Batocera...).
     aliases: list[str] = Field(default_factory=list)
     # Encrypted card images can be decrypted with keys the user adds (3DS: `decryption`).
@@ -256,7 +254,7 @@ class DatFamilyConfig(_Strict):
 
 
 # The online lookups as entries of a platform's identification order.
-LOOKUP_ENTRIES = ("hasheous", "screenscraper")
+LOOKUP_ENTRIES = ("hasheous",)
 
 
 class DatsConfig(_Strict):
@@ -313,38 +311,9 @@ class HasheousConfig(_Strict):
     not_found_ttl_days: float = Field(ge=0)
 
 
-class ScreenScraperEnvironment(_Strict):
-    """Names of environment variables that, when set, override the credentials entered in
-    the app."""
-
-    devid: str
-    devpassword: str
-    user: str
-    password: str
-
-
-class ScreenScraperConfig(_Strict):
-    url: str
-    site: str
-    softname: str
-    user_agent: str
-    timeout_seconds: float = Field(gt=0)
-    min_interval_seconds: float = Field(ge=0)
-    # Stop when the daily quota left (as each answer reports it) is down to this many.
-    quota_reserve: int = Field(ge=0)
-    # HTTP statuses ScreenScraper answers with when the quota is used up.
-    quota_statuses: list[int]
-    not_found_ttl_days: float = Field(ge=0)
-    environment: ScreenScraperEnvironment
-    # Credentials entered in Settings -> Online lookups, relative to the data directory.
-    credentials_file: str
-    file_mode: int
-
-
 class LookupsConfig(_Strict):
     max_hash_bytes: int = Field(gt=0)
     hasheous: HasheousConfig
-    screenscraper: ScreenScraperConfig
 
 
 class FuzzyConfig(_Strict):

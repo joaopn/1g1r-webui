@@ -85,7 +85,6 @@ export const METHOD_LABELS: Record<string, { short: string; long: string }> = {
     long: "byte-identical to another file of this game, which the DAT identified",
   },
   hasheous: { short: "Hasheous", long: "checksum match found by Hasheous" },
-  screenscraper: { short: "ScreenScraper", long: "checksum match found by ScreenScraper" },
   fuzzy: { short: "name", long: "name match above your auto-match threshold" },
   manual: { short: "by you", long: "assigned by you" },
   unmatched: {

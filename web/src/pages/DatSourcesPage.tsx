@@ -63,14 +63,6 @@ const GUIDE: Record<string, Guide> = {
       "Skips archives with several ROM files",
     ],
   },
-  screenscraper: {
-    what: "ScreenScraper: an online game database.",
-    pros: ["Large database; its names also feed the suggestions"],
-    cons: [
-      "Needs developer and user credentials (Settings → Online lookups)",
-      "Rate-limited; sends checksums; skips archives with several ROM files",
-    ],
-  },
 };
 
 const errorText = (err: unknown) => (err instanceof ApiError ? err.message : String(err));

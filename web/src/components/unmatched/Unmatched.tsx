@@ -183,9 +183,6 @@ export function UnmatchedDetail({
           </code>
         ) : null}
         <LookupBadge service="Hasheous" lookup={file.hasheous} />
-        {file.screenscraper?.status !== "off" ? (
-          <LookupBadge service="ScreenScraper" lookup={file.screenscraper} />
-        ) : null}
       </div>
       <div className="flex flex-wrap items-center gap-1.5">
         {file.suggestions.length > 0 ? (

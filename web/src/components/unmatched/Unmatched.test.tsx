@@ -14,7 +14,6 @@ const FILES: UnmatchedFile[] = [
     size: 163856,
     hash: { crc32: "83348047", sha1: "71322777250ea6573554ea04538f1b2ae9b76b83" },
     hasheous: { status: "not found", detail: "" },
-    screenscraper: { status: "off", detail: "" },
     suggestions: [{ game_name: "Doraemon (Japan)", score: 0.84 }],
   },
 ];

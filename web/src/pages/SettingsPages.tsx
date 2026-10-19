@@ -5,7 +5,6 @@ import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { DatOrderEditor } from "@/components/DatOrderEditor";
 import { PlatformIcon } from "@/components/PlatformIcon";
-import { ScreenScraperCredentials } from "@/components/ScreenScraperCredentials";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ApiError, api, json, upload } from "@/lib/api";
@@ -440,22 +439,19 @@ const SCORE = new Intl.NumberFormat("en-US", { style: "percent" });
 export function LookupsSettingsPage() {
   const data = useSettingsData();
   const save = useMutation({
-    mutationFn: (change: { hasheous?: boolean; screenscraper?: boolean }) =>
-      api("/settings/lookups", json("PUT", change)),
+    mutationFn: (change: { hasheous: boolean }) => api("/settings/lookups", json("PUT", change)),
     onSuccess: (_, change) => {
-      const [name, on] = Object.entries(change)[0];
-      const service = name === "hasheous" ? "Hasheous" : "ScreenScraper";
-      toast.success(`${service} lookups ${on ? "on" : "off"}`);
+      toast.success(`Hasheous lookups ${change.hasheous ? "on" : "off"}`);
       queryClient.invalidateQueries({ queryKey: keys.settings });
     },
     onError: (err) => toast.error(errorText(err)),
   });
   if (!data.data) return <p className="text-muted-foreground">Loading…</p>;
-  const { lookups, hasheous, screenscraper, fuzzy } = data.data;
+  const { lookups, hasheous, fuzzy } = data.data;
   return (
     <Page
       title="Online lookups"
-      intro="For files the local DAT does not identify. Off until you switch them on; they run during a folder scan."
+      intro="For files no DAT identifies. Off until you switch it on; it runs during a scan, at its place in the DAT order."
     >
       <section className="max-w-3xl space-y-3 rounded-lg border border-border bg-card p-4 text-sm">
         <label className="flex items-start gap-2">
@@ -500,60 +496,6 @@ export function LookupsSettingsPage() {
           </dd>
         </dl>
       </section>
-      <section className="max-w-3xl space-y-3 rounded-lg border border-border bg-card p-4 text-sm">
-        <label className="flex items-start gap-2">
-          <input
-            type="checkbox"
-            className="mt-0.5 size-4 accent-primary"
-            checked={lookups.screenscraper}
-            disabled={save.isPending || (!screenscraper.configured && !lookups.screenscraper)}
-            onChange={(event) => save.mutate({ screenscraper: event.target.checked })}
-          />
-          <span>
-            <span className="font-medium">ScreenScraper</span>{" "}
-            <a
-              href={screenscraper.site}
-              target="_blank"
-              rel="noreferrer"
-              className="text-muted-foreground underline underline-offset-2"
-            >
-              {screenscraper.site}
-            </a>
-            <span className="block text-muted-foreground">
-              Asked after Hasheous, for files it did not identify.
-            </span>
-          </span>
-        </label>
-        <ScreenScraperCredentials
-          sources={screenscraper.credentials}
-          environment={screenscraper.environment}
-        />
-        <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1.5 text-muted-foreground">
-          <dt>Sends</dt>
-          <dd>
-            the CRC32, MD5, SHA1 and size of each ROM file still unidentified, and the platform's
-            ScreenScraper system; never a file name
-          </dd>
-          <dt>To</dt>
-          <dd>
-            <code className="break-all text-xs">{screenscraper.url}</code>
-          </dd>
-          <dt>Trusts</dt>
-          <dd>
-            an answer only when the ROM it returns has the file's hash and is named like an entry of
-            the folder's DAT; any other name becomes a suggestion
-          </dd>
-          <dt>Pace</dt>
-          <dd>
-            one request every {screenscraper.min_interval_seconds} s, stopping for the day near the
-            quota ScreenScraper reports
-          </dd>
-          <dt>Caches</dt>
-          <dd>
-            every answer; a "not found" is asked again after {screenscraper.not_found_ttl_days} days
-          </dd>
-        </dl>
-      </section>
       <section className="max-w-3xl space-y-2 rounded-lg border border-border bg-card p-4 text-sm">
         <h2 className="font-medium">Name suggestions</h2>
         <p className="text-muted-foreground">
@@ -569,8 +511,8 @@ export function LookupsSettingsPage() {
               <strong>{SCORE.format(fuzzy.auto_match_threshold)}</strong> (auto-match).
             </>
           )}{" "}
-          These values are set in the config file (<code className="text-xs">fuzzy</code>, see
-          Advanced).
+          These values are the app's built-in defaults (<code className="text-xs">fuzzy</code>,
+          shown in Advanced).
         </p>
       </section>
     </Page>

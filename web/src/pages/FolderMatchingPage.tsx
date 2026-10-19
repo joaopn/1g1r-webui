@@ -94,9 +94,7 @@ export function FolderMatchingPage() {
   const scanning = f.scan?.status === "running";
   // The DATs identifying this set, in order (switched-off ones left out).
   const dats = f.dat_order.filter((e) => e.on && e.dat);
-  const lookupsOn =
-    !!settingsData.data &&
-    (settingsData.data.lookups.hasheous || settingsData.data.lookups.screenscraper);
+  const lookupsOn = !!settingsData.data && settingsData.data.lookups.hasheous;
   const proposed = (games.data ?? []).reduce(
     (n, g) => n + g.versions.filter((v) => v.operation).length,
     0,

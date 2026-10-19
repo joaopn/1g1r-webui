@@ -9,7 +9,7 @@ services:
     ports:
       - "${PORT:-8077}:8077"
     volumes:
-      # Database, DATs, caches, console keys and ScreenScraper credentials (this clone's data/).
+      # Database, DATs, caches and console keys (this clone's data/).
       - ./data:/data
       # Your ROM folder. Sets are picked inside it; discarded files go to its discarded/.
       - ${ROMS:?set ROMS to your ROM folder, e.g. ROMS=/srv/roms docker compose up -d}:/roms
