@@ -7,6 +7,7 @@ import type {
   FolderCard,
   FolderDetail,
   Game,
+  GlobalDatOrder,
   KeyStatus,
   Meta,
   Run,
@@ -29,6 +30,7 @@ export const keys = {
   run: (label: string) => ["run", label] as const,
   settings: ["settings"] as const,
   dats: ["dats"] as const,
+  datOrder: ["dat-order"] as const,
   consoleKeys: ["console-keys"] as const,
 };
 
@@ -100,3 +102,6 @@ export function invalidateFolder(label: string) {
     queryClient.invalidateQueries({ queryKey: keys.folders }),
   ]);
 }
+
+export const useGlobalDatOrder = () =>
+  useQuery({ queryKey: keys.datOrder, queryFn: () => api<GlobalDatOrder>("/dat-order") });

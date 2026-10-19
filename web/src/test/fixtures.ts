@@ -90,7 +90,13 @@ export const META: Meta = {
     plain: { label: "Unpacked", description: "", produces: "plain", accepts: ["plain"] },
   },
   archive_extensions: ["zip", "7z"],
-  dat_sources: { libretro: { label: "libretro-database mirror", identification_only: true } },
+  dat_sources: {
+    libretro: {
+      label: "libretro-database mirror",
+      short_label: "libretro",
+      identification_only: true,
+    },
+  },
   ranking: {
     criteria: ["prerelease", "region", "language", "revision", "original"],
     labels: {

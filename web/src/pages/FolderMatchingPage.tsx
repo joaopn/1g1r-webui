@@ -129,6 +129,7 @@ export function FolderMatchingPage() {
               platform={f.platform}
               platformName={meta.data.platforms[f.platform]?.name ?? f.platform}
               entries={f.dat_order}
+              own={f.dat_order_own}
             />
           ) : null
         }

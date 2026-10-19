@@ -1,6 +1,7 @@
 import { useMutation } from "@tanstack/react-query";
-import { Download, Pin, PinOff, Upload } from "lucide-react";
+import { ChevronRight, Download, Pin, PinOff, Upload } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { DatOrderEditor } from "@/components/DatOrderEditor";
 import { PlatformIcon } from "@/components/PlatformIcon";
@@ -126,6 +127,8 @@ export function PlatformsSettingsPage() {
   );
 }
 
+const HEADING = "mb-1.5 font-medium text-muted-foreground text-xs uppercase tracking-wide";
+
 function DatRowView({ row, meta }: { row: DatRow; meta: Meta }) {
   const fileInput = useRef<HTMLInputElement>(null);
   const platform = meta.platforms[row.platform];
@@ -170,161 +173,182 @@ function DatRowView({ row, meta }: { row: DatRow; meta: Meta }) {
   // Each source's active DAT, in the platform's identification order.
   const actives = row.order.filter((e) => e.dat);
   const activeIds = new Set(actives.map((e) => e.dat?.id));
+  const summary = actives
+    .filter((e) => e.on)
+    .map((e) => meta.dat_sources[e.id]?.short_label ?? e.label)
+    .join(" → ");
   return (
-    <tr
-      className="border-border border-b align-top last:border-b-0 hover:bg-accent/20"
+    <details
+      className="group border-border border-b last:border-b-0"
       id={row.platform}
+      data-testid={`dats-${row.platform}`}
     >
-      <td className="px-3 py-2.5">
-        <span className="flex items-center gap-2 font-medium">
+      <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-2.5 hover:bg-accent/30 [&::-webkit-details-marker]:hidden">
+        <ChevronRight
+          className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-90 motion-reduce:transition-none"
+          aria-hidden="true"
+        />
+        <span className="flex w-56 shrink-0 items-center gap-2 font-medium">
           <PlatformIcon platform={platform} widthRem={meta.ui.platform_icon_width_rem} />{" "}
           {platform?.name}
         </span>
+        <span className="min-w-0 flex-1 truncate text-muted-foreground text-sm">
+          {summary || "no DAT"}
+          {row.own_order ? " · own order" : ""}
+        </span>
         {row.folders.length > 0 ? (
-          <span className="text-muted-foreground text-xs">folders: {row.folders.join(", ")}</span>
+          <span className="shrink-0 text-muted-foreground text-xs">
+            sets: {row.folders.join(", ")}
+          </span>
         ) : null}
-      </td>
-      <td className="px-3 py-2.5">
-        {actives.length > 0 ? (
-          <ol className="space-y-2">
-            {actives.map((entry, index) => {
-              const dat = entry.dat;
-              if (!dat) return null;
-              const source = meta.dat_sources[dat.source];
-              return (
-                <li key={entry.id} className={cn("space-y-1", !entry.on && "opacity-60")}>
-                  <div>
-                    {actives.length > 1 ? (
-                      <span className="text-muted-foreground tabular-nums">{index + 1}. </span>
-                    ) : null}
-                    {dat.header_name}
-                    {!entry.on ? <span className="text-muted-foreground"> (off)</span> : null}
-                  </div>
-                  <div className="text-muted-foreground text-xs">
-                    {source?.label} · version {dat.version ?? "?"} · {formatCount(dat.game_count)}{" "}
-                    games · sha1{" "}
-                    <code title={dat.sha1}>{dat.sha1.slice(0, meta.ui.hash_display_length)}</code>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-1">
-                    {source?.identification_only ? (
-                      <Badge variant="outline" className="border-status-warn text-status-warn">
-                        identification only
-                      </Badge>
-                    ) : null}
-                    {!dat.has_parent_clone && !source?.identification_only ? (
-                      <Badge variant="outline">no parent/clone</Badge>
-                    ) : null}
-                    {!dat.matches_platform ? (
-                      <Badge variant="outline" className="border-status-warn text-status-warn">
-                        name differs
-                      </Badge>
-                    ) : null}
-                    <Button
-                      variant="ghost"
-                      size="xs"
-                      onClick={() => pin.mutate({ source: entry.id, pinned: !entry.pinned })}
-                      title={
-                        entry.pinned
-                          ? "Unpin"
-                          : "Pin: this source's DAT never switches without unpinning"
-                      }
-                    >
-                      {entry.pinned ? (
-                        <Pin className="size-3" aria-hidden="true" />
-                      ) : (
-                        <PinOff className="size-3" aria-hidden="true" />
-                      )}
-                      {entry.pinned ? "pinned" : "pin"}
-                    </Button>
-                  </div>
-                </li>
-              );
-            })}
-          </ol>
-        ) : (
-          <span className="text-muted-foreground">none</span>
-        )}
-        {actives.length > 1 ? (
-          <div className="mt-2">
-            <DatOrderEditor
-              platform={row.platform}
-              platformName={platform?.name ?? row.platform}
-              entries={row.order}
-              compact
-            />
-          </div>
-        ) : null}
-      </td>
-      <td className="px-3 py-2.5">
-        {row.versions.length === 0 ? (
-          <span className="text-muted-foreground">—</span>
-        ) : (
-          <ul className="space-y-1 text-xs">
-            {row.versions.map((v) => (
-              <li key={v.id} className="flex items-center gap-2">
-                {activeIds.has(v.id) ? (
-                  <span className="font-medium">
-                    ● {meta.dat_sources[v.source]?.label} {v.version ?? ""}
-                  </span>
-                ) : (
-                  <>
-                    <span>
-                      {meta.dat_sources[v.source]?.label} {v.version ?? ""}
+      </summary>
+      <div className="grid gap-4 border-border border-t border-dashed px-4 py-3 text-sm md:grid-cols-[2fr_1.5fr_2fr]">
+        <div>
+          <h3 className={HEADING}>Active DATs</h3>
+          {actives.length > 0 ? (
+            <ol className="space-y-2">
+              {actives.map((entry, index) => {
+                const dat = entry.dat;
+                if (!dat) return null;
+                const source = meta.dat_sources[dat.source];
+                return (
+                  <li key={entry.id} className={cn("space-y-1", !entry.on && "opacity-60")}>
+                    <div>
+                      {actives.length > 1 ? (
+                        <span className="text-muted-foreground tabular-nums">{index + 1}. </span>
+                      ) : null}
+                      {dat.header_name}
+                      {!entry.on ? <span className="text-muted-foreground"> (off)</span> : null}
+                    </div>
+                    <div className="text-muted-foreground text-xs">
+                      {source?.label} · version {dat.version ?? "?"} · {formatCount(dat.game_count)}{" "}
+                      games · sha1{" "}
+                      <code title={dat.sha1}>{dat.sha1.slice(0, meta.ui.hash_display_length)}</code>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1">
+                      {source?.identification_only ? (
+                        <Badge variant="outline" className="border-status-warn text-status-warn">
+                          identification only
+                        </Badge>
+                      ) : null}
+                      {!dat.has_parent_clone && !source?.identification_only ? (
+                        <Badge variant="outline">no parent/clone</Badge>
+                      ) : null}
+                      {!dat.matches_platform ? (
+                        <Badge variant="outline" className="border-status-warn text-status-warn">
+                          name differs
+                        </Badge>
+                      ) : null}
+                      <Button
+                        variant="ghost"
+                        size="xs"
+                        onClick={() => pin.mutate({ source: entry.id, pinned: !entry.pinned })}
+                        title={
+                          entry.pinned
+                            ? "Unpin"
+                            : "Pin: this source's DAT never switches without unpinning"
+                        }
+                      >
+                        {entry.pinned ? (
+                          <Pin className="size-3" aria-hidden="true" />
+                        ) : (
+                          <PinOff className="size-3" aria-hidden="true" />
+                        )}
+                        {entry.pinned ? "pinned" : "pin"}
+                      </Button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ol>
+          ) : (
+            <span className="text-muted-foreground">none</span>
+          )}
+          {actives.length > 1 ? (
+            <div className="mt-2">
+              <DatOrderEditor
+                platform={row.platform}
+                platformName={platform?.name ?? row.platform}
+                entries={row.order}
+                own={row.own_order}
+                compact
+              />
+            </div>
+          ) : null}
+        </div>
+        <div>
+          <h3 className={HEADING}>Versions</h3>
+          {row.versions.length === 0 ? (
+            <span className="text-muted-foreground">—</span>
+          ) : (
+            <ul className="space-y-1 text-xs">
+              {row.versions.map((v) => (
+                <li key={v.id} className="flex items-center gap-2">
+                  {activeIds.has(v.id) ? (
+                    <span className="font-medium">
+                      ● {meta.dat_sources[v.source]?.label} {v.version ?? ""}
                     </span>
-                    <Button
-                      variant="link"
-                      size="xs"
-                      disabled={actives.some((e) => e.id === v.source && e.pinned)}
-                      onClick={() => activate.mutate(v.id)}
-                    >
-                      use
-                    </Button>
-                  </>
-                )}
-                <span className="text-muted-foreground">{formatWhen(v.added_at)}</span>
-              </li>
+                  ) : (
+                    <>
+                      <span>
+                        {meta.dat_sources[v.source]?.label} {v.version ?? ""}
+                      </span>
+                      <Button
+                        variant="link"
+                        size="xs"
+                        disabled={actives.some((e) => e.id === v.source && e.pinned)}
+                        onClick={() => activate.mutate(v.id)}
+                      >
+                        use
+                      </Button>
+                    </>
+                  )}
+                  <span className="text-muted-foreground">{formatWhen(v.added_at)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        <div>
+          <h3 className={HEADING}>Get a DAT</h3>
+          <div className="flex flex-nowrap gap-1.5 whitespace-nowrap">
+            {row.downloads.map((d) => (
+              <Button
+                key={d.source}
+                variant="outline"
+                size="sm"
+                onClick={() => download.mutate(d.source)}
+                disabled={download.isPending}
+                title={d.identification_only ? `${d.label} (identification only)` : d.label}
+              >
+                <Download className="size-3.5" aria-hidden="true" />{" "}
+                {d.source === "libretro" ? "libretro" : d.label}
+              </Button>
             ))}
-          </ul>
-        )}
-      </td>
-      <td className="px-3 py-2.5">
-        <div className="flex flex-nowrap gap-1.5 whitespace-nowrap">
-          {row.downloads.map((d) => (
             <Button
-              key={d.source}
               variant="outline"
               size="sm"
-              onClick={() => download.mutate(d.source)}
-              disabled={download.isPending}
-              title={d.identification_only ? `${d.label} (identification only)` : d.label}
+              onClick={() => fileInput.current?.click()}
+              disabled={send.isPending}
             >
-              <Download className="size-3.5" aria-hidden="true" />{" "}
-              {d.source === "libretro" ? "libretro" : d.label}
+              <Upload className="size-3.5" aria-hidden="true" /> Upload
             </Button>
-          ))}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => fileInput.current?.click()}
-            disabled={send.isPending}
-          >
-            <Upload className="size-3.5" aria-hidden="true" /> Upload
-          </Button>
-          <input
-            ref={fileInput}
-            type="file"
-            accept=".dat,.xml,.zip"
-            className="hidden"
-            aria-label={`DAT file for ${platform?.name}`}
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              if (file) send.mutate(file);
-              event.target.value = "";
-            }}
-          />
+            <input
+              ref={fileInput}
+              type="file"
+              accept=".dat,.xml,.zip"
+              className="hidden"
+              aria-label={`DAT file for ${platform?.name}`}
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) send.mutate(file);
+                event.target.value = "";
+              }}
+            />
+          </div>
         </div>
-      </td>
-    </tr>
+      </div>
+    </details>
   );
 }
 
@@ -346,13 +370,16 @@ export function DatsSettingsPage() {
   if (!meta.data || !dats.data) return <p className="text-muted-foreground">Loading…</p>;
   return (
     <Page
-      title="DATs"
+      title="Platform DATs"
       intro={
         <>
-          Each platform has one active DAT per source, recorded in{" "}
-          <code className="text-xs">{data.data?.library_file}</code>, and an order: each DAT
-          identifies the files the ones above it missed (DAT order). Downloads and uploads are kept
+          The DATs each platform has: one active version per source, recorded in{" "}
+          <code className="text-xs">{data.data?.library_file}</code>. Downloads and uploads are kept
           as versions; the first of a source is used at once, a newer one only when you choose it.
+          Which sources to use, and in what order:{" "}
+          <Link to="/settings/dat-sources" className="underline underline-offset-2">
+            Which DATs to use?
+          </Link>
         </>
       }
     >
@@ -393,28 +420,16 @@ export function DatsSettingsPage() {
           }}
         />
       </section>
-      <div className="overflow-x-auto rounded-lg border border-border bg-card">
-        <table className="w-full text-sm">
-          <thead className="border-border border-b text-left text-muted-foreground text-xs uppercase tracking-wide">
-            <tr>
-              <th className="px-3 py-2">Platform</th>
-              <th className="px-3 py-2">Active DAT</th>
-              <th className="px-3 py-2">Versions</th>
-              <th className="px-3 py-2">Get a DAT</th>
-            </tr>
-          </thead>
-          <tbody>
-            {[...dats.data]
-              .sort((a, b) =>
-                (meta.data.platforms[a.platform]?.name ?? a.platform).localeCompare(
-                  meta.data.platforms[b.platform]?.name ?? b.platform,
-                ),
-              )
-              .map((row) => (
-                <DatRowView key={row.platform} row={row} meta={meta.data} />
-              ))}
-          </tbody>
-        </table>
+      <div className="rounded-lg border border-border bg-card">
+        {[...dats.data]
+          .sort((a, b) =>
+            (meta.data.platforms[a.platform]?.name ?? a.platform).localeCompare(
+              meta.data.platforms[b.platform]?.name ?? b.platform,
+            ),
+          )
+          .map((row) => (
+            <DatRowView key={row.platform} row={row} meta={meta.data} />
+          ))}
       </div>
     </Page>
   );

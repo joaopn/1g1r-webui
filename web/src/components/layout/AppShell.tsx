@@ -78,9 +78,10 @@ export function navGroups(folders: FolderCard[], meta: Meta | undefined): NavGro
       label: "Settings",
       icon: SettingsIcon,
       children: [
+        { to: "/settings/dat-sources", label: "Which DATs to use?", title: "Which DATs to use?" },
         { to: "/settings/sets", label: "Sets", title: "Sets" },
         { to: "/settings/platforms", label: "Platforms & files", title: "Platforms & files" },
-        { to: "/settings/dats", label: "DATs", title: "DATs" },
+        { to: "/settings/dats", label: "Platform DATs", title: "Platform DATs" },
         { to: "/settings/lookups", label: "Online lookups", title: "Online lookups" },
         { to: "/settings/advanced", label: "Advanced", title: "Advanced" },
       ],

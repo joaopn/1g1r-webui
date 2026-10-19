@@ -17,28 +17,32 @@ export function DatOrderEditor({
   platform,
   platformName,
   entries,
+  own = false,
   compact = false,
 }: {
   platform: string;
   platformName: string;
   entries: DatOrderEntry[];
+  /** The platform has its own order: it can go back to the global one. */
+  own?: boolean;
   /** Without the order on the button (a narrow table cell). */
   compact?: boolean;
 }) {
   const [draft, setDraft] = useState(entries);
   useEffect(() => setDraft(entries), [entries]);
   const save = useMutation({
-    mutationFn: () =>
+    mutationFn: (global: boolean) =>
       api(
         `/dats/${platform}/order`,
         json("PUT", {
-          order: draft.map((e) => e.id),
+          order: global ? null : draft.map((e) => e.id),
           off: draft.filter((e) => !e.on).map((e) => e.id),
         }),
       ),
     onSuccess: () => {
       toast.success(`${platformName}: DAT order saved; scan to use it`);
       queryClient.invalidateQueries({ queryKey: keys.dats });
+      queryClient.invalidateQueries({ queryKey: keys.datOrder });
       queryClient.invalidateQueries({ queryKey: keys.folders });
       queryClient.invalidateQueries({ queryKey: ["folder"] });
     },
@@ -73,9 +77,9 @@ export function DatOrderEditor({
       </PopoverTrigger>
       <PopoverContent align="end" className="w-96" aria-label={`DAT order for ${platformName}`}>
         <p className="mb-3 text-muted-foreground text-xs">
-          Top to bottom: each tries the files the ones above it did not identify. Complete DATs go
-          first. Saved for every {platformName} set; the next scan uses it. Add DATs in Settings →
-          DATs.
+          Top to bottom: each tries the files the ones above it did not identify. Saved for every{" "}
+          {platformName} set{own ? "" : ", in place of the global order"}; the next scan uses it.
+          Add DATs in Settings → Platform DATs.
         </p>
         <ol className="space-y-1">
           {draft.map((entry, index) => (
@@ -124,8 +128,19 @@ export function DatOrderEditor({
             </li>
           ))}
         </ol>
-        <div className="mt-4 flex justify-end">
-          <Button size="sm" disabled={save.isPending} onClick={() => save.mutate()}>
+        <div className="mt-4 flex justify-end gap-2">
+          {own ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={save.isPending}
+              onClick={() => save.mutate(true)}
+              title="Follow the order set in Settings → Which DATs to use?"
+            >
+              Use the global order
+            </Button>
+          ) : null}
+          <Button size="sm" disabled={save.isPending} onClick={() => save.mutate(false)}>
             Save order
           </Button>
         </div>

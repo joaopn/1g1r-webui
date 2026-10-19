@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AppShell } from "@/components/layout/AppShell";
+import { DatSourcesPage } from "@/pages/DatSourcesPage";
 import { FolderConversionPage } from "@/pages/FolderConversionPage";
 import { FolderDiscardedPage } from "@/pages/FolderDiscardedPage";
 import { FolderMatchingPage } from "@/pages/FolderMatchingPage";
@@ -20,7 +21,8 @@ export function App() {
         <Route path="folders/:label/matching" element={<FolderMatchingPage />} />
         <Route path="folders/:label/conversion" element={<FolderConversionPage />} />
         <Route path="folders/:label/discarded" element={<FolderDiscardedPage />} />
-        <Route path="settings" element={<Navigate to="/settings/sets" replace />} />
+        <Route path="settings" element={<Navigate to="/settings/dat-sources" replace />} />
+        <Route path="settings/dat-sources" element={<DatSourcesPage />} />
         <Route path="settings/sets" element={<SetsSettingsPage />} />
         <Route path="settings/platforms" element={<PlatformsSettingsPage />} />
         <Route path="settings/dats" element={<DatsSettingsPage />} />

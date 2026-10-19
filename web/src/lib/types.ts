@@ -46,7 +46,10 @@ export type Meta = {
   platforms: Record<string, Platform>;
   archive_extensions: string[];
   targets: Record<string, Target>;
-  dat_sources: Record<string, { label: string; identification_only: boolean; website?: string }>;
+  dat_sources: Record<
+    string,
+    { label: string; short_label: string; identification_only: boolean; website?: string }
+  >;
   ranking: { criteria: string[]; labels: Record<string, string>; default: Ranking };
   label_pattern: string;
   discarded_root: string;
@@ -85,6 +88,13 @@ export type DatOrderEntry = {
   lookup: boolean;
   dat: DatVersion | null;
   pinned: boolean;
+};
+
+/** The order every platform without its own follows. */
+export type GlobalDatOrder = {
+  /** Chosen by you (else the default). */
+  own: boolean;
+  entries: { id: string; label: string; on: boolean; lookup: boolean }[];
 };
 
 export type Summary = {
@@ -160,6 +170,7 @@ export type UnsupportedFile = { rel_path: string; size: number; reason: string }
 
 export type FolderDetail = FolderInfo & {
   dat_order: DatOrderEntry[];
+  dat_order_own: boolean;
   scan: Scan | null;
   dat: DatVersion | null;
   summary: Summary;
@@ -292,6 +303,8 @@ export type DatRow = {
   /** The first DAT of the order. */
   active: DatVersion | null;
   order: DatOrderEntry[];
+  /** The platform has its own order (else it follows the global one). */
+  own_order: boolean;
   versions: DatVersion[];
   folders: string[];
   /** Where this platform's DAT can be downloaded from, one button each. */
