@@ -42,23 +42,63 @@ def test_first_download_becomes_active(env):
         "https://raw.githubusercontent.com/libretro/libretro-database/master/metadat/"
         "no-intro/Nintendo%20-%20Nintendo%20Entertainment%20System.dat"
     ]
-    active = store.load().dats["nes"]
+    active = store.load().dats["nes"].active["libretro"]
     assert (active.source, active.version) == ("libretro", "2026.10.07")
     assert (settings.paths.data_dir / active.file).read_bytes() == LIBRETRO
     assert registry.active_version(conn, store.load(), "nes")["id"] == version_id
 
 
-def test_second_version_waits_for_a_click(env):
+def test_each_source_has_its_active_dat_and_the_order_puts_complete_dats_first(env):
     _, store, registry, conn, _ = env
     first = registry.download_libretro(conn, "nes")
     second = registry.add_upload(conn, "nes", NOINTRO, "nes.dat")
     library = store.load()
-    assert registry.active_version(conn, library, "nes")["id"] == first
+    assert [v["id"] for v in registry.active_versions(conn, library, "nes")] == [second, first]
     row = conn.execute("SELECT * FROM dat_version WHERE id = ?", (second,)).fetchone()
     assert row["source"] == "nointro" and row["has_parent_clone"] and row["matches_platform"]
-    registry.activate(conn, "nes", second)
-    assert store.load().dats["nes"].source == "nointro"
-    assert registry.load_active(conn, store.load(), "nes").has_parent_clone
+    assert registry.load_active(conn, library, "nes").has_parent_clone
+    assert registry.order(library, "nes") == ["nointro", "libretro", "hasheous", "screenscraper"]
+
+
+def test_a_newer_version_of_a_source_waits_for_a_click(env):
+    _, store, registry, conn, _ = env
+    first = registry.add_upload(conn, "nes", NOINTRO, "nes.dat")
+    newer = registry.add_upload(conn, "nes", NOINTRO + b"<!-- v2 -->", "nes.dat")
+    assert registry.active_version(conn, store.load(), "nes")["id"] == first
+    registry.activate(conn, "nes", newer)
+    assert registry.active_version(conn, store.load(), "nes")["id"] == newer
+
+
+def test_a_source_added_after_the_order_was_chosen_takes_its_default_place(env):
+    _, store, registry, conn, _ = env
+    registry.download_libretro(conn, "nes")
+    registry.set_order("nes", ["screenscraper", "libretro", "hasheous"], [])
+    registry.add_upload(conn, "nes", NOINTRO, "nes.dat")
+    # No-Intro comes before libretro by default: it goes right before it.
+    assert registry.order(store.load(), "nes") == [
+        "screenscraper",
+        "nointro",
+        "libretro",
+        "hasheous",
+    ]
+    registry.set_order("nes", ["libretro", "nointro", "hasheous", "screenscraper"], ["libretro"])
+    assert [v["source"] for v in registry.active_versions(conn, store.load(), "nes")] == ["nointro"]
+    with pytest.raises(RegistryError):
+        registry.set_order("nes", ["libretro", "libretro"], [])
+
+
+def test_one_active_dat_from_before_the_order_still_loads(env):
+    settings, store, registry, conn, _ = env
+    version = registry.download_libretro(conn, "nes")
+    row = conn.execute("SELECT * FROM dat_version WHERE id = ?", (version,)).fetchone()
+    old = (
+        "dats:\n  nes:\n"
+        f"    source: libretro\n    file: {row['file']}\n    header_name: x\n"
+        f"    sha1: {row['sha1']}\n    pinned: true\n"
+    )
+    settings.paths.library_path.write_text(old)
+    active = store.load().dats["nes"].active["libretro"]
+    assert active.pinned and registry.active_version(conn, store.load(), "nes")["id"] == version
 
 
 def test_same_file_is_stored_once(env):
@@ -73,11 +113,13 @@ def test_pinned_dat_cannot_be_switched(env):
     _, _, registry, conn, _ = env
     registry.download_libretro(conn, "nes")
     other = registry.add_upload(conn, "nes", NOINTRO, "nes.dat")
-    registry.set_pinned("nes", True)
+    newer = registry.add_upload(conn, "nes", NOINTRO + b"<!-- v2 -->", "nes.dat")
+    registry.set_pinned("nes", "nointro", True)
     with pytest.raises(RegistryError, match="pinned"):
-        registry.activate(conn, "nes", other)
-    registry.set_pinned("nes", False)
+        registry.activate(conn, "nes", newer)
     registry.activate(conn, "nes", other)
+    registry.set_pinned("nes", "nointro", False)
+    registry.activate(conn, "nes", newer)
 
 
 def test_pack_is_split_by_platform(env):

@@ -12,7 +12,7 @@ from pathlib import Path
 
 from g1r import titles
 from g1r.config import Settings
-from g1r.dats import Dat
+from g1r.dats import Dat, DatGame
 from g1r.names import ParsedName, parse_name, parse_tosec
 
 SOURCE_DAT = "dat-parent-clone"
@@ -20,6 +20,8 @@ SOURCE_RETOOL = "retool-clone-list"
 SOURCE_NAME = "dat-name"
 SOURCE_SINGLE = "single"
 SOURCE_TITLE_ID = "title-id"
+TOSEC_STYLE = "tosec"
+NOINTRO_STYLE = "nointro"
 
 
 @dataclass
@@ -35,6 +37,9 @@ class Version:
     bios: bool = False
     # Title-ID platforms (Switch): titles.BASE, titles.UPDATE or titles.DLC.
     role: str = ""
+    # Its DAT lists fewer ROMs for this game than another DAT of the platform does (one disk
+    # of a multi-disk game): never kept over a complete version.
+    incomplete: bool = False
 
 
 @dataclass
@@ -104,58 +109,113 @@ def parent_names(dat: Dat) -> dict[str, str]:
     return parents
 
 
+@dataclass
+class SourceDat:
+    """A DAT a folder's names come from, and how its names read."""
+
+    sha1: str
+    dat: Dat
+    style: str = NOINTRO_STYLE
+
+
+class DatSet:
+    """The DATs of a platform, in its identification order. A name is read with the DAT
+    that identified it (else the first that lists it); parent/clone links come from every
+    DAT, the first DAT to give a game a parent winning."""
+
+    def __init__(self, dats: list[SourceDat]):
+        self.dats = dats
+        self._games = [{g.name: g for g in d.dat.games} for d in dats]
+        self.parents: dict[str, str] = {}
+        for d in dats:
+            for child, parent in parent_names(d.dat).items():
+                self.parents.setdefault(child, parent)
+        self.has_children = set(self.parents.values())
+        # Game name -> the most ROMs any DAT lists for it.
+        self.most_roms: dict[str, int] = {}
+        for games in self._games:
+            for name, game in games.items():
+                self.most_roms[name] = max(self.most_roms.get(name, 0), len(game.roms))
+        self._retool: dict[int, dict] = {}
+
+    def source(self, game: str, dat_sha1: str = "") -> tuple[SourceDat | None, DatGame | None]:
+        for d, games in zip(self.dats, self._games, strict=True):
+            if d.sha1 == dat_sha1 and game in games:
+                return d, games[game]
+        for d, games in zip(self.dats, self._games, strict=True):
+            if game in games:
+                return d, games[game]
+        return (self.dats[0] if self.dats else None), None
+
+    def retool(self, settings: Settings, d: SourceDat | None) -> dict:
+        if d is None:
+            return {}
+        if id(d) not in self._retool:
+            self._retool[id(d)] = retool_index(settings, d.dat)
+        return self._retool[id(d)]
+
+
 def build_groups(
     settings: Settings,
-    dat: Dat,
-    identities: list[tuple[str, str, str]],
+    dats: "DatSet | Dat",
+    identities: list[tuple],
     names_from: str = "name",
-    name_style: str = "nointro",
+    name_style: str = NOINTRO_STYLE,
 ) -> list[Group]:
-    """identities: (rel_path, game_name, method). A file identified as several DAT games
-    (identical data listed twice) is placed once, by its first game name. `names_from`
-    "description": titles and name parsing use the DAT descriptions (arcade set names)."""
-    parents = parent_names(dat)
-    by_name = {g.name: g for g in dat.games}
+    """identities: (rel_path, game_name, method[, dat_sha1]). A file identified as several
+    DAT games (identical data listed twice) is placed once, by its first game name.
+    `names_from` "description": titles and name parsing use the DAT descriptions (arcade set
+    names). One Dat (with `name_style`) stands for a set of one."""
+    if isinstance(dats, Dat):
+        dats = DatSet([SourceDat("", dats, name_style)])
+    parents = dats.parents
+    primary = dats.dats[0].style if dats.dats else NOINTRO_STYLE
 
-    def title(game: str) -> str:
-        found = by_name.get(game)
-        if names_from == "description" and found is not None and found.description:
-            return found.description
+    def title(game: str, known: DatGame | None) -> str:
+        if names_from == "description" and known is not None and known.description:
+            return known.description
         return game
 
-    retool = retool_index(settings, dat)
-    first_name: dict[str, tuple[str, str]] = {}
-    for rel_path, game, method in sorted(identities):
-        first_name.setdefault(rel_path, (game, method))
+    first_name: dict[str, tuple[str, str, str]] = {}
+    for identity in sorted(identities):
+        rel_path, game, method, *dat_sha1 = identity
+        first_name.setdefault(rel_path, (game, method, (dat_sha1 or [""])[0] or ""))
     groups: dict[str, Group] = {}
-    for rel_path, (game, method) in first_name.items():
+    for rel_path, (game, method, dat_sha1) in first_name.items():
+        source_dat, known = dats.source(game, dat_sha1)
+        style = source_dat.style if source_dat else primary
         parsed = (
-            parse_tosec(title(game), settings.names.tosec)
-            if name_style == "tosec"
-            else parse_name(title(game), settings.names)
+            parse_tosec(title(game, known), settings.names.tosec)
+            if style == TOSEC_STYLE
+            else parse_name(title(game, known), settings.names)
         )
         if game in parents:
-            key, source, label = "dat:" + parents[game], SOURCE_DAT, title(parents[game])
-        elif any(child_parent == game for child_parent in parents.values()):
-            key, source, label = "dat:" + game, SOURCE_DAT, title(game)
-        elif (label := retool_group(retool, parsed, settings)) is not None:
+            parent = parents[game]
+            key, source, label = "dat:" + parent, SOURCE_DAT, title(parent, dats.source(parent)[1])
+        elif game in dats.has_children:
+            key, source, label = "dat:" + game, SOURCE_DAT, title(game, known)
+        elif (
+            label := retool_group(dats.retool(settings, source_dat), parsed, settings)
+        ) is not None:
             key, source = "retool:" + label, SOURCE_RETOOL
         elif settings.grouping.infer_from_dat_names:
             label = name_key(parsed, settings)
-            key, source = "name:" + label, SOURCE_NAME
+            # Names in another DAT's convention never join this one's by their text.
+            prefix = "" if style == primary else f"{style}:"
+            key, source = f"name:{prefix}{label}", SOURCE_NAME
         else:
-            key, source, label = "game:" + game, SOURCE_SINGLE, title(game)
+            key, source, label = "game:" + game, SOURCE_SINGLE, title(game, known)
         group = groups.setdefault(key, Group(key=key, name=label, source=source))
-        known = by_name.get(game)
         group.versions.append(
             Version(
                 rel_path,
                 game,
                 method,
                 parsed,
-                title(game),
+                title(game, known),
                 game in parents,
                 known is not None and known.bios,
+                incomplete=known is not None and len(known.roms) < dats.most_roms.get(game, 0),
             )
         )
     for group in groups.values():

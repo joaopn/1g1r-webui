@@ -253,6 +253,10 @@ class DatFamilyConfig(_Strict):
     clonelist_suffix: str
 
 
+# The online lookups as entries of a platform's identification order.
+LOOKUP_ENTRIES = ("hasheous", "screenscraper")
+
+
 class DatsConfig(_Strict):
     directory: str
     families: dict[str, DatFamilyConfig]
@@ -261,12 +265,17 @@ class DatsConfig(_Strict):
     max_upload_bytes: int = Field(gt=0)
     user_agent: str
     auto_activate_new: bool
+    # Sources and online lookups, in the order they identify files by default.
+    priority: list[str]
 
     @model_validator(mode="after")
     def _known_sources(self) -> "DatsConfig":
         required = {"libretro", "nointro", "upload"}
         if not required <= set(self.sources):
             raise ValueError(f"dats.sources must define {sorted(required)}")
+        known = set(self.sources) | set(LOOKUP_ENTRIES)
+        if set(self.priority) != known or len(self.priority) != len(known):
+            raise ValueError(f"dats.priority must list each of {sorted(known)} once")
         if not self.sources["libretro"].url_template:
             raise ValueError("dats.sources.libretro.url_template is required")
         return self

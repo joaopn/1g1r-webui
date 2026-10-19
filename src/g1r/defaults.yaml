@@ -684,8 +684,13 @@ dats:
   max_upload_bytes: 536870912
   user_agent: "1g1r-webui"
   # A newly downloaded or uploaded version becomes active only when you choose it,
-  # except the very first DAT of a platform.
+  # except the first DAT of its source for a platform.
   auto_activate_new: false
+  # The order a platform's sources identify files in, until you change it (Matching page or
+  # Settings -> DATs): each source tries the files still unmatched. Complete curated DATs
+  # first; libretro keeps one ROM per game; TOSEC names differ from all the others; then the
+  # online lookups. Each platform has one active version per source.
+  priority: [nointro, upload, redump, fbneo, libretro, tosec, hasheous, screenscraper]
 
 igir:
   binary: igir

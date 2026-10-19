@@ -27,8 +27,12 @@ from g1r import (
 )
 from g1r.config import RANKING_CRITERIA, RankingConfig, Settings
 from g1r.dat_registry import DatRegistry, RegistryError, name_style
+from g1r.hasheous import SERVICE as HASHEOUS
 from g1r.library import FolderEntry, Library, LibraryStore
 from g1r.ranking import LABELS as RANKING_LABELS
+from g1r.screenscraper import SERVICE as SCREENSCRAPER
+
+LOOKUP_LABELS = {HASHEOUS: "Hasheous", SCREENSCRAPER: "ScreenScraper"}
 
 _LABEL_UNSAFE = re.compile(r"[^a-z0-9._-]+")
 
@@ -158,6 +162,13 @@ class ActiveVersion(BaseModel):
 
 class Pinned(BaseModel):
     pinned: bool
+    # The source whose active DAT is pinned; empty: the platform's first DAT.
+    source: str = ""
+
+
+class DatOrder(BaseModel):
+    order: list[str]
+    off: list[str] = []
 
 
 class FolderRanking(BaseModel):
@@ -198,7 +209,8 @@ def game_dict(game: matching.GameRow) -> dict:
                 "operation": row.operation,
                 "discarded": row.discarded,
                 "identical": row.identical,
-                "notes": row.notes,
+                # "incomplete": its DAT lists fewer ROMs for the game than another DAT.
+                "notes": row.notes + (["incomplete"] if row.version.incomplete else []),
                 "role": row.version.role or None,
                 "discard_reason": row.discard_reason if row.operation else None,
             }
@@ -247,7 +259,10 @@ def build_router(
 
     def produces(library: Library, folder: FolderEntry, conn) -> matching.FolderView:
         """The folder's platform as the 1G1R table sees it; names read as its active DAT's."""
-        style = name_style(registry.active_version(conn, library, folder.platform))
+        dats = tuple(
+            (v["sha1"], name_style(v))
+            for v in registry.active_versions(conn, library, folder.platform)
+        )
         target = settings.platforms.targets[store.target_for(library, folder.platform)]
         profile = platforms[folder.platform]
         return matching.FolderView(
@@ -255,8 +270,29 @@ def build_router(
             parts_of(folder),
             profile.names_from,
             profile.title_ids,
-            style,
+            dats,
         )
+
+    def dat_order(conn, library: Library, platform: str) -> list[dict]:
+        """The platform's identification order: each source's active DAT, and the online
+        lookups, with whether each is on."""
+        return [
+            {
+                "id": e.id,
+                "label": (
+                    settings.dats.sources[e.id].label
+                    if e.id in settings.dats.sources
+                    else LOOKUP_LABELS.get(e.id, e.id)
+                ),
+                "on": e.on,
+                "lookup": e.lookup,
+                "dat": row_dict(e.version),
+                "pinned": bool(
+                    e.version is not None and library.dats[platform].active[e.id].pinned
+                ),
+            }
+            for e in registry.entries(conn, library, platform)
+        ]
 
     def conversion_rows(library: Library, folder: FolderEntry, conn) -> list:
         target = settings.platforms.targets[store.target_for(library, folder.platform)]
@@ -540,6 +576,7 @@ def build_router(
         return {
             **folder_info(library, folder),
             "dat": row_dict(registry.active_version(conn, library, folder.platform)),
+            "dat_order": dat_order(conn, library, folder.platform),
             "scan": row_dict(scanner.latest_scan(conn, label)),
             "summary": scanner.folder_summary(conn, label, parts_of(folder)),
             "unmatched": [dict(r) for r in scanner.unmatched_files(conn, label, parts_of(folder))],
@@ -898,26 +935,32 @@ def build_router(
     @router.put("/folders/{label}/assign")
     def assign(label: str, body: Assignment, conn: Conn):
         folder = folder_or_404(label)
+        dat_sha1 = ""
         if body.game_name is not None:
-            dat = registry.load_active(conn, store.load(), folder.platform)
-            if dat is None or not any(g.name == body.game_name for g in dat.games):
-                raise bad_request("That is not an entry of this platform's active DAT.")
+            listing = [
+                version["sha1"]
+                for version, dat in registry.load_all(conn, store.load(), folder.platform)
+                if any(g.name == body.game_name for g in dat.games)
+            ]
+            if not listing:
+                raise bad_request("That is not an entry of this platform's DATs.")
             if scanner.latest_scan(conn, label) is None:
                 raise bad_request("Scan the folder first.")
+            dat_sha1 = listing[0]
         known = conn.execute(
             "SELECT 1 FROM folder_file WHERE folder_label = ? AND rel_path = ?",
             (label, body.rel_path),
         ).fetchone()
         if not known:
             raise not_found("no such file in this folder's last scan")
-        unmatched.assign(conn, label, body.rel_path, body.game_name)
+        unmatched.assign(conn, label, body.rel_path, body.game_name, dat_sha1)
         return {"rel_path": body.rel_path, "game_name": body.game_name}
 
     @router.get("/folders/{label}/dat-search")
     def dat_search(label: str, conn: Conn, q: str = ""):
         folder = folder_or_404(label)
-        dat = registry.load_active(conn, store.load(), folder.platform)
-        return [] if dat is None else unmatched.search(dat, q, settings.ui.dat_search_limit)
+        dats = [d for _, d in registry.load_all(conn, store.load(), folder.platform)]
+        return unmatched.search(dats, q, settings.ui.dat_search_limit)
 
     # Scans -------------------------------------------------------------------------
 
@@ -1048,7 +1091,7 @@ def build_router(
             {
                 "platform": pid,
                 "active": row_dict(registry.active_version(conn, library, pid)),
-                "pinned": bool(library.dats.get(pid) and library.dats[pid].pinned),
+                "order": dat_order(conn, library, pid),
                 "versions": [dict(v) for v in registry.versions(conn, pid)],
                 "folders": [f.label for f in library.folders if f.platform == pid],
                 "downloads": [
@@ -1101,9 +1144,22 @@ def build_router(
         return {"ok": True}
 
     @router.put("/dats/{platform}/pin")
-    def dat_pin(platform: str, body: Pinned):
-        registry_call(lambda: registry.set_pinned(platform, body.pinned))
+    def dat_pin(platform: str, body: Pinned, conn: Conn):
+        source = body.source
+        if not source:
+            first = registry.active_version(conn, store.load(), platform)
+            source = first["source"] if first is not None else ""
+        registry_call(lambda: registry.set_pinned(platform, source, body.pinned))
         return {"ok": True}
+
+    @router.put("/dats/{platform}/order")
+    def dat_set_order(platform: str, body: DatOrder, conn: Conn):
+        """The order the platform's sources and online lookups identify files in, for
+        every set of the platform; the next scan uses it."""
+        if platform not in platforms:
+            raise not_found("no such platform")
+        registry_call(lambda: registry.set_order(platform, body.order, body.off))
+        return dat_order(conn, store.load(), platform)
 
     # Console keys (3DS decryption) ----------------------------------------------------
     # Only whether each file is there is ever returned: the keys never leave the server.

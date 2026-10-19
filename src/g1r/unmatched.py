@@ -56,8 +56,15 @@ def rows(
     ]
 
 
-def assign(conn: sqlite3.Connection, label: str, rel_path: str, game_name: str | None) -> None:
-    """Link a file to a DAT entry by hand (or undo that); it applies now and on every scan."""
+def assign(
+    conn: sqlite3.Connection,
+    label: str,
+    rel_path: str,
+    game_name: str | None,
+    dat_sha1: str = "",
+) -> None:
+    """Link a file to a DAT entry by hand (or undo that); it applies now and on every scan.
+    `dat_sha1`: the DAT the name is read with (the first of the platform's to list it)."""
     conn.execute("BEGIN")
     try:
         conn.execute(
@@ -69,7 +76,6 @@ def assign(conn: sqlite3.Connection, label: str, rel_path: str, game_name: str |
             (label, rel_path, scanner.METHOD_MANUAL),
         )
         if game_name is not None:
-            dat_sha1 = scanner.latest_scan(conn, label)["dat_sha1"]
             conn.execute(
                 "INSERT INTO manual_identity VALUES (?, ?, ?)", (label, rel_path, game_name)
             )
@@ -87,8 +93,10 @@ def assign(conn: sqlite3.Connection, label: str, rel_path: str, game_name: str |
         raise
 
 
-def search(dat: Dat, query: str, limit: int) -> list[str]:
+def search(dats: "Dat | list[Dat]", query: str, limit: int) -> list[str]:
+    """Names containing the query, from every DAT given."""
     needle = query.strip().lower()
     if not needle:
         return []
-    return sorted(g.name for g in dat.games if needle in g.name.lower())[:limit]
+    found = {g.name for dat in ([dats] if isinstance(dats, Dat) else dats) for g in dat.games}
+    return sorted(n for n in found if needle in n.lower())[:limit]

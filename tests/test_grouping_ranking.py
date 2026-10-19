@@ -1,8 +1,20 @@
+from dataclasses import replace
+
 import pytest
 
+from g1r import matching
 from g1r.config import RankingConfig
-from g1r.dats import Dat, DatGame, DatHeader
-from g1r.grouping import SOURCE_DAT, SOURCE_NAME, SOURCE_RETOOL, SOURCE_SINGLE, build_groups
+from g1r.dats import Dat, DatGame, DatHeader, DatRom
+from g1r.grouping import (
+    SOURCE_DAT,
+    SOURCE_NAME,
+    SOURCE_RETOOL,
+    SOURCE_SINGLE,
+    DatSet,
+    Group,
+    SourceDat,
+    build_groups,
+)
 from g1r.names import parse_name
 from g1r.ranking import decide
 
@@ -159,3 +171,57 @@ def test_retool_full_names(settings):
     names = ["Odd Name (Japan) (Special)", "Odd Name (USA)"]
     g = groups_of(settings, dat(*names), names)
     assert len(g["Exact"].versions) == 2
+
+
+def amiga(roms_per_game: dict[str, int], name="Commodore - Amiga") -> Dat:
+    games = [
+        DatGame(name=n, roms=[DatRom(f"{n} (Disk {i}).ipf", 1, None, None, None) for i in range(k)])
+        for n, k in roms_per_game.items()
+    ]
+    return Dat(DatHeader(name=name), games, "logiqx")
+
+
+def test_names_from_several_dats_join_and_a_partial_version_is_marked(settings):
+    full = SourceDat("full", amiga({"Batman (Europe)": 3, "Cadaver (Europe)": 2}))
+    partial = SourceDat("partial", amiga({"Batman (Europe)": 1, "Zool (Europe)": 1}))
+    tosec = SourceDat("tosec", amiga({"Batman - The Movie (1989)(Ocean)": 3}), "tosec")
+    groups = {
+        g.name: g
+        for g in build_groups(
+            settings,
+            DatSet([full, partial, tosec]),
+            [
+                ("Batman (Europe).zip", "Batman (Europe)", "dat-checksum", "full"),
+                ("Batman (Europe) (Disk 2).ipf", "Batman (Europe)", "dat-checksum", "partial"),
+                ("Zool (Europe).ipf", "Zool (Europe)", "dat-checksum", "partial"),
+                ("Batman tosec.zip", "Batman - The Movie (1989)(Ocean)", "dat-checksum", "tosec"),
+            ],
+        )
+    }
+    batman = groups["Batman"]
+    assert {v.rel_path: v.incomplete for v in batman.versions} == {
+        "Batman (Europe).zip": False,
+        "Batman (Europe) (Disk 2).ipf": True,
+    }
+    # A name only one DAT lists is whole by its DAT; TOSEC's never joins No-Intro's by text.
+    assert not groups["Zool"].versions[0].incomplete
+    movie = groups["Batman - The Movie (1989) (Ocean)"]
+    assert batman.key == "name:Batman" and movie.key.startswith("name:tosec:")
+
+
+def test_a_partial_version_is_never_kept_over_a_whole_one(settings):
+    full = SourceDat("full", amiga({"Batman (Europe)": 3}))
+    partial = SourceDat("partial", amiga({"Batman (Europe)": 1}))
+    identities = [
+        ("Batman (Europe).zip", "Batman (Europe)", "dat-checksum", "full"),
+        ("Batman (Europe) (Disk 2).ipf", "Batman (Europe)", "dat-checksum", "partial"),
+    ]
+    (group,) = build_groups(settings, DatSet([full, partial]), identities)
+    status, _, winner, _ = matching._decide(group, ranking(), {}, set(), group)
+    assert status == matching.STATUS_DECIDED and winner.rel_path == "Batman (Europe).zip"
+    only_partial = Group(group.key, group.name, group.source, group.versions[1:] * 2)
+    only_partial.versions[1] = replace(only_partial.versions[1], rel_path="copy.ipf")
+    status, _, winner, candidates = matching._decide(
+        only_partial, ranking(), {}, set(), only_partial
+    )
+    assert status == matching.STATUS_UNDECIDED and winner is None and len(candidates) == 2

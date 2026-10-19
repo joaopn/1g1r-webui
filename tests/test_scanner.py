@@ -312,3 +312,45 @@ def test_removing_a_set_forgets_what_its_scans_read(env):
     assert conn.execute("SELECT COUNT(*) FROM file_cache").fetchone()[0] > 0
     filecache.forget(conn, "nes")
     assert conn.execute("SELECT COUNT(*) FROM file_cache").fetchone()[0] == 0
+
+
+def test_each_dat_in_the_order_identifies_what_the_ones_before_it_missed(env, roms_root):
+    settings, store, registry, conn, _ = env
+    loose = b"unknown data"
+    nointro = dat_xml({"Loose (Europe)": loose, "Known (USA)": b"other data"}).replace(
+        b"<header>", b"<header><homepage>No-Intro</homepage>"
+    )
+    registry.add_upload(conn, "nes", nointro, "nointro.dat")
+    library = store.load()
+    order = [v["source"] for v in registry.active_versions(conn, library, "nes")]
+    assert order == ["nointro", "upload"]
+    first, second = registry.active_versions(conn, library, "nes")
+    asked = []
+
+    def report(settings_, dat_file, input_dir):
+        asked.append(dat_file.name)
+        if dat_file.name == Path(first["file"]).name:
+            return [
+                igir.ReportRow(
+                    "Loose (Europe)", "FOUND", (str(input_dir / "sub/Loose (Europe).nes"),)
+                )
+            ]
+        return [
+            igir.ReportRow("Known (USA)", "FOUND", (str(input_dir / "Known (USA).zip"),)),
+            igir.ReportRow("Loose (Europe)", "FOUND", (str(input_dir / "sub/Loose (Europe).nes"),)),
+        ]
+
+    folder_scanner = scanner.Scanner(settings, store, registry, report)
+    folder_scanner.run(conn, folder_scanner.start(conn, "nes"), "nes")
+    assert asked == [Path(first["file"]).name, Path(second["file"]).name]
+    rows = {
+        r["rel_path"]: (r["game_name"], r["method"], r["dat_sha1"])
+        for r in conn.execute("SELECT * FROM identity")
+    }
+    assert rows == {
+        "sub/Loose (Europe).nes": ("Loose (Europe)", "dat-checksum", first["sha1"]),
+        "Known (USA).zip": ("Known (USA)", "dat-checksum", second["sha1"]),
+        "Reheadered (Japan).zip": ("Reheadered (Japan)", "dat-headerless", second["sha1"]),
+    }
+    message = scanner.latest_scan(conn, "nes")["message"]
+    assert message == "3 of 3 ROM files identified; 1 by No-Intro (DAT-o-MATIC), 2 by Uploaded file"

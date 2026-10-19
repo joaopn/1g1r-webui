@@ -11,7 +11,7 @@ import threading
 from pathlib import Path
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from g1r.config import RankingConfig, Settings
 
@@ -49,6 +49,26 @@ class ActiveDat(BaseModel):
     pinned: bool = False
 
 
+class PlatformDats(BaseModel):
+    """A platform's DATs: the active version of each source, and the order sources and
+    online lookups identify files in (None: the configured default)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    active: dict[str, ActiveDat] = Field(default_factory=dict)
+    order: list[str] | None = None
+    # Entries switched off: they identify nothing until switched on again.
+    off: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _one_active_dat(cls, data):
+        """Before the priority list a platform had one active DAT, stored as it."""
+        if isinstance(data, dict) and "sha1" in data:
+            return {"active": {data["source"]: data}}
+        return data
+
+
 class LookupSwitches(BaseModel):
     """Which online lookups the user switched on; all off until they do."""
 
@@ -63,7 +83,7 @@ class Library(BaseModel):
 
     lookups: LookupSwitches = Field(default_factory=LookupSwitches)
     platform_targets: dict[str, str] = Field(default_factory=dict)
-    dats: dict[str, ActiveDat] = Field(default_factory=dict)
+    dats: dict[str, PlatformDats] = Field(default_factory=dict)
     ignored_filenames: list[str] | None = None
     folders: list[FolderEntry] = Field(default_factory=list)
 

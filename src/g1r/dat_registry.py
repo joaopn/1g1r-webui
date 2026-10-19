@@ -12,12 +12,13 @@ import urllib.request
 import zipfile
 from collections.abc import Callable
 from dataclasses import dataclass
-from pathlib import PurePosixPath
+from functools import cache
+from pathlib import Path, PurePosixPath
 
 from g1r import tosec
-from g1r.config import PlatformProfile, Settings
-from g1r.dats import Dat, DatError, parse_dat_bytes
-from g1r.library import ActiveDat, Library, LibraryStore
+from g1r.config import LOOKUP_ENTRIES, PlatformProfile, Settings
+from g1r.dats import Dat, DatError, parse_dat, parse_dat_bytes
+from g1r.library import ActiveDat, Library, LibraryStore, PlatformDats
 
 Fetch = Callable[[str], bytes]
 DAT_SUFFIXES = (".dat", ".xml")
@@ -53,6 +54,25 @@ def name_style(version: sqlite3.Row | None) -> str:
     header = version["header_name"] or ""
     tosec_dat = version["source"] == TOSEC_STYLE or TOSEC_STYLE in header.lower()
     return TOSEC_STYLE if tosec_dat else NOINTRO_STYLE
+
+
+@dataclass(frozen=True)
+class Entry:
+    """One step of a platform's identification order: a source's active DAT (`version`
+    set) or an online lookup."""
+
+    id: str
+    on: bool
+    version: sqlite3.Row | None = None
+
+    @property
+    def lookup(self) -> bool:
+        return self.id in LOOKUP_ENTRIES
+
+
+@cache
+def _parsed(path: Path, sha1: str) -> Dat:
+    return parse_dat(path)
 
 
 def header_matches(profile: PlatformProfile, header_name: str) -> bool:
@@ -136,8 +156,10 @@ class DatRegistry:
         return cursor.lastrowid
 
     def _maybe_activate(self, conn, platform: str, version_id: int) -> None:
-        library = self.store.load()
-        current = library.dats.get(platform)
+        source = conn.execute(
+            "SELECT source FROM dat_version WHERE id = ?", (version_id,)
+        ).fetchone()["source"]
+        current = self.store.load().dats.get(platform, PlatformDats()).active.get(source)
         if current is None or (self.settings.dats.auto_activate_new and not current.pinned):
             self.activate(conn, platform, version_id)
 
@@ -325,6 +347,7 @@ class DatRegistry:
     # Activating ------------------------------------------------------------------
 
     def activate(self, conn: sqlite3.Connection, platform: str, version_id: int) -> None:
+        """Make this version its source's active one for the platform."""
         row = conn.execute(
             "SELECT * FROM dat_version WHERE id = ? AND platform = ?", (version_id, platform)
         ).fetchone()
@@ -332,10 +355,11 @@ class DatRegistry:
             raise RegistryError("unknown DAT version")
 
         def change(library: Library) -> None:
-            current = library.dats.get(platform)
+            dats = library.dats.setdefault(platform, PlatformDats())
+            current = dats.active.get(row["source"])
             if current and current.pinned and current.sha1 != row["sha1"]:
-                raise RegistryError("the active DAT is pinned; unpin it first")
-            library.dats[platform] = ActiveDat(
+                raise RegistryError("this source's active DAT is pinned; unpin it first")
+            dats.active[row["source"]] = ActiveDat(
                 source=row["source"],
                 file=row["file"],
                 header_name=row["header_name"],
@@ -346,11 +370,26 @@ class DatRegistry:
 
         self.store.update(change)
 
-    def set_pinned(self, platform: str, pinned: bool) -> None:
+    def set_pinned(self, platform: str, source: str, pinned: bool) -> None:
         def change(library: Library) -> None:
-            if platform not in library.dats:
-                raise RegistryError("no active DAT to pin")
-            library.dats[platform].pinned = pinned
+            active = library.dats.get(platform, PlatformDats()).active.get(source)
+            if active is None:
+                raise RegistryError("no active DAT of that source to pin")
+            active.pinned = pinned
+
+        self.store.update(change)
+
+    def set_order(self, platform: str, order: list[str], off: list[str]) -> None:
+        """The platform's identification order, and the entries switched off."""
+        self._profile(platform)
+        known = set(self.settings.dats.priority)
+        if len(set(order)) != len(order) or not set(order) <= known or not set(off) <= known:
+            raise RegistryError(f"the order may list only {sorted(known)}, each once")
+
+        def change(library: Library) -> None:
+            dats = library.dats.setdefault(platform, PlatformDats())
+            dats.order = list(order)
+            dats.off = sorted(set(off))
 
         self.store.update(change)
 
@@ -362,19 +401,69 @@ class DatRegistry:
             (platform,),
         ).fetchall()
 
+    def order(self, library: Library, platform: str) -> list[str]:
+        """Every source with an active DAT and every online lookup, in the platform's order.
+        One the chosen order does not name (a source added since) takes its default place
+        among its kind: before the first DAT the default order puts after it, else after
+        the last one it puts before it, else at the end."""
+        dats = library.dats.get(platform, PlatformDats())
+        default = self.settings.dats.priority
+        present = [e for e in default if e in dats.active or e in LOOKUP_ENTRIES]
+        order = [e for e in (dats.order or []) if e in present]
+        for entry in present:
+            if entry in order:
+                continue
+            rank = default.index(entry)
+            kin = [
+                (i, default.index(e))
+                for i, e in enumerate(order)
+                if (e in LOOKUP_ENTRIES) == (entry in LOOKUP_ENTRIES)
+            ]
+            later = [i for i, r in kin if r > rank]
+            earlier = [i for i, r in kin if r < rank]
+            at = later[0] if later else (earlier[-1] + 1 if earlier else len(order))
+            order.insert(at, entry)
+        return order
+
+    def entries(self, conn, library: Library, platform: str) -> list[Entry]:
+        """The platform's identification order, each DAT with its stored version."""
+        dats = library.dats.get(platform, PlatformDats())
+        found = []
+        for entry in self.order(library, platform):
+            version = None
+            if entry not in LOOKUP_ENTRIES:
+                version = conn.execute(
+                    "SELECT * FROM dat_version WHERE platform = ? AND sha1 = ?",
+                    (platform, dats.active[entry].sha1),
+                ).fetchone()
+                if version is None:
+                    continue
+            found.append(Entry(entry, entry not in dats.off, version))
+        return found
+
+    def active_versions(self, conn, library: Library, platform: str) -> list[sqlite3.Row]:
+        """The DATs that identify the platform's files, in order (switched-off ones left
+        out)."""
+        return [
+            e.version
+            for e in self.entries(conn, library, platform)
+            if e.on and e.version is not None
+        ]
+
     def active_version(self, conn, library: Library, platform: str) -> sqlite3.Row | None:
-        active = library.dats.get(platform)
-        if active is None:
-            return None
-        return conn.execute(
-            "SELECT * FROM dat_version WHERE platform = ? AND sha1 = ?", (platform, active.sha1)
-        ).fetchone()
+        """The first DAT of the platform's order."""
+        versions = self.active_versions(conn, library, platform)
+        return versions[0] if versions else None
+
+    def load(self, version: sqlite3.Row) -> Dat:
+        return _parsed(self.settings.paths.data_dir / version["file"], version["sha1"])
 
     def load_active(self, conn, library: Library, platform: str) -> Dat | None:
         row = self.active_version(conn, library, platform)
-        if row is None:
-            return None
-        return parse_dat_bytes((self.settings.paths.data_dir / row["file"]).read_bytes())
+        return None if row is None else self.load(row)
+
+    def load_all(self, conn, library: Library, platform: str) -> list[tuple[sqlite3.Row, Dat]]:
+        return [(v, self.load(v)) for v in self.active_versions(conn, library, platform)]
 
     def _profile(self, platform: str) -> PlatformProfile:
         profiles = self.settings.platforms.enabled_profiles()

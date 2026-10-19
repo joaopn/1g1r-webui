@@ -129,22 +129,61 @@ def test_settings_targets_and_ignored(setup):
 
 def test_dats_download_upload_activate_pin(setup):
     client, store, _ = setup
-    first = client.post("/api/dats/nes/download").json()["version_id"]
-    second = client.post(
-        "/api/dats/nes/upload", files={"file": ("nes.dat", (DATA / "nes-nointro.dat").read_bytes())}
-    ).json()["version_id"]
+    libretro = client.post("/api/dats/nes/download").json()["version_id"]
+    nointro_dat = (DATA / "nes-nointro.dat").read_bytes()
+    nointro = client.post("/api/dats/nes/upload", files={"file": ("nes.dat", nointro_dat)}).json()[
+        "version_id"
+    ]
     row = next(r for r in client.get("/api/dats").json() if r["platform"] == "nes")
-    assert row["active"]["id"] == first and len(row["versions"]) == 2
-    client.put("/api/dats/nes/pin", json={"pinned": True})
+    # The first DAT of each source joins the platform's order, complete DATs first.
+    assert len(row["versions"]) == 2 and row["active"]["id"] == nointro
+    assert [(e["id"], e["dat"] and e["dat"]["id"]) for e in row["order"]] == [
+        ("nointro", nointro),
+        ("libretro", libretro),
+        ("hasheous", None),
+        ("screenscraper", None),
+    ]
+    # A newer No-Intro DAT waits to be chosen; a pinned source refuses it.
+    newer = client.post(
+        "/api/dats/nes/upload",
+        files={"file": ("nes.dat", nointro_dat.replace(b"</datafile>", b"<!-- v2 --></datafile>"))},
+    ).json()["version_id"]
+    assert store.load().dats["nes"].active["nointro"].sha1 != ""
+    client.put("/api/dats/nes/pin", json={"pinned": True, "source": "nointro"})
     assert (
-        client.put("/api/dats/nes/active", json={"version_id": second}).status_code
+        client.put("/api/dats/nes/active", json={"version_id": newer}).status_code
         == HTTPStatus.BAD_REQUEST
     )
-    client.put("/api/dats/nes/pin", json={"pinned": False})
-    client.put("/api/dats/nes/active", json={"version_id": second})
-    assert store.load().dats["nes"].source == "nointro"
+    client.put("/api/dats/nes/pin", json={"pinned": False, "source": "nointro"})
+    assert client.put("/api/dats/nes/active", json={"version_id": newer}).status_code == 200
+    assert store.load().dats["nes"].active["libretro"].source == "libretro"
     bad = client.post("/api/dats/nes/upload", files={"file": ("x.dat", b"junk")})
     assert bad.status_code == HTTPStatus.BAD_REQUEST and "not a usable DAT" in bad.json()["detail"]
+
+
+def test_dat_order_is_saved_per_platform(setup):
+    client, store, _ = setup
+    assert add_nes(client, label="nes").status_code == HTTPStatus.CREATED
+    client.post("/api/dats/nes/download")
+    client.post(
+        "/api/dats/nes/upload", files={"file": ("nes.dat", (DATA / "nes-nointro.dat").read_bytes())}
+    )
+    order = client.put(
+        "/api/dats/nes/order",
+        json={"order": ["hasheous", "libretro", "nointro", "screenscraper"], "off": ["nointro"]},
+    ).json()
+    assert [(e["id"], e["on"]) for e in order] == [
+        ("hasheous", True),
+        ("libretro", True),
+        ("nointro", False),
+        ("screenscraper", True),
+    ]
+    assert store.load().dats["nes"].order == ["hasheous", "libretro", "nointro", "screenscraper"]
+    detail = client.get("/api/folders/nes").json()
+    assert detail["dat"]["source"] == "libretro"
+    assert [e["id"] for e in detail["dat_order"]][:2] == ["hasheous", "libretro"]
+    bad = client.put("/api/dats/nes/order", json={"order": ["nope"]})
+    assert bad.status_code == HTTPStatus.BAD_REQUEST
 
 
 def test_scan_and_folder_detail(setup):

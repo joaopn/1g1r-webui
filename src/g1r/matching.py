@@ -11,7 +11,14 @@ from pathlib import Path, PurePosixPath
 from g1r import journal, titles
 from g1r.config import PLAIN, RankingConfig, Settings
 from g1r.dats import Dat, DatHeader, parse_dat
-from g1r.grouping import Group, Version, build_groups, build_title_groups
+from g1r.grouping import (
+    DatSet,
+    Group,
+    SourceDat,
+    Version,
+    build_groups,
+    build_title_groups,
+)
 from g1r.ranking import Decision, decide
 
 STATUS_SINGLE = "single"
@@ -143,8 +150,9 @@ class FolderView:
     names_from: str = "name"
     # Identified and grouped by title ID (Switch), no DAT needed.
     title_ids: bool = False
-    # How names read: No-Intro/Redump style or TOSEC style (follows the active DAT).
-    name_style: str = "nointro"
+    # The platform's DATs in its identification order: (sha1, name style), each DAT's names
+    # read in its own style (No-Intro/Redump or TOSEC).
+    dats: tuple[tuple[str, str], ...] = ()
 
 
 def is_part(rel_path: str, parts: frozenset[str]) -> bool:
@@ -190,15 +198,21 @@ def game_rows(
     ]
     if not identities:
         return []
-    # Discarded files keep the identity of the scan before their move; use the folder's DAT.
-    dat_sha1 = next(
-        (r["dat_sha1"] for r in identities if r["rel_path"] not in gone),
-        identities[0]["dat_sha1"],
-    )
-    dat = load_dat(settings, conn, dat_sha1)
-    if dat is None and not view.title_ids:
+    # The platform's DATs, then any other DAT an identity names (a file discarded before
+    # its DAT left the order keeps the identity of the scan before its move).
+    listed = list(view.dats)
+    style = listed[0][1] if listed else "nointro"
+    for r in identities:
+        if r["dat_sha1"] and all(r["dat_sha1"] != sha1 for sha1, _ in listed):
+            listed.append((r["dat_sha1"], style))
+    sources = []
+    for sha1, name_style in listed:
+        dat = load_dat(settings, conn, sha1)
+        if dat is not None:
+            sources.append(SourceDat(sha1, dat, name_style))
+    if not sources and not view.title_ids:
         return []
-    dat = dat or Dat(DatHeader(name=""), [], "none")
+    dats = DatSet(sources or [SourceDat("", Dat(DatHeader(name=""), [], "none"))])
     scores = {(r["rel_path"], r["game_name"]): r["score"] for r in identities}
     sizes = dict(
         conn.execute(
@@ -226,10 +240,11 @@ def game_rows(
     ):
         file_notes.setdefault(rel, []).append(note)
     triples = [(r["rel_path"], r["game_name"], r["method"]) for r in identities]
+    quads = [(*t, r["dat_sha1"]) for t, r in zip(triples, identities, strict=True)]
     groups = (
         build_title_groups(settings, triples)
         if view.title_ids
-        else build_groups(settings, dat, triples, view.names_from, view.name_style)
+        else build_groups(settings, dats, quads, view.names_from)
     )
     result = []
     for group in groups:
@@ -331,21 +346,33 @@ def _decide(
     """Rank one copy per distinct ROM data (`ranked`); picks may name any present version."""
     if not ranked.versions:
         return STATUS_APPLIED, "every version is in discarded/", None, set()
-    decision: Decision = decide(ranked, ranking)
-    winner = decision.winner
-    status = (
-        STATUS_SINGLE
-        if len(ranked.versions) == 1
-        else (STATUS_DECIDED if winner else STATUS_UNDECIDED)
-    )
-    reason = decision.reason
+    # A version lacking ROMs another DAT lists for its game (one disk of a multi-disk game) is
+    # never kept over a whole one; with no whole version, nothing is chosen for you.
+    complete = [v for v in ranked.versions if not v.incomplete]
+    if len(ranked.versions) > 1 and not complete:
+        winner, candidates = None, {v.rel_path for v in ranked.versions}
+        status, reason = STATUS_UNDECIDED, "every version lacks ROMs another DAT lists"
+    elif len(ranked.versions) > 1 and len(complete) == 1:
+        winner, candidates = complete[0], set()
+        status, reason = STATUS_DECIDED, "the only version with every ROM its DAT lists"
+    else:
+        if complete and len(complete) < len(ranked.versions):
+            ranked = Group(ranked.key, ranked.name, ranked.source, complete)
+        decision: Decision = decide(ranked, ranking)
+        winner, candidates = decision.winner, {v.rel_path for v in decision.candidates}
+        status = (
+            STATUS_SINGLE
+            if len(ranked.versions) == 1
+            else (STATUS_DECIDED if winner else STATUS_UNDECIDED)
+        )
+        reason = decision.reason
     picked = picks.get(present.key)
     if picked and len(present.versions) > 1 and any(v.rel_path == picked for v in present.versions):
         winner = next(v for v in present.versions if v.rel_path == picked)
         status, reason = STATUS_PICKED, "you ticked this version"
     if present.key in left:
         status, reason = STATUS_LEFT, "you took this game out of the operations"
-    return status, reason, winner, {v.rel_path for v in decision.candidates}
+    return status, reason, winner, candidates
 
 
 def table(

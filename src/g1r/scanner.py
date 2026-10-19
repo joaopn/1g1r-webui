@@ -426,24 +426,108 @@ class Scanner:
         )
         if self.settings.platforms.profiles[folder.platform].title_ids:
             self._title_ids(root, files, found, progress)
-        active = self.registry.active_version(conn, library, folder.platform)
-        if active is None and found.identified:
+        entries = [e for e in self.registry.entries(conn, library, folder.platform) if e.on]
+        dats = [(e, self.registry.load(e.version)) for e in entries if e.version is not None]
+        if not dats and found.identified:
             # Title IDs identify without a DAT.
             progress.stage("Saving")
-            self._store(conn, label, files, NO_DAT, found)
+            self._store(conn, label, files, found)
             candidates = sum(1 for f in files if f.kind in ("rom", "archive"))
             return f"{len(found.identified)} of {candidates} files identified by title ID"
-        if active is None:
+        if not dats:
             progress.stage("Saving")
-            self._store(conn, label, files, None, found)
+            self._store(conn, label, files, found)
             return (
                 f"inventory only, {len(files)} files: this platform has no active DAT, so "
                 "nothing was identified (add one in Settings → DATs)"
             )
-        dat_file = self.settings.paths.data_dir / active["file"]
-        modes = self.settings.platforms.profiles[folder.platform].igir_merge_modes
+        parts = {
+            e.lower() for e in self.settings.platforms.profiles[folder.platform].part_extensions
+        }
+        roms = [f for f in files if f.kind in ("rom", "archive")]
+
+        def unmatched() -> list[InventoryFile]:
+            # A cue sheet or track the DATs miss waits for conversion: not hashed, not looked
+            # up online, not suggested.
+            return [
+                f
+                for f in roms
+                if f.rel_path not in found.identified and not _part(f.rel_path, parts)
+            ]
+
+        # Names for suggestions, ScreenScraper and manual matches: every DAT's, the first DAT
+        # listing a name being the one it is read with.
+        dat_of_name: dict[str, str] = {}
+        for entry, dat in dats:
+            for game in dat.games:
+                dat_of_name.setdefault(game.name, entry.version["sha1"])
+        notes: list[str] = []
+        duplicates_checked = False
+        for entry in entries:
+            if entry.lookup:
+                if not duplicates_checked:
+                    self._duplicates(root, folder.platform, files, found, progress)
+                    duplicates_checked = True
+                notes += self._look_up(
+                    conn,
+                    library,
+                    folder.platform,
+                    root,
+                    unmatched(),
+                    found,
+                    refresh_lookups,
+                    set(dat_of_name),
+                    progress,
+                    entry.id,
+                )
+                continue
+            dat = next(d for e, d in dats if e is entry)
+            named = f" ({self._source_label(entry)})" if len(dats) > 1 else ""
+            self._dat_pass(
+                entry, dat, named, folder.platform, root, roms, unmatched, found, progress, full
+            )
+        if not duplicates_checked:
+            self._duplicates(root, folder.platform, files, found, progress)
+        # Every file still unmatched shows its hashes in the table.
+        self._hash(folder.platform, root, unmatched(), found, progress, "Hashing unmatched files")
+        self._suggest(dat_of_name, [d for _, d in dats], unmatched(), found, progress)
+        progress.stage("Saving")
+        self._apply_manual(conn, label, files, found, dat_of_name)
+        self._store(conn, label, files, found)
+        conn.execute(
+            "UPDATE scan SET dat_sha1 = ? WHERE folder_label = ? AND status = 'running'",
+            (dats[0][0].version["sha1"], label),
+        )
+        candidates = sum(1 for f in files if f.kind in ("rom", "archive"))
+        summary = [f"{len(found.identified)} of {candidates} ROM files identified"]
+        by_dat = Counter(found.dat_of[rel] for rel in found.identified if found.dat_of.get(rel))
+        if len(by_dat) > 1:
+            summary.append(
+                ", ".join(
+                    f"{by_dat[e.version['sha1']]} by {self._source_label(e)}"
+                    for e, _ in dats
+                    if by_dat[e.version["sha1"]]
+                )
+            )
+        online = sum(1 for m in found.identified.values() if m == METHOD_HASHEOUS)
+        if online:
+            summary.append(f"{online} of them via Hasheous")
+        return "; ".join(summary + notes)
+
+    def _source_label(self, entry) -> str:
+        source = self.settings.dats.sources.get(entry.id)
+        return source.label if source else entry.id
+
+    def _dat_pass(
+        self, entry, dat: Dat, named, platform, root, roms, unmatched, found, progress, full
+    ) -> None:
+        """One DAT's turn: igir's checksum match, then the header-stripped, byte-order and
+        trimmed-image checks, on the files no earlier step identified."""
+        sha1 = entry.version["sha1"]
+        dat_file = self.settings.paths.data_dir / entry.version["file"]
+        modes = self.settings.platforms.profiles[platform].igir_merge_modes
         # igir reports nothing until it is done: this step has no file count.
-        progress.stage("Matching checksums with igir")
+        progress.stage(f"Matching checksums with igir{named}")
         # A full scan has igir hash every file again too.
         fresh = {"fresh": True} if full else {}
         if modes:
@@ -459,84 +543,37 @@ class Scanner:
             by_path = igir.identified_files(
                 self.report_runner(self.settings, dat_file, root, **fresh)
             )
-        parts = {
-            e.lower() for e in self.settings.platforms.profiles[folder.platform].part_extensions
-        }
-        unmatched = []
-        for f in files:
-            if f.kind not in ("rom", "archive") or f.rel_path in found.identified:
-                continue
-            games = by_path.get(str(root / f.rel_path), set())
-            if games:
-                found.identify(f.rel_path, games, METHOD_CHECKSUM)
-            elif not _part(f.rel_path, parts):
-                # A cue sheet or track the DAT misses waits for conversion: not hashed,
-                # not looked up online, not suggested.
-                unmatched.append(f)
-        dat = self.registry.load_active(conn, library, folder.platform)
-        if unmatched and self.settings.headers.get(folder.platform):
-            index = _crc_index(dat)
-            name = headerless_step(self.settings, folder.platform)
-            for f in progress.each("Checking header-stripped data", unmatched):
-                keys = cache.get(
-                    f,
-                    name,
-                    lambda f=f: headerless_keys(self.settings, folder.platform, root / f.rel_path),
+        for f in roms:
+            if f.rel_path not in found.identified:
+                found.identify(
+                    f.rel_path,
+                    by_path.get(str(root / f.rel_path), set()),
+                    METHOD_CHECKSUM,
+                    dat=sha1,
                 )
-                found.identify(f.rel_path, _look(index, keys), METHOD_HEADERLESS)
-        unmatched = [f for f in unmatched if f.rel_path not in found.identified]
-        if self.settings.byte_orders.get(folder.platform):
+        if self.settings.headers.get(platform):
             index = _crc_index(dat)
-            name = byte_order_step(self.settings, folder.platform)
-            for f in progress.each("Checking byte orders", unmatched):
-                keys = cache.get(
-                    f,
-                    name,
-                    lambda f=f: byte_order_keys(self.settings, folder.platform, root / f.rel_path),
+            name = headerless_step(self.settings, platform)
+            for f in progress.each(f"Checking header-stripped data{named}", unmatched()):
+                keys = found.cache.get(
+                    f, name, lambda f=f: headerless_keys(self.settings, platform, root / f.rel_path)
+                )
+                found.identify(f.rel_path, _look(index, keys), METHOD_HEADERLESS, dat=sha1)
+        if self.settings.byte_orders.get(platform):
+            index = _crc_index(dat)
+            name = byte_order_step(self.settings, platform)
+            for f in progress.each(f"Checking byte orders{named}", unmatched()):
+                keys = found.cache.get(
+                    f, name, lambda f=f: byte_order_keys(self.settings, platform, root / f.rel_path)
                 )
                 as_is, native = _look(index, keys["as_is"]), _look(index, keys["native"])
-                found.identify(f.rel_path, as_is, METHOD_CHECKSUM)
-                found.identify(f.rel_path, native - as_is, METHOD_BYTESWAPPED)
-        unmatched = [f for f in unmatched if f.rel_path not in found.identified]
-        self._untrimmed(folder.platform, root, unmatched, dat, found, progress)
-        unmatched = [f for f in unmatched if f.rel_path not in found.identified]
-        self._duplicates(root, folder.platform, files, found, progress)
-        unmatched = [f for f in unmatched if f.rel_path not in found.identified]
-        notes = self._look_up(
-            conn, library, folder.platform, root, unmatched, found, refresh_lookups, dat, progress
-        )
-        unmatched = [f for f in unmatched if f.rel_path not in found.identified]
-        self._suggest(dat, unmatched, found, progress)
-        progress.stage("Saving")
-        self._apply_manual(conn, label, files, found)
-        self._store(conn, label, files, active["sha1"], found)
-        conn.execute(
-            "UPDATE scan SET dat_sha1 = ? WHERE folder_label = ? AND status = 'running'",
-            (active["sha1"], label),
-        )
-        candidates = sum(1 for f in files if f.kind in ("rom", "archive"))
-        parts = [f"{len(found.identified)} of {candidates} ROM files identified"]
-        online = sum(1 for m in found.identified.values() if m == METHOD_HASHEOUS)
-        if online:
-            parts.append(f"{online} of them via Hasheous")
-        return "; ".join(parts + notes)
+                found.identify(f.rel_path, as_is, METHOD_CHECKSUM, dat=sha1)
+                found.identify(f.rel_path, native - as_is, METHOD_BYTESWAPPED, dat=sha1)
+        self._untrimmed(platform, root, unmatched(), dat, found, progress, sha1, named)
 
-    def _look_up(
-        self, conn, library, platform, root, unmatched, found, refresh, dat, progress
-    ) -> list[str]:
-        """Identification steps 3 and 4: hash what the DAT missed; ask Hasheous, then
-        ScreenScraper, for the services that are on."""
+    def _hash(self, platform, root, files, found: "Found", progress, stage: str) -> None:
+        """CRC32, MD5 and SHA1 of each file's ROM data, for lookups and the table."""
         profile = self.settings.platforms.profiles[platform]
-        hasheous_on = library.lookups.hasheous
-        session = self._screenscraper(library, profile)
-        dat_names = {g.name for g in dat.games} if session else set()
-        services = [
-            service
-            for service, on in ((hasheous.SERVICE, hasheous_on), (screenscraper.SERVICE, session))
-            if on
-        ]
-        notes = []
-        stage = "Looking up unmatched files online" if services else "Hashing unmatched files"
         name = step(
             "content-hashes",
             profile.rom_extensions,
@@ -544,8 +581,8 @@ class Scanner:
             self.settings.byte_orders.get(platform),
             self.settings.lookups.max_hash_bytes,
         )
-        for f in progress.each(stage, unmatched):
-            hashes = [
+        for f in progress.each(stage, [f for f in files if f.rel_path not in found.hashes]):
+            found.hashes[f.rel_path] = [
                 ContentHash(**h)
                 for h in found.cache.get(
                     f,
@@ -556,7 +593,26 @@ class Scanner:
                     ],
                 )
             ]
-            found.hashes[f.rel_path] = hashes
+
+    def _look_up(
+        self, conn, library, platform, root, unmatched, found, refresh, dat_names, progress, service
+    ) -> list[str]:
+        """An online lookup's turn: hash what is still unmatched and ask the service, when it
+        is switched on (and, for ScreenScraper, configured and knowing the platform)."""
+        profile = self.settings.platforms.profiles[platform]
+        if service == hasheous.SERVICE:
+            if not library.lookups.hasheous:
+                return []
+            stage, session = "Looking up unmatched files on Hasheous", None
+        else:
+            session = self._screenscraper(library, profile)
+            if session is None:
+                return []
+            stage = "Looking up unmatched files on ScreenScraper"
+        self._hash(platform, root, unmatched, found, progress, "Hashing unmatched files")
+        notes = []
+        for f in progress.each(stage, unmatched):
+            hashes = found.hashes[f.rel_path]
             skipped = None
             if not hashes:
                 skipped = "no ROM data to look up"
@@ -564,10 +620,9 @@ class Scanner:
                 # One answer would name one game and hide the others in the archive.
                 skipped = "several ROM files in one archive"
             if skipped:
-                for service in services:
-                    found.lookups[(f.rel_path, service)] = (hasheous.SKIPPED, skipped)
+                found.lookups[(f.rel_path, service)] = (hasheous.SKIPPED, skipped)
                 continue
-            if hasheous_on:
+            if session is None:
                 try:
                     answer = hasheous.lookup(
                         self.settings,
@@ -578,39 +633,33 @@ class Scanner:
                         refresh=refresh,
                     )
                 except hasheous.LookupError_ as exc:
-                    found.lookups[(f.rel_path, hasheous.SERVICE)] = (hasheous.ERROR, str(exc))
+                    found.lookups[(f.rel_path, service)] = (hasheous.ERROR, str(exc))
                     notes.append(f"online lookups stopped: {exc}")
-                    hasheous_on = False
-                else:
-                    found.lookups[(f.rel_path, hasheous.SERVICE)] = (answer.status, answer.detail)
-                    if answer.status == hasheous.FOUND and answer.game_name:
-                        found.identify(f.rel_path, {answer.game_name}, METHOD_HASHEOUS)
-                        continue
-            if session and not session.stopped:
-                try:
-                    answer = screenscraper.lookup(
-                        session,
-                        conn,
-                        hashes,
-                        profile.screenscraper_id,
-                        dat_names,
-                        refresh=refresh,
-                    )
-                except screenscraper.LookupError_ as exc:
-                    found.lookups[(f.rel_path, screenscraper.SERVICE)] = (
-                        screenscraper.ERROR,
-                        str(exc),
-                    )
-                    notes.append(f"ScreenScraper lookups stopped: {exc}")
-                    continue
-                found.lookups[(f.rel_path, screenscraper.SERVICE)] = (
-                    answer.status,
-                    answer.detail,
+                    break
+                found.lookups[(f.rel_path, service)] = (answer.status, answer.detail)
+                if answer.status == hasheous.FOUND and answer.game_name:
+                    found.identify(f.rel_path, {answer.game_name}, METHOD_HASHEOUS)
+                continue
+            if session.stopped:
+                break
+            try:
+                answer = screenscraper.lookup(
+                    session,
+                    conn,
+                    hashes,
+                    profile.screenscraper_id,
+                    dat_names,
+                    refresh=refresh,
                 )
-                if answer.status == screenscraper.FOUND and answer.game_name:
-                    found.identify(f.rel_path, {answer.game_name}, METHOD_SCREENSCRAPER)
-                elif answer.known_as:
-                    found.known_as[f.rel_path] = answer.known_as
+            except screenscraper.LookupError_ as exc:
+                found.lookups[(f.rel_path, service)] = (screenscraper.ERROR, str(exc))
+                notes.append(f"ScreenScraper lookups stopped: {exc}")
+                continue
+            found.lookups[(f.rel_path, service)] = (answer.status, answer.detail)
+            if answer.status == screenscraper.FOUND and answer.game_name:
+                found.identify(f.rel_path, {answer.game_name}, METHOD_SCREENSCRAPER)
+            elif answer.known_as:
+                found.known_as[f.rel_path] = answer.known_as
         return notes
 
     def _screenscraper(self, library, profile) -> "screenscraper.Session | None":
@@ -652,7 +701,7 @@ class Scanner:
             return inside[0].size if readable and len(inside) == 1 else None
 
         games: dict[str, set[str]] = {}
-        for rel, game, _, _ in found.identities:
+        for rel, game, *_ in found.identities:
             games.setdefault(rel, set()).add(game)
         sized = [(f, payload_size(f)) for f in files if f.kind in ("rom", "archive")]
         sized = [(f, size) for f, size in sized if size is not None]
@@ -688,7 +737,12 @@ class Scanner:
         for f, _ in unmatched:
             original = originals.get(found.payloads.get(f.rel_path, (None, None))[1])
             if original is not None:
-                found.identify(f.rel_path, games[original], METHOD_DUPLICATE)
+                found.identify(
+                    f.rel_path,
+                    games[original],
+                    METHOD_DUPLICATE,
+                    dat=found.dat_of.get(original, NO_DAT),
+                )
 
     def _title_ids(self, root: Path, files, found: "Found", progress) -> None:
         """Switch: every file with a title ID (ticket or name) is identified by it; the
@@ -711,7 +765,7 @@ class Scanner:
                 found.identify(f.rel_path, {titles.identity_name(title, config)}, METHOD_TITLE_ID)
 
     def _untrimmed(
-        self, platform, root: Path, unmatched, dat: Dat, found: "Found", progress
+        self, platform, root: Path, unmatched, dat: Dat, found: "Found", progress, sha1, named
     ) -> None:
         """A trimmed card image is the DAT's entry once padded back to the card's size."""
         profile = self.settings.platforms.profiles[platform]
@@ -733,7 +787,7 @@ class Scanner:
             except (OSError, zipfile.BadZipFile, KeyError):
                 return None
 
-        for f in progress.each("Checking trimmed images", unmatched):
+        for f in progress.each(f"Checking trimmed images{named}", unmatched):
             card = found.cards.get(f.rel_path)
             if card is None or not card[0].trimmed:
                 continue
@@ -741,7 +795,9 @@ class Scanner:
             crc = found.cache.get(f, name, lambda f=f, i=info, m=member: read(f, i, m))
             if crc is None:
                 continue
-            found.identify(f.rel_path, index.get((crc, info.image_size), set()), METHOD_UNTRIMMED)
+            found.identify(
+                f.rel_path, index.get((crc, info.image_size), set()), METHOD_UNTRIMMED, dat=sha1
+            )
 
     def _rvz_sha1(self, path: Path) -> str | None:
         dolphin = self.settings.dolphin
@@ -750,13 +806,17 @@ class Scanner:
         except discs.DiscError:
             return None
 
-    def _suggest(self, dat: Dat, unmatched: list[InventoryFile], found: "Found", progress) -> None:
+    def _suggest(
+        self, dat_of_name, dats: list[Dat], unmatched: list[InventoryFile], found: "Found", progress
+    ) -> None:
+        """Every DAT's names that look like the file's, closest first."""
         config = self.settings.fuzzy
-        names = [g.name for g in dat.games]
+        names = list(dat_of_name)
         by_serial: dict[str, list[str]] = {}
-        for g in dat.games:
-            if g.serial:
-                by_serial.setdefault(g.serial.upper(), []).append(g.name)
+        for dat in dats:
+            for g in dat.games:
+                if g.serial and g.name not in by_serial.get(g.serial.upper(), []):
+                    by_serial.setdefault(g.serial.upper(), []).append(g.name)
         for f in progress.each("Suggesting names", unmatched):
             best = fuzzy.suggestions(config, f.rel_path, names)
             card = found.cards.get(f.rel_path)
@@ -784,16 +844,22 @@ class Scanner:
             threshold = config.auto_match_threshold
             single = payload_count(found.hashes.get(f.rel_path, [])) <= 1
             if best and single and threshold is not None and best[0][1] >= threshold:
-                found.identify(f.rel_path, {best[0][0]}, METHOD_FUZZY, best[0][1])
+                found.identify(
+                    f.rel_path,
+                    {best[0][0]},
+                    METHOD_FUZZY,
+                    best[0][1],
+                    dat=dat_of_name.get(best[0][0], NO_DAT),
+                )
 
-    def _apply_manual(self, conn, label, files, found: "Found") -> None:
+    def _apply_manual(self, conn, label, files, found: "Found", dat_of_name) -> None:
         present = {f.rel_path for f in files}
         for rel_path, game in conn.execute(
             "SELECT rel_path, game_name FROM manual_identity WHERE folder_label = ?", (label,)
         ):
             if rel_path in present:
                 found.forget(rel_path)
-                found.identify(rel_path, {game}, METHOD_MANUAL)
+                found.identify(rel_path, {game}, METHOD_MANUAL, dat=dat_of_name.get(game, NO_DAT))
 
     def _members(
         self, root: Path, files: list[InventoryFile], progress: Progress, cache: FileCache
@@ -817,7 +883,7 @@ class Scanner:
             members += [(f.rel_path, archives.Member(*m)) for m in value["members"]]
         return members, problems
 
-    def _store(self, conn, label, files, dat_sha1, found: "Found") -> None:
+    def _store(self, conn, label, files, found: "Found") -> None:
         conn.execute("BEGIN")
         try:
             # Files an apply moved to discarded/ keep their rows (and identities) so the table
@@ -839,7 +905,7 @@ class Scanner:
                 "dat_sha1, score) VALUES (?, ?, ?, ?, ?, ?)",
                 [
                     (label, rel, game, method, dat_sha1, score)
-                    for rel, game, method, score in found.identities
+                    for rel, game, method, score, dat_sha1 in found.identities
                 ],
             )
             conn.executemany(
@@ -902,10 +968,12 @@ class Found:
 
     members: list[tuple[str, archives.Member]]
     problems: list[tuple[str, str]]
-    # (rel_path, game_name, method, score)
-    identities: list[tuple[str, str, str, float]] = field(default_factory=list)
+    # (rel_path, game_name, method, score, the DAT's sha1 or NO_DAT)
+    identities: list[tuple[str, str, str, float, str]] = field(default_factory=list)
     # rel_path -> the method that identified it first
     identified: dict[str, str] = field(default_factory=dict)
+    # rel_path -> the DAT that identified it (NO_DAT: an online lookup or a title ID)
+    dat_of: dict[str, str] = field(default_factory=dict)
     hashes: dict[str, list[ContentHash]] = field(default_factory=dict)
     # (rel_path, service) -> (status, detail)
     lookups: dict[tuple[str, str], tuple[str, str]] = field(default_factory=dict)
@@ -921,14 +989,16 @@ class Found:
     # What earlier scans read from unchanged files; this scan's reads are added to it.
     cache: FileCache = field(default_factory=lambda: FileCache(None, ""))
 
-    def identify(self, rel_path, games, method, score=CHECKSUM_SCORE) -> None:
+    def identify(self, rel_path, games, method, score=CHECKSUM_SCORE, dat=NO_DAT) -> None:
         for game in sorted(games):
-            self.identities.append((rel_path, game, method, score))
+            self.identities.append((rel_path, game, method, score, dat))
             self.identified.setdefault(rel_path, method)
+            self.dat_of.setdefault(rel_path, dat)
 
     def forget(self, rel_path: str) -> None:
         self.identities = [i for i in self.identities if i[0] != rel_path]
         self.identified.pop(rel_path, None)
+        self.dat_of.pop(rel_path, None)
 
 
 def fail_interrupted(conn: sqlite3.Connection) -> None:
