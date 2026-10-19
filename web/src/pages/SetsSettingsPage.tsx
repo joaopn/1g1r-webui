@@ -48,8 +48,8 @@ export function SetsSettingsPage() {
 
   return (
     <Page
-      title="Sets"
-      intro="A set is one platform folder with its label. Hidden sets leave the sidebar and Home but stay sets: their folder cannot be added again until they are removed. Removing a set touches no file."
+      title="Folders"
+      intro="Each platform folder you added (a set), with its label. Hidden ones leave the sidebar and Home but stay added: their folder cannot be added again until removed. Removing one touches no file."
     >
       {sets.length === 0 ? (
         <p className="text-muted-foreground text-sm">No sets yet.</p>

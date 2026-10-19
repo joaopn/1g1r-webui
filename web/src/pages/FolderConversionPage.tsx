@@ -50,8 +50,8 @@ export function FolderConversionPage() {
         <span className="text-muted-foreground">
           · accepts {target?.accepts.join(", ")} as they are · set for every {platformName} folder
           in{" "}
-          <Link to="/settings/platforms" className="underline underline-offset-2">
-            Settings → Platforms &amp; files
+          <Link to="/settings/conversion-targets" className="underline underline-offset-2">
+            Settings → Conversion targets
           </Link>
         </span>
       </ScanPanel>

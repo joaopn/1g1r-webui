@@ -65,7 +65,7 @@ export function PlatformsSettingsPage() {
   const targets = data.data.targets;
   return (
     <Page
-      title="Platforms & files"
+      title="Conversion targets"
       intro="The target format applies to every folder of that platform."
     >
       <div className="overflow-x-auto rounded-lg border border-border bg-card">

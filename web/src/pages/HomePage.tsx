@@ -95,8 +95,8 @@ export function HomePage() {
             <>
               {" "}
               {formatCount(hidden)} hidden {hidden === 1 ? "set is" : "sets are"} left out (
-              <Link to="/settings/sets" className="underline underline-offset-2">
-                Settings → Sets
+              <Link to="/settings/folders" className="underline underline-offset-2">
+                Settings → Folders
               </Link>
               ).
             </>

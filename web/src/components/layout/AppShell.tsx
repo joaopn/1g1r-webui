@@ -79,8 +79,12 @@ export function navGroups(folders: FolderCard[], meta: Meta | undefined): NavGro
       icon: SettingsIcon,
       children: [
         { to: "/settings/dat-sources", label: "Which DATs to use?", title: "Which DATs to use?" },
-        { to: "/settings/sets", label: "Sets", title: "Sets" },
-        { to: "/settings/platforms", label: "Platforms & files", title: "Platforms & files" },
+        { to: "/settings/folders", label: "Folders", title: "Folders" },
+        {
+          to: "/settings/conversion-targets",
+          label: "Conversion targets",
+          title: "Conversion targets",
+        },
         { to: "/settings/dats", label: "Platform DATs", title: "Platform DATs" },
         { to: "/settings/lookups", label: "Online lookups", title: "Online lookups" },
         { to: "/settings/advanced", label: "Advanced", title: "Advanced" },
@@ -169,7 +173,7 @@ function NavGroup({ group, onNavigate }: { group: NavGroupItem; onNavigate?: () 
 function NavItems({ onNavigate }: { onNavigate?: () => void }) {
   const meta = useMeta();
   const folders = useFolders();
-  // Hidden sets stay out of the sidebar (Settings → Sets lists them).
+  // Hidden sets stay out of the sidebar (Settings → Folders lists them).
   const groups = navGroups(
     (folders.data ?? []).filter((f) => !f.hidden),
     meta.data,

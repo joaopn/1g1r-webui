@@ -96,7 +96,7 @@ export function AddPlatformDialog({
             />
             <p className="text-muted-foreground text-xs">
               Only supported platforms are listed. The target format is set per platform in Settings
-              → Platforms &amp; files.
+              → Conversion targets.
             </p>
           </div>
 

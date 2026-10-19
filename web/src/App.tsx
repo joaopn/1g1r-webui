@@ -23,8 +23,14 @@ export function App() {
         <Route path="folders/:label/discarded" element={<FolderDiscardedPage />} />
         <Route path="settings" element={<Navigate to="/settings/dat-sources" replace />} />
         <Route path="settings/dat-sources" element={<DatSourcesPage />} />
-        <Route path="settings/sets" element={<SetsSettingsPage />} />
-        <Route path="settings/platforms" element={<PlatformsSettingsPage />} />
+        <Route path="settings/folders" element={<SetsSettingsPage />} />
+        <Route path="settings/conversion-targets" element={<PlatformsSettingsPage />} />
+        {/* The pages' former addresses. */}
+        <Route path="settings/sets" element={<Navigate to="/settings/folders" replace />} />
+        <Route
+          path="settings/platforms"
+          element={<Navigate to="/settings/conversion-targets" replace />}
+        />
         <Route path="settings/dats" element={<DatsSettingsPage />} />
         <Route path="settings/lookups" element={<LookupsSettingsPage />} />
         <Route path="settings/advanced" element={<AdvancedSettingsPage />} />

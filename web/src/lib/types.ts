@@ -117,7 +117,7 @@ export type FolderInfo = {
   target: string;
   discarded_to: string;
   delete_originals: boolean;
-  /** Hidden from the sidebar and Home; still a set (Settings → Sets). */
+  /** Hidden from the sidebar and Home; still a set (Settings → Folders). */
   hidden: boolean;
 };
 
