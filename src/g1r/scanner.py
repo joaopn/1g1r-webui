@@ -413,6 +413,13 @@ class Scanner:
             self.settings, root, folder.platform, self.store.ignored_filenames(library)
         )
         cache = FileCache(conn, label, reuse=not full)
+        igir_cache = igir.cache_path(self.settings, label)
+        if full:
+            igir_cache.unlink(missing_ok=True)
+        run_igir = {
+            "cache": igir_cache,
+            "timeout": igir.time_limit(self.settings, sum(f.size for f in files)),
+        }
         found = Found(*self._members(root, files, progress, cache), cache=cache)
         found.byte_orders = read_byte_orders(
             self.settings, folder.platform, root, files, found.members, progress, cache
@@ -480,7 +487,7 @@ class Scanner:
             dat = next(d for e, d in dats if e is entry)
             named = f" ({self._source_label(entry)})" if len(dats) > 1 else ""
             self._dat_pass(
-                entry, dat, named, folder.platform, root, roms, unmatched, found, progress, full
+                entry, dat, named, folder.platform, root, roms, unmatched, found, progress, run_igir
             )
         if not duplicates_checked:
             self._duplicates(root, folder.platform, files, found, progress)
@@ -515,29 +522,28 @@ class Scanner:
         return source.label if source else entry.id
 
     def _dat_pass(
-        self, entry, dat: Dat, named, platform, root, roms, unmatched, found, progress, full
+        self, entry, dat: Dat, named, platform, root, roms, unmatched, found, progress, run_igir
     ) -> None:
         """One DAT's turn: igir's checksum match, then the header-stripped, byte-order and
-        trimmed-image checks, on the files no earlier step identified."""
+        trimmed-image checks, on the files no earlier step identified. `run_igir`: the
+        folder's igir cache and time limit."""
         sha1 = entry.version["sha1"]
         dat_file = self.settings.paths.data_dir / entry.version["file"]
         modes = self.settings.platforms.profiles[platform].igir_merge_modes
         # igir reports nothing until it is done: this step has no file count.
         progress.stage(f"Matching checksums with igir{named}")
-        # A full scan has igir hash every file again too.
-        fresh = {"fresh": True} if full else {}
         if modes:
             # Arcade: each mode identifies the sets built its way; none misidentifies.
             by_path: dict[str, set[str]] = {}
             for mode in modes:
                 found_now = igir.identified_files(
-                    self.report_runner(self.settings, dat_file, root, merge=mode, **fresh)
+                    self.report_runner(self.settings, dat_file, root, merge=mode, **run_igir)
                 )
                 for path, games in found_now.items():
                     by_path.setdefault(path, set()).update(games)
         else:
             by_path = igir.identified_files(
-                self.report_runner(self.settings, dat_file, root, **fresh)
+                self.report_runner(self.settings, dat_file, root, **run_igir)
             )
         for f in roms:
             if f.rel_path not in found.identified:

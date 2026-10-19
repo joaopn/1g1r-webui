@@ -39,7 +39,7 @@ def setup(make_settings, roms_root):
     settings = make_settings({"grouping": {"retool_clonelists_dir": str(DATA / "none")}})
     libretro = (DATA / "nes-libretro.dat").read_bytes()
 
-    def report(settings_, dat_file, input_dir):
+    def report(settings_, dat_file, input_dir, **_):
         return [igir.ReportRow(n, "FOUND", (str(input_dir / f"{n}.zip"),)) for n in NAMES]
 
     app = create_app(settings, fetch=lambda url: libretro, report_runner=report)

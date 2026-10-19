@@ -40,7 +40,7 @@ def dc(make_settings, roms_root):
     folder.mkdir()
     (roms_root / "discarded").mkdir()
     settings = make_settings({"chdman": {"timeout_seconds": 60}})
-    with TestClient(create_app(settings, report_runner=lambda *a: [])) as client:
+    with TestClient(create_app(settings, report_runner=lambda *a, **_: [])) as client:
         body = {"platform": "dc", "mount": "roms", "path": "dc", "label": "dc"}
         assert client.post("/api/folders", json=body).status_code == HTTPStatus.CREATED
         yield client, folder

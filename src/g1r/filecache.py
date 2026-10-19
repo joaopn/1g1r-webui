@@ -2,7 +2,8 @@
 
 Reading archives, headers and checksums is most of a scan's time, and none of it depends
 on the DAT, so a quick scan reuses it for every file whose size and mtime are unchanged.
-igir keeps its own cache. A full scan reads everything again (and stores what it read).
+igir keeps its own cache, one file per folder. A full scan reads everything again (and
+stores what it read), and deletes the folder's igir cache.
 
 A step's name includes a fingerprint of the settings its result depends on, so changing
 a header rule or a hashing limit reads the files again rather than trusting old results.

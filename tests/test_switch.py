@@ -44,7 +44,7 @@ def switch(make_settings, roms_root):
         (folder / f"{name}.nsp").write_bytes(name.encode())
     (folder / "Super Game (USA) [0100AAAA00010000].xci").write_bytes(b"cart")
     (folder / "no id.nsp").write_bytes(b"?")
-    with TestClient(create_app(make_settings(), report_runner=lambda *a: [])) as client:
+    with TestClient(create_app(make_settings(), report_runner=lambda *a, **_: [])) as client:
         body = {"platform": "switch", "mount": "roms", "path": "switch", "label": "switch"}
         assert client.post("/api/folders", json=body).status_code == HTTPStatus.CREATED
         yield client, folder, roms_root

@@ -51,7 +51,7 @@ def n64(make_settings, roms_root):
     folder = roms_root / "n64"
     folder.mkdir()
     (roms_root / "discarded").mkdir()
-    with TestClient(create_app(make_settings(), report_runner=lambda *a: [])) as client:
+    with TestClient(create_app(make_settings(), report_runner=lambda *a, **_: [])) as client:
         body = {"platform": "n64", "mount": "roms", "path": "n64", "label": "n64"}
         assert client.post("/api/folders", json=body).status_code == HTTPStatus.CREATED
         yield client, folder

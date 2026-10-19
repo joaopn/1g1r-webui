@@ -283,9 +283,10 @@ class DatsConfig(_Strict):
 
 class IgirConfig(_Strict):
     binary: str
-    cache_file: str
+    cache_dir: str
     work_dir: str
     timeout_seconds: float = Field(gt=0)
+    min_bytes_per_second: float = Field(gt=0)
 
 
 HASHEOUS_NAME_FROM = ("rom", "game")

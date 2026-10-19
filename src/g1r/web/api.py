@@ -19,6 +19,7 @@ from g1r import (
     discarded,
     filecache,
     hasheous,
+    igir,
     journal,
     matching,
     mounts,
@@ -463,6 +464,7 @@ def build_router(
             lambda lib: setattr(lib, "folders", [f for f in lib.folders if f.label != label])
         )
         filecache.forget(conn, label)
+        igir.cache_path(settings, label).unlink(missing_ok=True)
 
     @router.put("/folders/{label}/hidden")
     def hide_folder(label: str, body: Hidden):

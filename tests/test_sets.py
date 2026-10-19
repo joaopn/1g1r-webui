@@ -57,7 +57,7 @@ def library(make_settings, roms_root):
     for name in ("nes", "Mega Drive", "psvita", "misc", "gb", "other/nes"):
         (roms_root / "roms" / name).mkdir(parents=True)
     (roms_root / "roms" / "nes" / "Game (USA).zip").write_bytes(b"z")
-    with TestClient(create_app(make_settings(), report_runner=lambda *a: [])) as client:
+    with TestClient(create_app(make_settings(), report_runner=lambda *a, **_: [])) as client:
         body = {"platform": "gb", "mount": "roms", "path": "roms/gb", "label": "gb"}
         assert client.post("/api/folders", json=body).status_code == HTTPStatus.CREATED
         # A set elsewhere already uses the label "nes".

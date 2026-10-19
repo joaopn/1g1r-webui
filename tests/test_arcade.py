@@ -43,7 +43,7 @@ def mvs(make_settings, roms_root):
     (folder / "loose.bin").write_bytes(b"chip")
     modes = []
 
-    def report(settings, dat_file, root, merge=None):
+    def report(settings, dat_file, root, merge=None, **_):
         modes.append(merge)
         # The split run finds the parent and the BIOS; the non-merged run the clone.
         found = {"split": [PARENT, BIOS], "nonmerged": [CLONE]}[merge]

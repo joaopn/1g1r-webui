@@ -63,7 +63,7 @@ def env(make_settings, roms_root):
         "nes.dat",
     )
 
-    def fake_report(settings_, dat_file, input_dir):
+    def fake_report(settings_, dat_file, input_dir, **_):
         assert dat_file.is_file()
         return [
             igir.ReportRow("Known (USA)", "FOUND", (str(input_dir / "Known (USA).zip"),)),
@@ -191,7 +191,7 @@ def test_scan_writes_its_progress(env):
     settings, store, registry, conn, _ = env
     seen = []
 
-    def report(settings_, dat_file, input_dir):
+    def report(settings_, dat_file, input_dir, **_):
         row = conn.execute("SELECT stage, files_done, files_total FROM scan").fetchone()
         seen.append(tuple(row))
         return []
@@ -277,9 +277,12 @@ def test_a_changed_file_is_read_again_and_a_gone_one_forgotten(env, roms_root):
 def test_a_full_scan_reads_everything_and_igir_hashes_afresh(env, monkeypatch):
     settings, store, registry, conn, _ = env
     calls = []
+    cache = igir.cache_path(settings, "nes")
 
     def report(settings_, dat_file, input_dir, **options):
-        calls.append(options)
+        calls.append((options, cache.exists()))
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        cache.write_text("hashed")
         return []
 
     folder_scanner = scanner.Scanner(settings, store, registry, report)
@@ -295,7 +298,28 @@ def test_a_full_scan_reads_everything_and_igir_hashes_afresh(env, monkeypatch):
     assert read == []
     folder_scanner.run(conn, folder_scanner.start(conn, "nes"), "nes", full=True)
     assert sorted(read) == ["Known (USA).zip", "Reheadered (Japan).zip"]
-    assert calls == [{}, {}, {"fresh": True}]
+    # igir keeps the folder's cache between scans; a full scan starts it again.
+    assert [present for _, present in calls] == [False, True, False]
+    assert all(options["cache"] == cache for options, _ in calls)
+
+
+def test_igir_may_take_longer_on_a_larger_folder(env, roms_root):
+    """B4: a fixed limit stopped igir on a large disc library before it finished."""
+    settings, store, registry, conn, _ = env
+    limits = []
+
+    def report(settings_, dat_file, input_dir, **options):
+        limits.append(options["timeout"])
+        return []
+
+    folder_scanner = scanner.Scanner(settings, store, registry, report)
+    folder_scanner.run(conn, folder_scanner.start(conn, "nes"), "nes")
+    with open(roms_root / "nes" / "Big (Europe).nes", "wb") as big:
+        big.truncate(int(settings.igir.min_bytes_per_second * settings.igir.timeout_seconds))
+    folder_scanner.run(conn, folder_scanner.start(conn, "nes"), "nes")
+    small, large = limits
+    assert small > settings.igir.timeout_seconds
+    assert large - small >= settings.igir.timeout_seconds
 
 
 def test_cache_steps_change_with_the_settings_they_depend_on():
@@ -327,7 +351,7 @@ def test_each_dat_in_the_order_identifies_what_the_ones_before_it_missed(env, ro
     first, second = registry.active_versions(conn, library, "nes")
     asked = []
 
-    def report(settings_, dat_file, input_dir):
+    def report(settings_, dat_file, input_dir, **_):
         asked.append(dat_file.name)
         if dat_file.name == Path(first["file"]).name:
             return [

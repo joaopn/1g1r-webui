@@ -44,19 +44,30 @@ def identified_files(rows: list[ReportRow]) -> dict[str, set[str]]:
     return found
 
 
+def cache_path(settings: Settings, label: str) -> Path:
+    """The folder's igir cache: a full scan deletes it, so igir hashes every file again."""
+    return settings.paths.data_dir / settings.igir.cache_dir / f"{label}.cache"
+
+
+def time_limit(settings: Settings, size_bytes: int) -> float:
+    """How long one igir run over a folder of this size may take."""
+    config = settings.igir
+    return config.timeout_seconds + size_bytes / config.min_bytes_per_second
+
+
 def run_report(
     settings: Settings,
     dat_file: Path,
     input_dir: Path,
+    *,
+    cache: Path,
+    timeout: float,
     merge: str | None = None,
-    fresh: bool = False,
 ) -> list[ReportRow]:
-    """`merge`: igir's --merge-roms mode, for arcade sets. `fresh`: hash every file again,
-    without igir's cache (a full scan)."""
-    data_dir = settings.paths.data_dir
-    work = data_dir / settings.igir.work_dir
+    """`cache`: igir's cache file (`cache_path`). `merge`: igir's --merge-roms mode, for
+    arcade sets."""
+    work = settings.paths.data_dir / settings.igir.work_dir
     work.mkdir(parents=True, exist_ok=True)
-    cache = data_dir / settings.igir.cache_file
     cache.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=work) as tmp:
         report = Path(tmp) / "report.csv"
@@ -67,15 +78,14 @@ def run_report(
             str(dat_file),
             "--input",
             str(input_dir),
-            *(["--disable-cache"] if fresh else ["--cache-path", str(cache)]),
+            "--cache-path",
+            str(cache),
             "--report-output",
             str(report),
             *(["--merge-roms", merge] if merge else []),
         ]
         try:
-            result = subprocess.run(
-                command, capture_output=True, text=True, timeout=settings.igir.timeout_seconds
-            )
+            result = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
         except (OSError, subprocess.TimeoutExpired) as exc:
             raise IgirError(f"could not run igir: {exc}") from exc
         if result.returncode != 0 or not report.is_file():

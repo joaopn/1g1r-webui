@@ -56,7 +56,7 @@ def folder_of(make_settings, roms_root):
     def make(platform: str):
         folder = roms_root / platform
         folder.mkdir()
-        client = TestClient(create_app(make_settings(), report_runner=lambda *a: []))
+        client = TestClient(create_app(make_settings(), report_runner=lambda *a, **_: []))
         client.__enter__()
         clients.append(client)
         body = {"platform": platform, "mount": "roms", "path": platform, "label": platform}
@@ -73,7 +73,7 @@ def n3ds(make_settings, roms_root):
     folder = roms_root / "3ds"
     folder.mkdir()
     (roms_root / "discarded").mkdir()
-    with TestClient(create_app(make_settings(), report_runner=lambda *a: [])) as client:
+    with TestClient(create_app(make_settings(), report_runner=lambda *a, **_: [])) as client:
         body = {"platform": "3ds", "mount": "roms", "path": "3ds", "label": "3ds"}
         assert client.post("/api/folders", json=body).status_code == HTTPStatus.CREATED
         yield client, folder

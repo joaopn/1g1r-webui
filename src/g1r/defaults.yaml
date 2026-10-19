@@ -663,11 +663,15 @@ dats:
 
 igir:
   binary: igir
-  # igir's checksum cache, relative to the data directory.
-  cache_file: cache/igir.cache
+  # igir's checksum caches, one file per folder, relative to the data directory. igir saves
+  # its cache every few minutes, so a run that is stopped keeps most of what it hashed.
+  cache_dir: cache/igir
   # Scratch space for igir's report files, relative to the data directory.
   work_dir: cache/igir-work
+  # igir's time limit for one run: this, plus the folder's size read at min_bytes_per_second
+  # (igir decompresses each CHD to hash it; a large disc library takes hours the first time).
   timeout_seconds: 3600
+  min_bytes_per_second: 2097152
 
 # Online identification for files the local DAT misses. Off until switched on in
 # Settings -> Online lookups; only content hashes (CRC32, MD5, SHA1) are sent.
