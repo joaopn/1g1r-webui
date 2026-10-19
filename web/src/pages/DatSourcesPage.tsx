@@ -1,5 +1,5 @@
 import { useMutation } from "@tanstack/react-query";
-import { ArrowDown, ArrowUp } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronRight } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
@@ -228,6 +228,114 @@ export function DatSourcesPage() {
           Save order
         </Button>
       </div>
+      <Faq />
     </Page>
+  );
+}
+
+/** Questions asked while choosing DATs, answered. */
+const FAQ: { q: string; a: ReactNode }[] = [
+  {
+    q: "What is the difference between No-Intro (DAT-o-MATIC) and the libretro-database mirror?",
+    a: (
+      <>
+        <p>
+          Same DATs, same people. No-Intro catalogues cartridge and digital dumps; DAT-o-MATIC is
+          their website, where the original DATs are downloaded. libretro-database is a GitHub
+          repository kept by the RetroArch team with copies of those DATs, cut down for RetroArch's
+          own scanner. Both name games the same way.
+        </p>
+        <p>
+          The copy is one click away, but it often keeps one file per game (a multi-disk game in one
+          archive does not match it) and drops the parent/clone links. For most cartridge platforms,
+          one file per game, it works as well; for Amiga or C64, upload No-Intro's.
+        </p>
+      </>
+    ),
+  },
+  {
+    q: 'What does "identification only" mean?',
+    a: (
+      <p>
+        The DAT has no parent/clone links. It identifies files as well as any other, but cannot say
+        which games are versions of each other, so grouping falls back to Retool's clone lists and
+        to the DAT names.
+      </p>
+    ),
+  },
+  {
+    q: "How are DATs used, exactly?",
+    a: (
+      <ol className="list-decimal space-y-1 pl-4">
+        <li>
+          <strong>Matching</strong>: each file's checksums are compared with the DATs, in the order
+          above. igir matches a multi-file game only when every file the DAT lists is in the
+          archive. The file gets the DAT's game name; its own file name plays no part.
+        </li>
+        <li>
+          <strong>Grouping</strong>: the DAT's parent/clone links say which names are versions of
+          one game. Without them, Retool's clone lists (kept by hand against No-Intro names), then
+          the DAT names with region, language and revision removed; a tag that tells games apart is
+          kept, so different games are never joined.
+        </li>
+        <li>
+          <strong>Ranking</strong>: the tags in each DAT name (region, languages, revision,
+          pre-release, TOSEC dump flags) decide which version is kept.
+        </li>
+      </ol>
+    ),
+  },
+  {
+    q: "So libretro only differs in files per game and grouping?",
+    a: (
+      <p>
+        Yes. Matching is by checksum with either. The missing parent/clone links only change how
+        versions are grouped, through Retool and names instead. Once a No-Intro DAT is in a
+        platform's order, its links also cover the names libretro identified, since the names are
+        the same.
+      </p>
+    ),
+  },
+  {
+    q: "What happens to one disk of a game that another DAT lists whole?",
+    a: (
+      <p>
+        libretro may list only Disk 2 of a game, so a loose Disk 2 file matches it as the game,
+        while No-Intro matches the archive holding every disk. Both become versions of one game; the
+        lone disk is marked incomplete and is never kept over the whole one.
+      </p>
+    ),
+  },
+  {
+    q: "Does a quick scan skip the DATs?",
+    a: (
+      <p>
+        No. What a scan reads from each file (archive contents, headers, checksums) is the same
+        whatever the DAT, so a quick scan reuses it for unchanged files. Matching against the DATs,
+        in their current order, runs on every scan.
+      </p>
+    ),
+  },
+];
+
+function Faq() {
+  return (
+    <details className="group rounded-lg border border-border bg-card" data-testid="dat-faq">
+      <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 font-medium [&::-webkit-details-marker]:hidden">
+        <ChevronRight
+          className="size-4 text-muted-foreground transition-transform group-open:rotate-90 motion-reduce:transition-none"
+          aria-hidden="true"
+        />
+        Questions and answers
+      </summary>
+      <dl className="space-y-4 border-border border-t px-4 py-3 text-sm">
+        {FAQ.map((item) => (
+          <div key={item.q}>
+            <dt className="font-medium">{item.q}</dt>
+            <dd className="mt-1 space-y-2 text-muted-foreground">{item.a}</dd>
+          </div>
+        ))}
+      </dl>
+    </details>
   );
 }

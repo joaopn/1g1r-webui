@@ -41,3 +41,22 @@ test("explains each source and saves the global order", async () => {
     expect(sent).toEqual([{ order: ["libretro", "nointro", "hasheous"], off: ["hasheous"] }]),
   );
 });
+
+test("the questions and answers start collapsed", async () => {
+  vi.stubGlobal("fetch", async (url: string) =>
+    url.endsWith("/dat-order")
+      ? new Response(JSON.stringify(ORDER))
+      : new Response(JSON.stringify({ lookups: { hasheous: true, screenscraper: true } })),
+  );
+  queryClient.clear();
+  render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>
+        <DatSourcesPage />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+  const faq = await screen.findByTestId("dat-faq");
+  expect(faq).not.toHaveAttribute("open");
+  expect(within(faq).getByText(/libretro-database mirror\?/)).toBeInTheDocument();
+});
