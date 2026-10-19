@@ -176,6 +176,15 @@ export type Version = {
   /** The readable title: the DAT description for arcade sets, else the DAT name. */
   title: string;
   method: string;
+  /** The DAT that identified it (null: an online lookup or a title ID). */
+  dat: {
+    source: string;
+    /** Short, for the table: "No-Intro", "libretro". */
+    label: string;
+    source_label: string;
+    version: string | null;
+    header_name: string;
+  } | null;
   probability: number;
   regions: string[];
   languages: string[];

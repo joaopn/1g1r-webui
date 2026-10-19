@@ -120,6 +120,7 @@ const version = (
   game_name: rel.replace(/\.zip$/, ""),
   title: rel.replace(/\.zip$/, ""),
   method: "dat-checksum",
+  dat: null,
   probability: 1,
   regions,
   languages: [],

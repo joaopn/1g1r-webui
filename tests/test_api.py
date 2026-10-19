@@ -394,3 +394,14 @@ def test_unmatched_files_point_to_screenscraper_until_it_looks_them_up(setup, mo
     assert SCREENSCRAPER_HINT in client.get("/api/folders").json()[0]["warnings"]
     assert client.put("/api/settings/lookups", json={"screenscraper": True}).status_code == 200
     assert SCREENSCRAPER_HINT not in client.get("/api/folders").json()[0]["warnings"]
+
+
+def test_each_version_names_the_dat_that_identified_it(setup):
+    client, _, _ = setup
+    scanned(client)
+    games = client.get("/api/folders/nes/games").json()
+    dats = {v["dat"]["label"] for g in games for v in g["versions"]}
+    version = games[0]["versions"][0]
+    assert len(dats) == 1 and dats <= {"uploaded DAT", "No-Intro"}
+    assert version["dat"]["header_name"] == "Nintendo - Nintendo Entertainment System"
+    assert version["dat"]["source_label"] in ("Uploaded file", "No-Intro (DAT-o-MATIC)")

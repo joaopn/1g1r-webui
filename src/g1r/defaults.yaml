@@ -636,6 +636,7 @@ dats:
   sources:
     libretro:
       label: libretro-database mirror
+      short_label: libretro
       # {family} is the family's libretro_dir, {name} the platform's DAT name.
       url_template: "https://raw.githubusercontent.com/libretro/libretro-database/master/metadat/{family}/{name}.dat"
       # The mirror has no parent/clone data and lists headered and headerless NES
@@ -647,11 +648,13 @@ dats:
       families: [nointro]
     nointro:
       label: No-Intro (DAT-o-MATIC)
+      short_label: No-Intro
       website: "https://datomatic.no-intro.org/index.php?page=download&s=64&op=daily"
       identification_only: false
       families: [nointro]
     redump:
       label: redump.info
+      short_label: Redump
       # One request per click; {system} is the platform's redump_system. The answer is a zip
       # holding one Logiqx DAT with serials and categories.
       url_template: "https://redump.info/datfile/{system}/serial,version"
@@ -660,6 +663,7 @@ dats:
       families: [redump]
     fbneo:
       label: FinalBurn Neo (GitHub)
+      short_label: FBNeo
       # {dat_file} is the platform's dat_file. Parent/clone and BIOS data included.
       url_template: "https://raw.githubusercontent.com/libretro/FBNeo/master/dats/{dat_file}.dat"
       website: "https://github.com/libretro/FBNeo/tree/master/dats"
@@ -667,6 +671,7 @@ dats:
       families: [fbneo]
     tosec:
       label: TOSEC (tosecdev.org)
+      short_label: TOSEC
       website: "https://www.tosecdev.org/downloads"
       # The newest release page, then its complete DAT pack (about 100 MB, every system).
       index_url: "https://www.tosecdev.org/downloads"
@@ -679,6 +684,7 @@ dats:
       families: [tosec]
     upload:
       label: Uploaded file
+      short_label: uploaded DAT
       identification_only: false
   download_timeout_seconds: 60
   max_upload_bytes: 536870912

@@ -40,6 +40,8 @@ class Version:
     # Its DAT lists fewer ROMs for this game than another DAT of the platform does (one disk
     # of a multi-disk game): never kept over a complete version.
     incomplete: bool = False
+    # The DAT that identified it ("" for an online lookup or a title ID).
+    dat_sha1: str = ""
 
 
 @dataclass
@@ -216,6 +218,7 @@ def build_groups(
                 game in parents,
                 known is not None and known.bios,
                 incomplete=known is not None and len(known.roms) < dats.most_roms.get(game, 0),
+                dat_sha1=dat_sha1,
             )
         )
     for group in groups.values():

@@ -42,7 +42,7 @@ import {
   type GameFilter,
   loadColumns,
   loadWidths,
-  METHOD_LABELS,
+  methodLabel,
   NO_FILTER,
   QUICK_VIEWS,
   quickView,
@@ -347,7 +347,7 @@ function MatchBar({
 }) {
   const identical =
     version.identical.length > 0 ? ` · identical to ${version.identical.join(", ")}` : "";
-  const label = (METHOD_LABELS[version.method]?.long ?? version.method) + identical;
+  const label = methodLabel(version).long + identical;
   const Icon = METHOD_ICONS[version.method];
   const manual = version.method === "manual" && onUnassign;
   return (
@@ -454,10 +454,8 @@ function versionCell(id: ColumnId, version: Version | null, ctx: CellContext) {
       );
     case "method":
       return (
-        <Cell key={id} title={METHOD_LABELS[version.method]?.long ?? version.method}>
-          <span className="text-muted-foreground">
-            {METHOD_LABELS[version.method]?.short ?? version.method}
-          </span>
+        <Cell key={id} title={methodLabel(version).long}>
+          <span className="text-muted-foreground">{methodLabel(version).short}</span>
         </Cell>
       );
     case "proposed":

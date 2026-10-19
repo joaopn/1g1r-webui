@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import type { Game } from "@/lib/types";
 import { GAMES, META } from "@/test/fixtures";
-import { COLUMNS_KEY } from "./columns";
+import { COLUMNS_KEY, methodLabel } from "./columns";
 import { GamesTable } from "./GamesTable";
 
 function renderTable(onKeep = vi.fn(), onLeave = vi.fn()) {
@@ -196,4 +196,25 @@ test("an identical copy shows where it goes", async () => {
   expect(
     screen.getByTitle(/^byte-identical .* · identical to Contra \(USA\)\.zip$/),
   ).toBeInTheDocument();
+});
+
+test("Matched by names the DAT that identified the version", () => {
+  const version = {
+    ...GAMES[0].versions[0],
+    method: "dat-headerless",
+    dat: {
+      source: "nointro",
+      label: "No-Intro",
+      source_label: "No-Intro (DAT-o-MATIC)",
+      version: "20261018",
+      header_name: "Nintendo - Nintendo Entertainment System (Headered)",
+    },
+  };
+  expect(methodLabel(version)).toEqual({
+    short: "No-Intro, no header",
+    long:
+      "checksum match in the DAT after removing a copier header · No-Intro (DAT-o-MATIC): " +
+      "Nintendo - Nintendo Entertainment System (Headered) (20261018)",
+  });
+  expect(methodLabel({ ...version, method: "hasheous", dat: null }).short).toBe("Hasheous");
 });

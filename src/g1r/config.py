@@ -228,6 +228,8 @@ class PlatformsConfig(_Strict):
 
 class DatSourceConfig(_Strict):
     label: str
+    # The source's name where space is short (the Matching table's "Matched by").
+    short_label: str
     identification_only: bool
     url_template: str | None = None
     website: str | None = None

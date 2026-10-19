@@ -182,7 +182,9 @@ def row_dict(row: sqlite3.Row | None) -> dict | None:
     return dict(row) if row is not None else None
 
 
-def game_dict(game: matching.GameRow) -> dict:
+def game_dict(game: matching.GameRow, dats: dict[str, dict] | None = None) -> dict:
+    """`dats`: sha1 -> what to say about that DAT (`dat_names`)."""
+    dats = dats or {}
     return {
         "key": game.group.key,
         "name": game.group.name,
@@ -197,6 +199,8 @@ def game_dict(game: matching.GameRow) -> dict:
                 "game_name": row.version.game_name,
                 "title": row.version.title or row.version.game_name,
                 "method": row.version.method,
+                # The DAT that identified it: its source and version.
+                "dat": dats.get(row.version.dat_sha1),
                 "probability": row.probability,
                 "regions": list(row.version.parsed.regions),
                 "languages": list(row.version.parsed.languages),
@@ -272,6 +276,20 @@ def build_router(
             profile.title_ids,
             dats,
         )
+
+    def dat_names(conn) -> dict[str, dict]:
+        """Every stored DAT by sha1: its source, short and full, and its version."""
+        found = {}
+        for row in conn.execute("SELECT sha1, source, version, header_name FROM dat_version"):
+            source = settings.dats.sources.get(row["source"])
+            found[row["sha1"]] = {
+                "source": row["source"],
+                "label": source.short_label if source else row["source"],
+                "source_label": source.label if source else row["source"],
+                "version": row["version"],
+                "header_name": row["header_name"],
+            }
+        return found
 
     def dat_order(conn, library: Library, platform: str) -> list[dict]:
         """The platform's identification order: each source's active DAT, and the online
@@ -866,7 +884,8 @@ def build_router(
         games = matching.game_rows(
             settings, conn, label, store.ranking_for(folder), produces(store.load(), folder, conn)
         )
-        return [game_dict(g) for g in games]
+        names = dat_names(conn)
+        return [game_dict(g, names) for g in games]
 
     @router.put("/folders/{label}/keep")
     def keep(label: str, body: KeepChoice, conn: Conn):
@@ -882,7 +901,7 @@ def build_router(
         )
         if game is None:
             raise not_found("no such game")
-        return game_dict(game)
+        return game_dict(game, dat_names(conn))
 
     @router.put("/folders/{label}/leave")
     def leave(label: str, body: LeaveAlone, conn: Conn):
@@ -898,7 +917,7 @@ def build_router(
         )
         if game is None:
             raise not_found("no such game")
-        return game_dict(game)
+        return game_dict(game, dat_names(conn))
 
     @router.put("/folders/{label}/ranking")
     def save_ranking(label: str, body: FolderRanking):

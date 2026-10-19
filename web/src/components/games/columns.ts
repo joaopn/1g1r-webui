@@ -115,6 +115,7 @@ export function unmatchedRow(file: UnmatchedFile): Row {
         game_name: "",
         title: "",
         method: "unmatched",
+        dat: null,
         probability: 0,
         regions: [],
         languages: [],
@@ -132,6 +133,21 @@ export function unmatchedRow(file: UnmatchedFile): Row {
         discard_reason: null,
       },
     ],
+  };
+}
+
+/**
+ * How a version was identified, naming its DAT: "No-Intro", "libretro, no header" in the
+ * table; the DAT's source, name and version in the tooltip.
+ */
+export function methodLabel(version: Version): { short: string; long: string } {
+  const known = METHOD_LABELS[version.method] ?? { short: version.method, long: version.method };
+  const dat = version.dat;
+  if (!dat) return known;
+  const which = `${dat.source_label}: ${dat.header_name}${dat.version ? ` (${dat.version})` : ""}`;
+  return {
+    short: version.method.startsWith("dat-") ? known.short.replace(/^DAT/, dat.label) : known.short,
+    long: `${known.long} · ${which}`,
   };
 }
 
@@ -234,7 +250,7 @@ export function sortValue(game: Game, id: ColumnId): SortValue {
     case "match":
       return version.probability;
     case "method":
-      return METHOD_LABELS[version.method]?.short ?? version.method;
+      return methodLabel(version).short;
     case "proposed":
       return game.versions.filter((v) => v.operation).length;
     default:
