@@ -289,16 +289,23 @@ class IgirConfig(_Strict):
 
 
 HASHEOUS_NAME_FROM = ("rom", "game")
+# "source": the source names games as the platform's DAT does (its system is the DAT's
+# name), so its name is taken. "dat_name": its answer identifies a file only with a name one
+# of the platform's DATs lists; any other name is a hint for the suggestions.
+HASHEOUS_TRUST = ("source", "dat_name")
 
 
 class HasheousSource(_Strict):
     label: str
     name_from: str
+    trust: str = "source"
 
     @model_validator(mode="after")
     def _known(self) -> "HasheousSource":
         if self.name_from not in HASHEOUS_NAME_FROM:
             raise ValueError(f"name_from must be one of {HASHEOUS_NAME_FROM}")
+        if self.trust not in HASHEOUS_TRUST:
+            raise ValueError(f"trust must be one of {HASHEOUS_TRUST}")
         return self
 
 

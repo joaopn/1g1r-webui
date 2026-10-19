@@ -18,6 +18,7 @@ from g1r import (
     decrypt,
     discarded,
     filecache,
+    hasheous,
     journal,
     matching,
     mounts,
@@ -1023,7 +1024,17 @@ def build_router(
             "hasheous": {
                 "site": settings.lookups.hasheous.site,
                 "url": settings.lookups.hasheous.url,
-                "sources": [s.label for s in settings.lookups.hasheous.sources.values()],
+                # Named like the platform's DAT: taken. The others: only a name a DAT lists.
+                "sources": [
+                    s.label
+                    for s in settings.lookups.hasheous.sources.values()
+                    if s.trust == hasheous.TRUST_SOURCE
+                ],
+                "other_sources": [
+                    s.label
+                    for s in settings.lookups.hasheous.sources.values()
+                    if s.trust != hasheous.TRUST_SOURCE
+                ],
                 "not_found_ttl_days": settings.lookups.hasheous.not_found_ttl_days,
             },
             "fuzzy": settings.fuzzy.model_dump(),

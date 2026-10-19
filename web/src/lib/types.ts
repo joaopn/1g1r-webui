@@ -315,7 +315,15 @@ export type SettingsData = {
   targets: Record<string, string>;
   ignored_filenames: string[];
   lookups: { hasheous: boolean };
-  hasheous: { site: string; url: string; sources: string[]; not_found_ttl_days: number };
+  hasheous: {
+    site: string;
+    url: string;
+    /** Named like the platform's DAT: their names are taken. */
+    sources: string[];
+    /** Named their own way: identify only with a name one of the platform's DATs lists. */
+    other_sources: string[];
+    not_found_ttl_days: number;
+  };
   fuzzy: { min_score: number; max_suggestions: number; auto_match_threshold: number | null };
   effective_yaml: string;
   library_file: string;

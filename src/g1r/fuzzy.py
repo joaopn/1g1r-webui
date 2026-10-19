@@ -10,12 +10,21 @@ from g1r.config import FuzzyConfig
 _NON_WORD = re.compile(r"[^0-9a-z]+")
 
 
+_TAGS = re.compile(r"\s*[(\[]")
+
+
 def normalise(name: str) -> str:
     return _NON_WORD.sub(" ", name.lower()).strip()
 
 
 def file_title(rel_path: str) -> str:
     return PurePosixPath(rel_path).stem
+
+
+def bare_title(name: str) -> str:
+    """A name without its bracketed tags: another database's tags ("(1987)(Nintendo)")
+    would only make it look less like the DAT's names."""
+    return _TAGS.split(name, maxsplit=1)[0].strip() or name
 
 
 def suggestions(

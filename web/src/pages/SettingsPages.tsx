@@ -486,8 +486,10 @@ export function LookupsSettingsPage() {
           </dd>
           <dt>Trusts</dt>
           <dd>
-            answers from {hasheous.sources.join(" and ")} for the folder's own platform; others are
-            shown, never used
+            answers for the folder's own platform: from {hasheous.sources.join(" and ")}, their
+            name; from {hasheous.other_sources.join(", ")}, only a name one of the platform's DATs
+            lists, their other names becoming suggestions. Answers for other platforms are shown,
+            never used
           </dd>
           <dt>Caches</dt>
           <dd>

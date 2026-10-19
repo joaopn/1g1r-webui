@@ -1,0 +1,74 @@
+{
+ "signatures": {
+  "TOSEC": [
+   {
+    "game": {
+     "name": "Tetris Rev 1",
+     "description": "",
+     "system": "Nintendo Game Boy",
+     "year": "1989",
+     "publisher": "Nintendo"
+    },
+    "rom": {
+     "name": "Tetris Rev 1 (1989)(Nintendo)(EU-US).gb",
+     "size": 32768,
+     "crc": "46df91ad",
+     "md5": "982ed5d2b12a0377eb14bcdc4123744e",
+     "sha1": "74591cc9501af93873f9a5d3eb12da12c0723bbc"
+    }
+   }
+  ],
+  "NoIntros": [
+   {
+    "game": {
+     "name": "Tetris",
+     "description": "Tetris (Japan) (En)",
+     "system": "Nintendo - Game Boy",
+     "year": "",
+     "publisher": ""
+    },
+    "rom": {
+     "name": "Tetris.gb",
+     "size": 32768,
+     "crc": "46df91ad",
+     "md5": "982ed5d2b12a0377eb14bcdc4123744e",
+     "sha1": "74591cc9501af93873f9a5d3eb12da12c0723bbc"
+    }
+   },
+   {
+    "game": {
+     "name": "Tetris",
+     "description": "Tetris (World) (Rev 1)",
+     "system": "Nintendo - Game Boy (Parent-Clone)",
+     "year": "",
+     "publisher": ""
+    },
+    "rom": {
+     "name": "Tetris (World) (Rev 1).gb",
+     "size": 32768,
+     "crc": "46df91ad",
+     "md5": "982ed5d2b12a0377eb14bcdc4123744e",
+     "sha1": "74591cc9501af93873f9a5d3eb12da12c0723bbc"
+    }
+   }
+  ],
+  "RetroAchievements": [
+   {
+    "game": {
+     "name": "Tetris",
+     "description": "Tetris",
+     "system": "Game Boy",
+     "year": "",
+     "publisher": ""
+    },
+    "rom": {
+     "name": "Tetris (World) (Rev 1).gb",
+     "size": 0,
+     "crc": "",
+     "md5": "982ed5d2b12a0377eb14bcdc4123744e",
+     "sha1": ""
+    }
+   }
+  ]
+ }
+}

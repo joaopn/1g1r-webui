@@ -474,6 +474,7 @@ class Scanner:
                     refresh_lookups,
                     progress,
                     entry.id,
+                    set(dat_of_name),
                 )
                 continue
             dat = next(d for e, d in dats if e is entry)
@@ -590,12 +591,13 @@ class Scanner:
             ]
 
     def _look_up(
-        self, conn, library, platform, root, unmatched, found, refresh, progress, service
+        self, conn, library, platform, root, unmatched, found, refresh, progress, service, dat_names
     ) -> list[str]:
         """Hasheous's turn: hash what is still unmatched and ask it, when switched on."""
         if service != hasheous.SERVICE or not library.lookups.hasheous:
             return []
         profile = self.settings.platforms.profiles[platform]
+        where = hasheous.platform(profile, dat_names)
         self._hash(platform, root, unmatched, found, progress, "Hashing unmatched files")
         notes = []
         for f in progress.each("Looking up unmatched files on Hasheous", unmatched):
@@ -614,7 +616,7 @@ class Scanner:
                     self.settings,
                     conn,
                     hashes,
-                    profile.dat_name,
+                    where,
                     self.lookup_post,
                     refresh=refresh,
                 )
@@ -625,6 +627,8 @@ class Scanner:
             found.lookups[(f.rel_path, service)] = (answer.status, answer.detail)
             if answer.status == hasheous.FOUND and answer.game_name:
                 found.identify(f.rel_path, {answer.game_name}, METHOD_HASHEOUS)
+            elif answer.known_as:
+                found.known_as[f.rel_path] = list(answer.known_as)
         return notes
 
     def _duplicates(self, root: Path, platform: str, files, found: "Found", progress) -> None:
@@ -786,6 +790,15 @@ class Scanner:
                 ][: config.max_suggestions]
                 # A product code is not a checksum, and revisions share it: never auto-matched.
                 continue
+            known = found.known_as.get(f.rel_path, [])
+            if known:
+                # What another database calls the data is a better hint than the file name.
+                scores = dict(best)
+                for hint in known:
+                    for name, score in fuzzy.suggestions(config, fuzzy.bare_title(hint), names):
+                        scores[name] = max(score, scores.get(name, 0))
+                best = sorted(scores.items(), key=lambda item: (-item[1], item[0]))
+                best = best[: config.max_suggestions]
             found.suggestions[f.rel_path] = best
             threshold = config.auto_match_threshold
             single = payload_count(found.hashes.get(f.rel_path, [])) <= 1
@@ -923,6 +936,9 @@ class Found:
     hashes: dict[str, list[ContentHash]] = field(default_factory=dict)
     # (rel_path, service) -> (status, detail)
     lookups: dict[tuple[str, str], tuple[str, str]] = field(default_factory=dict)
+    # rel_path -> names Hasheous's other sources give the data that no DAT lists: hints for
+    # the suggestions
+    known_as: dict[str, list[str]] = field(default_factory=dict)
     suggestions: dict[str, list[tuple[str, float]]] = field(default_factory=dict)
     # rel_path -> (payload size, payload SHA1), where a duplicate was possible
     payloads: dict[str, tuple[int, str]] = field(default_factory=dict)

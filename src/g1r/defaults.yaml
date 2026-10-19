@@ -683,9 +683,18 @@ lookups:
     # only when its system is the platform's DAT. `name_from` says where the DAT name is:
     # the ROM's file name (one ROM per game: No-Intro) or the game's description (discs,
     # whose ROMs are tracks: Redump). Hasheous's descriptions can lag behind a revision.
+    # The others name systems and games their own way ("Nintendo Game Boy", "Game Boy"): an
+    # answer counts when its system is the platform (its DAT name, name or an alias, compared
+    # without case and punctuation) and a name it gives is listed by one of the platform's
+    # DATs (trust: dat_name). Any other name it gives becomes a suggestion.
     sources:
       NoIntros: {label: No-Intro, name_from: rom}
       Redump: {label: Redump, name_from: game}
+      TOSEC: {label: TOSEC, name_from: rom, trust: dat_name}
+      RetroAchievements: {label: RetroAchievements, name_from: rom, trust: dat_name}
+      ScreenScraper: {label: ScreenScraper, name_from: rom, trust: dat_name}
+      MAMEMess: {label: MAME software lists, name_from: game, trust: dat_name}
+      WHDLoad: {label: WHDLoad, name_from: game, trust: dat_name}
     # A "not found" answer is asked again after this many days; found answers are kept.
     not_found_ttl_days: 30
 

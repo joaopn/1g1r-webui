@@ -2,6 +2,7 @@ import json
 import zipfile
 import zlib
 from http import HTTPStatus
+from pathlib import Path
 
 from g1r import fuzzy, hasheous, hashing, scanner, unmatched
 from g1r.config import FuzzyConfig
@@ -9,6 +10,9 @@ from g1r.config import FuzzyConfig
 from .test_scanner import BODY, NES_HEADER, env  # noqa: F401  (fixture)
 
 DAT = "Nintendo - Nintendo Entertainment System"
+
+
+DATA = Path(__file__).parent / "data"
 
 
 def signature(system: str, description: str, rom: str | None = None) -> dict:
@@ -61,10 +65,40 @@ def test_answers_count_only_for_the_folders_platform(make_settings):
         "Tetris (World)",
         "No-Intro",
     )
-    unlisted = answer(signature("Nintendo - Game Boy", "Tetris (World)"), source="TOSEC")
+    unlisted = answer(signature("Nintendo - Game Boy", "Tetris (World)"), source="PureDOSDAT")
     assert hasheous.read_answer(settings, unlisted, "Nintendo - Game Boy").status == (
         hasheous.NOT_FOUND
     )
+
+
+def test_other_sources_identify_only_with_a_name_the_platforms_dats_list(make_settings):
+    """A real answer (Tetris (World) (Rev 1), Game Boy): No-Intro, TOSEC and
+    RetroAchievements entries, each source writing the system its own way."""
+    settings = make_settings()
+    real = json.loads((DATA / "hasheous-tetris.json").read_text())
+    gb = settings.platforms.profiles["gb"]
+    without_no_intro = {
+        "signatures": {k: v for k, v in real["signatures"].items() if k != "NoIntros"}
+    }
+    # RetroAchievements names the ROM as No-Intro does, and the DAT lists that name.
+    listed = hasheous.platform(gb, {"Tetris (World) (Rev 1)"})
+    found = hasheous.read_answer(settings, without_no_intro, listed)
+    assert (found.status, found.game_name, found.detail) == (
+        hasheous.FOUND,
+        "Tetris (World) (Rev 1)",
+        "RetroAchievements",
+    )
+    # No DAT lists those names: TOSEC's and RetroAchievements' names are only hints.
+    hint = hasheous.read_answer(settings, without_no_intro, hasheous.platform(gb))
+    assert hint.status == hasheous.NOT_IN_DAT and hint.game_name is None
+    assert hint.known_as == (
+        "Tetris Rev 1 (1989)(Nintendo)(EU-US)",
+        "Tetris (World) (Rev 1)",
+    )
+    assert hint.detail == "TOSEC: Tetris Rev 1 (1989)(Nintendo)(EU-US)"
+    # "Nintendo Game Boy" and "Game Boy" are Game Boy; none of them is Game Boy Color.
+    gbc = hasheous.platform(settings.platforms.profiles["gbc"], {"Tetris (World) (Rev 1)"})
+    assert hasheous.read_answer(settings, without_no_intro, gbc).status == (hasheous.OTHER_PLATFORM)
 
 
 def test_the_name_comes_from_the_rom_for_no_intro_and_the_game_for_redump(make_settings):
@@ -192,3 +226,30 @@ def test_fuzzy_auto_match_only_with_a_threshold(env, make_settings):  # noqa: F8
     conn, _ = scan(env)
     row = conn.execute("SELECT method, score FROM identity WHERE rel_path = ?", (LOOSE,)).fetchone()
     assert row["method"] == scanner.METHOD_FUZZY and 0.1 <= row["score"] < 1
+
+
+def test_another_sources_name_identifies_only_when_the_dat_lists_it(env):  # noqa: F811
+    conn, _ = scan(env)
+    sha1 = loose_sha1(conn)
+    listed = {"game": {"system": "NES/Famicom"}, "rom": {"name": "Reheadered (Japan).nes"}}
+    conn, _ = scan(
+        env, FakeHasheous({sha1: answer(listed, source="RetroAchievements")}), hasheous=True
+    )
+    row = conn.execute("SELECT game_name, method FROM identity WHERE rel_path = ?", (LOOSE,))
+    assert tuple(row.fetchone()) == ("Reheadered (Japan)", scanner.METHOD_HASHEOUS)
+
+
+def test_another_sources_unlisted_name_becomes_a_suggestion(env):  # noqa: F811
+    conn, _ = scan(env)
+    sha1 = loose_sha1(conn)
+    tosec = {
+        "game": {"system": "Nintendo Entertainment System"},
+        "rom": {"name": "Known (1987)(Nintendo)(US).nes"},
+    }
+    conn, _ = scan(env, FakeHasheous({sha1: answer(tosec, source="TOSEC")}), hasheous=True)
+    (row,) = unmatched.rows(conn, "nes", hasheous_on=True)
+    assert row["hasheous"] == {
+        "status": hasheous.NOT_IN_DAT,
+        "detail": "TOSEC: Known (1987)(Nintendo)(US)",
+    }
+    assert row["suggestions"][0]["game_name"] == "Known (USA)"

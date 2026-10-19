@@ -56,8 +56,11 @@ const GUIDE: Record<string, Guide> = {
     ],
   },
   hasheous: {
-    what: "Hasheous: an online checksum database.",
-    pros: ["Identifies files no DAT here lists, by checksum"],
+    what: "Hasheous: an online checksum database gathering No-Intro, Redump, TOSEC, RetroAchievements, MAME software lists and more.",
+    pros: [
+      "Identifies files no DAT here lists, by checksum, without an account",
+      "Names from its other sources become suggestions when no DAT lists them",
+    ],
     cons: [
       "Sends checksums (never files or names) over the internet",
       "Skips archives with several ROM files",
