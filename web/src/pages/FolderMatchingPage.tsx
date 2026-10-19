@@ -13,7 +13,7 @@ import { StatCard } from "@/components/StatCard";
 import { UnsupportedFiles } from "@/components/UnsupportedFiles";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { UnmatchedSection } from "@/components/unmatched/UnmatchedSection";
+import { UnmatchedTools, useUnmatchedActions } from "@/components/unmatched/Unmatched";
 import { ApiError, api, json } from "@/lib/api";
 import { formatCount, formatFiles } from "@/lib/format";
 import {
@@ -24,6 +24,7 @@ import {
   useGames,
   useMeta,
   useSettingsData,
+  useUnmatched,
 } from "@/lib/queries";
 import type { Game, Ranking, Version } from "@/lib/types";
 import { FolderHeader } from "@/pages/FolderHeader";
@@ -36,9 +37,11 @@ export function FolderMatchingPage() {
   const folder = useFolder(label, meta.data?.ui.poll_interval_ms ?? false);
   const games = useGames(label);
   const settingsData = useSettingsData();
+  const unmatchedFiles = useUnmatched(label);
   // What the apply dialog is open for: the whole folder (null) or one game.
   const [applying, setApplying] = useState<{ game: Game | null } | null>(null);
   const restore = useRestore(label);
+  const unmatchedActions = useUnmatchedActions(label, meta.data);
 
   const updateGame = (game: Game) =>
     queryClient.setQueryData<Game[]>(keys.games(label), (current) =>
@@ -87,6 +90,10 @@ export function FolderMatchingPage() {
   const ignored = f.others.filter((file) => file.kind === "ignored");
   const source = f.dat ? meta.data.dat_sources[f.dat.source] : null;
   const other = (f.summary.counts.other ?? 0) + (f.summary.counts.ignored ?? 0);
+  const scanning = f.scan?.status === "running";
+  const lookupsOn =
+    !!settingsData.data &&
+    (settingsData.data.lookups.hasheous || settingsData.data.lookups.screenscraper);
   const proposed = (games.data ?? []).reduce(
     (n, g) => n + g.versions.filter((v) => v.operation).length,
     0,
@@ -160,7 +167,7 @@ export function FolderMatchingPage() {
               onSave={(value) => ranking.mutate(value)}
             />
             <Button
-              disabled={proposed === 0 || f.scan?.status === "running"}
+              disabled={proposed === 0 || scanning}
               onClick={() => setApplying({ game: null })}
               title={
                 proposed === 0 ? "No proposed moves" : "Review every proposed move, then apply"
@@ -180,6 +187,25 @@ export function FolderMatchingPage() {
             onLeave={(game, left) => leave.mutate({ game, left })}
             onUnassign={(version) => unassign.mutate(version)}
             onApplyGame={(game) => setApplying({ game })}
+            unmatched={
+              unmatchedFiles.data
+                ? {
+                    files: unmatchedFiles.data,
+                    busy: unmatchedActions.assigning || scanning,
+                    onAssign: unmatchedActions.assign,
+                    onMove: unmatchedActions.move,
+                    tools: (files) => (
+                      <UnmatchedTools
+                        label={label}
+                        files={files}
+                        lookupsOn={lookupsOn}
+                        scanning={scanning}
+                        onMove={unmatchedActions.move}
+                      />
+                    ),
+                  }
+                : undefined
+            }
             onRestore={(target) =>
               restore.mutate(
                 "game" in target
@@ -206,15 +232,7 @@ export function FolderMatchingPage() {
         />
       ) : null}
 
-      <UnmatchedSection
-        label={label}
-        meta={meta.data}
-        lookupsOn={
-          !!settingsData.data &&
-          (settingsData.data.lookups.hasheous || settingsData.data.lookups.screenscraper)
-        }
-        scanning={f.scan?.status === "running"}
-      />
+      {unmatchedActions.dialog}
       {ignored.length > 0 ? (
         <details className="rounded-lg border border-border bg-card">
           <summary className="cursor-pointer px-4 py-3 font-medium">

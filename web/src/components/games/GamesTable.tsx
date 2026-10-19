@@ -14,9 +14,10 @@ import {
   RotateCcw,
   Search,
   Sparkles,
+  Trash2,
   UserRound,
 } from "lucide-react";
-import { type CSSProperties, type KeyboardEvent, useMemo, useState } from "react";
+import { type CSSProperties, type KeyboardEvent, type ReactNode, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Pager } from "@/components/Pager";
 import { QuickViewBar } from "@/components/QuickViewBar";
@@ -25,8 +26,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { formatBytes, formatCount } from "@/lib/format";
-import type { Game, GameStatus, Meta, Version } from "@/lib/types";
+import { UnmatchedDetail } from "@/components/unmatched/Unmatched";
+import { formatBytes, formatCount, formatFiles } from "@/lib/format";
+import type { Game, GameStatus, Meta, UnmatchedFile, Version } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import {
   activeFilterCount,
@@ -44,6 +46,7 @@ import {
   NO_FILTER,
   QUICK_VIEWS,
   quickView,
+  type Row,
   representative,
   SOURCE_LABELS,
   STATUS_ORDER,
@@ -51,6 +54,7 @@ import {
   saveWidths,
   sortGames,
   template,
+  unmatchedRow,
   type Widths,
   widthOf,
 } from "./columns";
@@ -64,6 +68,18 @@ const STATUS_STYLE: Record<GameStatus, string> = {
   "left alone": "border-dashed border-muted-foreground text-muted-foreground",
   single: "border-border text-muted-foreground",
   applied: "border-status-good/60 bg-status-good/10 text-status-good",
+  unmatched: "border-dashed border-status-warn text-status-warn",
+};
+
+/** Files nothing identified, shown as rows of the table, and what can be done with them. */
+export type UnmatchedRows = {
+  files: UnmatchedFile[];
+  busy: boolean;
+  onAssign: (relPath: string, game: string) => void;
+  /** Review moving the files to discarded/, or deleting them (remove). */
+  onMove: (relPaths: string[], remove: boolean) => void;
+  /** Shown above the table in the Unmatched view, for the files it shows. */
+  tools: (files: UnmatchedFile[]) => ReactNode;
 };
 
 function readFilter(params: URLSearchParams): GameFilter {
@@ -100,6 +116,7 @@ export function GamesTable({
   onUnassign,
   onApplyGame,
   onRestore,
+  unmatched,
 }: {
   label: string;
   games: Game[];
@@ -111,6 +128,7 @@ export function GamesTable({
   onApplyGame?: (game: Game) => void;
   /** Move discarded versions back: one version, or every one of a game. */
   onRestore?: (target: { version: Version } | { game: Game }) => void;
+  unmatched?: UnmatchedRows;
 }) {
   const [params, setParams] = useSearchParams();
   const filter = useMemo(() => readFilter(params), [params]);
@@ -127,8 +145,13 @@ export function GamesTable({
   );
   const sizes = meta.ui.game_columns;
 
-  const unviewed = useMemo(() => filterGamesExceptView(games, filter), [games, filter]);
-  const filtered = useMemo(() => filterGames(games, filter), [games, filter]);
+  const files = unmatched?.files;
+  const rows = useMemo<Row[]>(
+    () => (files ? [...games, ...files.map(unmatchedRow)] : games),
+    [games, files],
+  );
+  const unviewed = useMemo(() => filterGamesExceptView(rows, filter), [rows, filter]);
+  const filtered = useMemo(() => filterGames(rows, filter), [rows, filter]);
   const sorted = useMemo(() => sortGames(filtered, sort, order), [filtered, sort, order]);
   const pageSize = meta.ui.page_size;
   const pages = Math.max(1, Math.ceil(sorted.length / pageSize));
@@ -180,7 +203,15 @@ export function GamesTable({
   const style = { "--games-grid": template(columns, sizes, widths) } as CSSProperties;
   const formatSize = (value: number | null) =>
     formatBytes(value, meta.ui.byte_unit_base, meta.ui.byte_units);
-  const ctx: CellContext = { formatSize, onUnassign, onRestore, onApplyGame };
+  const ctx: CellContext = {
+    formatSize,
+    onUnassign,
+    onRestore,
+    onApplyGame,
+    label,
+    hashLength: meta.ui.hash_display_length,
+    unmatched,
+  };
 
   return (
     <div className="space-y-3">
@@ -208,7 +239,7 @@ export function GamesTable({
             onChange={(event) => setFilter({ ...filter, q: event.target.value })}
           />
         </div>
-        <FilterButton filter={filter} onChange={setFilter} games={games} />
+        <FilterButton filter={filter} onChange={setFilter} games={rows} />
         <ColumnChooser
           columns={COLUMNS}
           visible={columnIds}
@@ -221,13 +252,19 @@ export function GamesTable({
         />
       </div>
       <p className="text-muted-foreground text-xs">
-        {formatCount(sorted.length)} of {formatCount(games.length)} games
+        {formatCount(sorted.length)} of {formatCount(rows.length)} rows
+        {files && files.length > 0
+          ? ` (${formatCount(games.length)} games, ${formatFiles(files.length)} unmatched)`
+          : ""}
         {moves > 0
           ? ` · ${formatCount(moves)} proposed moves would free ${formatSize(reclaim)}`
           : ""}{" "}
         · click a version to keep it · applying moves the others to discarded/{label}/1g1r/, and
         each move can be restored
       </p>
+      {unmatched && filter.view === "unmatched"
+        ? unmatched.tools(sorted.flatMap((row) => (row.file ? [row.file] : [])))
+        : null}
 
       <div className="overflow-x-auto rounded-md border border-border bg-card">
         <section style={style} className="min-w-max" aria-label="Games">
@@ -350,6 +387,9 @@ type CellContext = {
   onUnassign?: (version: Version) => void;
   onRestore?: (target: { version: Version } | { game: Game }) => void;
   onApplyGame?: (game: Game) => void;
+  label: string;
+  hashLength: number;
+  unmatched?: UnmatchedRows;
 };
 
 function versionCell(id: ColumnId, version: Version | null, ctx: CellContext) {
@@ -406,6 +446,7 @@ function versionCell(id: ColumnId, version: Version | null, ctx: CellContext) {
         </Cell>
       );
     case "match":
+      if (version.method === "unmatched") return <Cell key={id} />;
       return (
         <Cell key={id}>
           <MatchBar version={version} onUnassign={ctx.onUnassign} />
@@ -469,7 +510,7 @@ function GameRows({
   onLeave,
   ctx,
 }: {
-  game: Game;
+  game: Row;
   columns: Column[];
   open: boolean;
   onToggle: () => void;
@@ -477,7 +518,10 @@ function GameRows({
   onLeave: (game: Game, left: boolean) => void;
   ctx: CellContext;
 }) {
+  const file = game.file;
   const single = game.versions.length <= 1;
+  // A game with several versions opens to them; an unmatched file opens to what is known of it.
+  const expandable = !single || file !== undefined;
   const rep = representative(game);
   const left = game.status === "left alone";
 
@@ -486,7 +530,7 @@ function GameRows({
       case "keep":
         return (
           <Cell key={id}>
-            {single ? (
+            {!expandable ? (
               <CircleCheck className="size-4 text-status-good" aria-label="kept" />
             ) : (
               <ChevronRight
@@ -549,8 +593,10 @@ function GameRows({
         game.status === "undecided" && "border-l-2 border-l-status-warn",
       )}
     >
-      <div className={cn("flex items-center px-3 py-1.5 text-sm", !single && "hover:bg-accent/40")}>
-        {single ? (
+      <div
+        className={cn("flex items-center px-3 py-1.5 text-sm", expandable && "hover:bg-accent/40")}
+      >
+        {!expandable ? (
           <div className={GRID}>{columns.map((c) => gameCell(c.id))}</div>
         ) : (
           // biome-ignore lint/a11y/useSemanticElements: a grid row cannot be a <button> (it holds block cells); it is a keyboard-operable disclosure.
@@ -558,7 +604,15 @@ function GameRows({
             role="button"
             tabIndex={0}
             aria-expanded={open}
-            aria-label={`${game.name}: ${open ? "collapse to the kept version" : "show all versions"}`}
+            aria-label={`${game.name}: ${
+              file
+                ? open
+                  ? "collapse the details"
+                  : "show the details"
+                : open
+                  ? "collapse to the kept version"
+                  : "show all versions"
+            }`}
             onClick={onToggle}
             onKeyDown={(event) => {
               if (event.key === "Enter" || event.key === " ") {
@@ -575,6 +629,32 @@ function GameRows({
           </div>
         )}
         <div className="sticky right-0 flex w-20 shrink-0 items-center justify-end gap-1 bg-card">
+          {file && ctx.unmatched ? (
+            <>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                disabled={ctx.unmatched.busy}
+                onClick={() => ctx.unmatched?.onMove([file.rel_path], false)}
+                title="Move to discarded/ (can be restored)"
+                className="text-status-warn"
+              >
+                <Archive className="size-3.5" aria-hidden="true" />
+                <span className="sr-only">Move {file.rel_path} to discarded</span>
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                disabled={ctx.unmatched.busy}
+                onClick={() => ctx.unmatched?.onMove([file.rel_path], true)}
+                title="Delete for good"
+                className="text-status-bad"
+              >
+                <Trash2 className="size-3.5" aria-hidden="true" />
+                <span className="sr-only">Delete {file.rel_path}</span>
+              </Button>
+            </>
+          ) : null}
           {ctx.onApplyGame && game.versions.some((v) => v.operation) ? (
             <Button
               variant="ghost"
@@ -628,6 +708,17 @@ function GameRows({
           ) : null}
         </div>
       </div>
+      {file && open && ctx.unmatched ? (
+        <div className="border-border border-t border-dashed bg-muted/30 py-2 pr-3 pl-10">
+          <UnmatchedDetail
+            file={file}
+            label={ctx.label}
+            hashLength={ctx.hashLength}
+            busy={ctx.unmatched.busy}
+            onAssign={(name) => ctx.unmatched?.onAssign(file.rel_path, name)}
+          />
+        </div>
+      ) : null}
       {!single && open
         ? game.versions.map((version) => (
             <VersionRow

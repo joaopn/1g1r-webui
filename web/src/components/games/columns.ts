@@ -4,7 +4,7 @@ import {
   template as tableTemplate,
   widthOf,
 } from "@/components/table/prefs";
-import type { ColumnSize, Game, GameStatus, Version } from "@/lib/types";
+import type { ColumnSize, Game, GameStatus, UnmatchedFile, Version } from "@/lib/types";
 
 export { widthOf };
 
@@ -88,11 +88,57 @@ export const METHOD_LABELS: Record<string, { short: string; long: string }> = {
   screenscraper: { short: "ScreenScraper", long: "checksum match found by ScreenScraper" },
   fuzzy: { short: "name", long: "name match above your auto-match threshold" },
   manual: { short: "by you", long: "assigned by you" },
+  unmatched: {
+    short: "unmatched",
+    long: "nothing identified this file: open the row to say what it is",
+  },
 };
+
+/** A table row: a game, or a file nothing identified (which carries what is known of it). */
+export type Row = Game & { file?: UnmatchedFile };
+
+/** An unmatched file as a one-version row, named after its file, so it sorts and filters in. */
+export function unmatchedRow(file: UnmatchedFile): Row {
+  const base = file.rel_path.split("/").pop() ?? file.rel_path;
+  return {
+    key: `unmatched:${file.rel_path}`,
+    name: base.replace(/\.[^.]+$/, "") || base,
+    source: "single",
+    status: "unmatched",
+    reason: "",
+    kept: null,
+    candidates: [],
+    file,
+    versions: [
+      {
+        rel_path: file.rel_path,
+        game_name: "",
+        title: "",
+        method: "unmatched",
+        probability: 0,
+        regions: [],
+        languages: [],
+        revision: null,
+        prerelease: false,
+        rerelease: false,
+        tags: [],
+        size: file.size,
+        keep: false,
+        operation: null,
+        discarded: null,
+        identical: [],
+        notes: [],
+        role: null,
+        discard_reason: null,
+      },
+    ],
+  };
+}
 
 /** Undecided first: those are the games that need you. */
 export const STATUS_ORDER: GameStatus[] = [
   "undecided",
+  "unmatched",
   "your pick",
   "decided",
   "left alone",
@@ -196,7 +242,11 @@ export function sortValue(game: Game, id: ColumnId): SortValue {
   }
 }
 
-export function sortGames(games: Game[], id: ColumnId | null, order: "asc" | "desc"): Game[] {
+export function sortGames<T extends Game>(
+  games: T[],
+  id: ColumnId | null,
+  order: "asc" | "desc",
+): T[] {
   if (id === null) return games;
   const direction = order === "asc" ? 1 : -1;
   return [...games].sort((a, b) => {
@@ -216,8 +266,17 @@ export type QuickView = { id: string; label: string; test: (game: Game) => boole
 
 export const QUICK_VIEWS: QuickView[] = [
   { id: "all", label: "All", test: () => true },
-  { id: "one", label: "One version", test: (g) => g.versions.length === 1 },
+  {
+    id: "one",
+    label: "One version",
+    test: (g) => g.versions.length === 1 && g.status !== "unmatched",
+  },
   { id: "several", label: "Several versions", test: (g) => g.versions.length > 1 },
+  {
+    id: "unmatched",
+    label: "Unmatched",
+    test: (g) => g.versions.some((v) => v.method === "unmatched"),
+  },
   { id: "to-apply", label: "To apply", test: (g) => g.versions.some((v) => v.operation) },
   { id: "applied", label: "Applied", test: (g) => g.versions.some((v) => v.discarded) },
 ];
@@ -250,11 +309,11 @@ export function activeFilterCount(filter: GameFilter): number {
 }
 
 /** Every filter but the quick view, so the bar can count what each view would show. */
-export function filterGamesExceptView(games: Game[], filter: GameFilter): Game[] {
+export function filterGamesExceptView<T extends Game>(games: T[], filter: GameFilter): T[] {
   return filterGames(games, { ...filter, view: DEFAULT_VIEW });
 }
 
-export function filterGames(games: Game[], filter: GameFilter): Game[] {
+export function filterGames<T extends Game>(games: T[], filter: GameFilter): T[] {
   const needle = filter.q.trim().toLowerCase();
   const view = quickView(filter.view);
   return games.filter((game) => {

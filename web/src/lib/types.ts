@@ -193,7 +193,9 @@ export type GameStatus =
   | "undecided"
   | "your pick"
   | "left alone"
-  | "applied";
+  | "applied"
+  /** A file nothing identified, shown as a row of its own (never from the API's games). */
+  | "unmatched";
 
 export type PlannedMove = {
   rel_path: string;
