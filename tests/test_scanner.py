@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from g1r import db, hashing, igir, scanner
+from g1r import db, filecache, hashing, igir, scanner
 from g1r.config import HeaderRule
 from g1r.dat_registry import DatRegistry
 from g1r.library import FolderEntry, LibraryStore
@@ -227,3 +227,88 @@ def test_progress_writes_at_most_every_interval(env):
     assert row() == ("Reading archives", 3, 3)
     progress.stage("Matching checksums with igir")
     assert row() == ("Matching checksums with igir", None, None)
+
+
+def identities(conn):
+    return dict(conn.execute("SELECT rel_path, method FROM identity").fetchall())
+
+
+def test_a_quick_rescan_reads_no_unchanged_file(env, monkeypatch):
+    _, _, _, conn, folder_scanner = env
+    folder_scanner.run(conn, folder_scanner.start(conn, "nes"), "nes")
+    first = identities(conn)
+    hashes = conn.execute("SELECT * FROM content_hash").fetchall()
+
+    def must_not_read(*args, **kwargs):
+        raise AssertionError("an unchanged file was read again")
+
+    monkeypatch.setattr(scanner, "headerless_keys", must_not_read)
+    monkeypatch.setattr(scanner, "content_hashes", must_not_read)
+    monkeypatch.setattr(scanner.archives, "list_members", must_not_read)
+    folder_scanner.run(conn, folder_scanner.start(conn, "nes"), "nes")
+    assert scanner.latest_scan(conn, "nes")["status"] == "done"
+    assert identities(conn) == first
+    assert conn.execute("SELECT * FROM content_hash").fetchall() == hashes
+    assert conn.execute("SELECT COUNT(*) FROM archive_member").fetchone()[0] == 2
+
+
+def test_a_changed_file_is_read_again_and_a_gone_one_forgotten(env, roms_root):
+    _, _, _, conn, folder_scanner = env
+    folder_scanner.run(conn, folder_scanner.start(conn, "nes"), "nes")
+    folder = roms_root / "nes"
+    # The unmatched file now holds the known game's data: same name, new size and mtime.
+    write_zip(folder / "Reheadered (Japan).zip", "Reheadered (Japan).nes", BODY[::-1])
+    (folder / "sub" / "Loose (Europe).nes").unlink()
+    folder_scanner.run(conn, folder_scanner.start(conn, "nes"), "nes")
+    # Without its header the data is the DAT's "Reheadered (Japan)" as it is: igir's (fake)
+    # report does not list it, so it is found by the header-stripped check no more.
+    assert "Reheadered (Japan).zip" not in identities(conn)
+    cached = {r[0] for r in conn.execute("SELECT rel_path FROM file_cache")}
+    assert "sub/Loose (Europe).nes" not in cached
+    sizes = {
+        r[0]
+        for r in conn.execute(
+            "SELECT size FROM file_cache WHERE rel_path = 'Reheadered (Japan).zip'"
+        )
+    }
+    assert sizes == {(folder / "Reheadered (Japan).zip").stat().st_size}
+
+
+def test_a_full_scan_reads_everything_and_igir_hashes_afresh(env, monkeypatch):
+    settings, store, registry, conn, _ = env
+    calls = []
+
+    def report(settings_, dat_file, input_dir, **options):
+        calls.append(options)
+        return []
+
+    folder_scanner = scanner.Scanner(settings, store, registry, report)
+    folder_scanner.run(conn, folder_scanner.start(conn, "nes"), "nes")
+    read = []
+    listing = scanner.archives.list_members
+    monkeypatch.setattr(
+        scanner.archives,
+        "list_members",
+        lambda *args: read.append(args[1].name) or listing(*args),
+    )
+    folder_scanner.run(conn, folder_scanner.start(conn, "nes"), "nes")
+    assert read == []
+    folder_scanner.run(conn, folder_scanner.start(conn, "nes"), "nes", full=True)
+    assert sorted(read) == ["Known (USA).zip", "Reheadered (Japan).zip"]
+    assert calls == [{}, {}, {"fresh": True}]
+
+
+def test_cache_steps_change_with_the_settings_they_depend_on():
+    nes = HeaderRule(magic_hex="4e45531a", magic_offset=0, header_size=16)
+    other = HeaderRule(magic_hex="4e45531a", magic_offset=0, header_size=512)
+    assert filecache.step("headerless", [nes]) == filecache.step("headerless", [nes])
+    assert filecache.step("headerless", [nes]) != filecache.step("headerless", [other])
+    assert filecache.step("members") == "members"
+
+
+def test_removing_a_set_forgets_what_its_scans_read(env):
+    _, _, _, conn, folder_scanner = env
+    folder_scanner.run(conn, folder_scanner.start(conn, "nes"), "nes")
+    assert conn.execute("SELECT COUNT(*) FROM file_cache").fetchone()[0] > 0
+    filecache.forget(conn, "nes")
+    assert conn.execute("SELECT COUNT(*) FROM file_cache").fetchone()[0] == 0

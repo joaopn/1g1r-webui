@@ -26,16 +26,16 @@ class Jobs:
     def _connect(self):
         return db.connect(self.settings.paths.database_path, self.settings.database.busy_timeout_ms)
 
-    def scan(self, conn, label: str, refresh_lookups: bool = False) -> int:
+    def scan(self, conn, label: str, refresh_lookups: bool = False, full: bool = False) -> int:
         with self.starting:
             scan_id = self.scanner.start(conn, label)
-        self.pool.submit(self._run_scan, scan_id, label, refresh_lookups)
+        self.pool.submit(self._run_scan, scan_id, label, refresh_lookups, full)
         return scan_id
 
-    def _run_scan(self, scan_id: int, label: str, refresh_lookups: bool) -> None:
+    def _run_scan(self, scan_id: int, label: str, refresh_lookups: bool, full: bool) -> None:
         conn = self._connect()
         try:
-            self.scanner.run(conn, scan_id, label, refresh_lookups)
+            self.scanner.run(conn, scan_id, label, refresh_lookups, full)
         finally:
             conn.close()
 

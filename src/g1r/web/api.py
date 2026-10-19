@@ -17,6 +17,7 @@ from g1r import (
     dashboard,
     decrypt,
     discarded,
+    filecache,
     journal,
     matching,
     mounts,
@@ -414,6 +415,7 @@ def build_router(
         store.update(
             lambda lib: setattr(lib, "folders", [f for f in lib.folders if f.label != label])
         )
+        filecache.forget(conn, label)
 
     @router.put("/folders/{label}/hidden")
     def hide_folder(label: str, body: Hidden):
@@ -920,10 +922,17 @@ def build_router(
     # Scans -------------------------------------------------------------------------
 
     @router.post("/folders/{label}/scan", status_code=HTTPStatus.ACCEPTED)
-    def start_scan(label: str, request: Request, conn: Conn, refresh_lookups: bool = False):
+    def start_scan(
+        label: str,
+        request: Request,
+        conn: Conn,
+        refresh_lookups: bool = False,
+        full: bool = False,
+    ):
+        """A quick scan reads only new and changed files; `full` reads every file again."""
         folder_or_404(label)
         try:
-            request.app.state.jobs.scan(conn, label, refresh_lookups)
+            request.app.state.jobs.scan(conn, label, refresh_lookups, full)
         except scanner.ScanError as exc:
             raise HTTPException(status_code=HTTPStatus.CONFLICT, detail=str(exc)) from exc
         return row_dict(scanner.latest_scan(conn, label))

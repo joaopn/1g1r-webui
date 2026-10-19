@@ -15,7 +15,7 @@ import zipfile
 import zlib
 from collections import Counter
 from collections.abc import Callable, Iterable, Iterator
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path, PurePosixPath
 
 from g1r import (
@@ -34,6 +34,7 @@ from g1r.config import Settings
 from g1r.conversion import ZIP_SUFFIX
 from g1r.dat_registry import DatRegistry
 from g1r.dats import Dat
+from g1r.filecache import FileCache, step
 from g1r.hashing import (
     CHD_SUFFIX,
     RVZ_SUFFIX,
@@ -160,21 +161,41 @@ def inventory(settings: Settings, root: Path, platform: str, ignored: list[str])
 
 
 def headerless_matches(settings: Settings, platform: str, path: Path, dat: Dat) -> set[str]:
+    return _look(_crc_index(dat), headerless_keys(settings, platform, path))
+
+
+def headerless_step(settings: Settings, platform: str) -> str:
+    return step(
+        "headerless",
+        settings.headers.get(platform, []),
+        settings.platforms.profiles[platform].rom_extensions,
+        settings.dats.max_upload_bytes,
+    )
+
+
+def headerless_keys(settings: Settings, platform: str, path: Path) -> list[list]:
+    """[CRC, size] of each ROM's data with its copier header removed, for every header rule
+    that recognises it."""
     rules = settings.headers.get(platform, [])
     if not rules:
-        return set()
-    index = _crc_index(dat)
+        return []
     profile = settings.platforms.profiles[platform]
     exts = {e.lower() for e in profile.rom_extensions}
-    found: set[str] = set()
+    keys = []
     for data in payloads(path, exts, settings.dats.max_upload_bytes):
         for rule in rules:
             size = header_size(rule, data)
             if size is None:
                 continue
             body = data[size:]
-            crc = format(zlib.crc32(body), "08x")
-            found |= index.get((crc, len(body)), set())
+            keys.append([format(zlib.crc32(body), "08x"), len(body)])
+    return keys
+
+
+def _look(index: dict[tuple[str, int], set[str]], keys: list[list]) -> set[str]:
+    found: set[str] = set()
+    for crc, size in keys:
+        found |= index.get((crc, size), set())
     return found
 
 
@@ -194,30 +215,44 @@ def byte_order_matches(
     data as it is, and those equal to it in the native order. A DAT may list each order as a
     ROM of one game (libretro's N64 DAT has .z64 and .v64), which igir then reports missing
     unless every order is present: any one of them identifies the game."""
-    config = settings.byte_orders.get(platform)
-    if config is None:
-        return set(), set()
+    keys = byte_order_keys(settings, platform, path)
     index = _crc_index(dat)
-    exts = {e.lower() for e in settings.platforms.profiles[platform].rom_extensions}
-    as_is: set[str] = set()
-    native: set[str] = set()
+    return _look(index, keys["as_is"]), _look(index, keys["native"])
 
-    def look(data: bytes) -> set[str]:
-        return index.get((format(zlib.crc32(data), "08x"), len(data)), set())
+
+def byte_order_step(settings: Settings, platform: str) -> str:
+    return step(
+        "byte-order-crcs",
+        settings.byte_orders.get(platform),
+        settings.platforms.profiles[platform].rom_extensions,
+        settings.dats.max_upload_bytes,
+    )
+
+
+def byte_order_keys(settings: Settings, platform: str, path: Path) -> dict[str, list[list]]:
+    """[CRC, size] of each ROM's data as it is, and in the native byte order."""
+    config = settings.byte_orders.get(platform)
+    keys: dict[str, list[list]] = {"as_is": [], "native": []}
+    if config is None:
+        return keys
+    exts = {e.lower() for e in settings.platforms.profiles[platform].rom_extensions}
+
+    def key(data: bytes) -> list:
+        return [format(zlib.crc32(data), "08x"), len(data)]
 
     for data in payloads(path, exts, settings.dats.max_upload_bytes):
-        as_is |= look(data)
+        keys["as_is"].append(key(data))
         swapped = native_order(config, data)
         if swapped is not None:
-            native |= look(swapped)
-    return as_is, native
+            keys["native"].append(key(swapped))
+    return keys
 
 
 # Byte orders ----------------------------------------------------------------------
 
 
 def read_byte_orders(
-    settings: Settings, platform: str, root: Path, files, members, progress=None
+    settings: Settings, platform: str, root: Path, files, members, progress=None, cache=None
 ) -> dict:
     """rel_path -> word length to reverse, for each file whose single ROM (bare, or the one
     ROM member of a zip) starts with a swapped order's magic. 7z is not read."""
@@ -230,8 +265,10 @@ def read_byte_orders(
         if PurePosixPath(member.name).suffix.lower().lstrip(".") in exts:
             roms_inside.setdefault(rel, []).append(member.name)
     length = magic_length(config)
-    found = {}
-    for f in (progress or Progress()).each("Reading byte orders", files):
+    cache = cache or FileCache(None, "")
+    name = step("byte-order", config, sorted(exts))
+
+    def read(f: InventoryFile) -> int | None:
         head = None
         try:
             if f.kind == "rom":
@@ -247,8 +284,12 @@ def read_byte_orders(
                 ):
                     head = m.read(length)
         except (OSError, zipfile.BadZipFile, KeyError):
-            continue
-        word = word_bytes(config, head) if head else None
+            return None
+        return word_bytes(config, head) if head else None
+
+    found = {}
+    for f in (progress or Progress()).each("Reading byte orders", files):
+        word = cache.get(f, name, lambda f=f: read(f))
         if word is not None:
             found[f.rel_path] = word
     return found
@@ -258,7 +299,7 @@ def read_byte_orders(
 
 
 def read_cards(
-    settings: Settings, platform: str, root: Path, files, members, progress=None
+    settings: Settings, platform: str, root: Path, files, members, progress=None, cache=None
 ) -> dict:
     """rel_path -> (CardInfo, zip member or None) for each card image the platform's header
     format recognises: a bare file, or a zip's one ROM member."""
@@ -271,6 +312,15 @@ def read_cards(
     for rel, member in members:
         if PurePosixPath(member.name).suffix.lower().lstrip(".") in exts:
             inside.setdefault(rel, []).append(member)
+    cache = cache or FileCache(None, "")
+    name = step("card", config, sorted(exts))
+
+    def read(f: InventoryFile, member: str | None, size: int) -> list | None:
+        info = cards.read_ncsd(config, root / f.rel_path, member, size)
+        if info is None:
+            return None
+        return [info.image_size, info.data_size, info.encrypted, info.product_code]
+
     found = {}
     for f in (progress or Progress()).each("Reading card headers", files):
         if f.kind == "rom":
@@ -279,9 +329,9 @@ def read_cards(
             member, size = inside[f.rel_path][0].name, inside[f.rel_path][0].size
         else:
             continue
-        info = cards.read_ncsd(config, root / f.rel_path, member, size)
+        info = cache.get(f, name, lambda f=f, member=member, size=size: read(f, member, size))
         if info is not None:
-            found[f.rel_path] = (info, member)
+            found[f.rel_path] = (cards.CardInfo(*info), member)
     return found
 
 
@@ -320,11 +370,18 @@ class Scanner:
         ).lastrowid
 
     def run(
-        self, conn: sqlite3.Connection, scan_id: int, label: str, refresh_lookups: bool = False
+        self,
+        conn: sqlite3.Connection,
+        scan_id: int,
+        label: str,
+        refresh_lookups: bool = False,
+        full: bool = False,
     ) -> None:
+        """`full`: read every file again, ignoring what earlier scans read (this app's cache
+        and igir's), for files changed in a way their size and mtime do not show."""
         progress = Progress(conn, scan_id, self.settings.jobs.progress_interval_seconds)
         try:
-            message = self._scan(conn, label, refresh_lookups, progress)
+            message = self._scan(conn, label, refresh_lookups, progress, full)
             self._finish(conn, scan_id, "done", message)
         except (ScanError, igir.IgirError, mounts.FolderPathError, OSError) as exc:
             self._finish(conn, scan_id, "failed", str(exc))
@@ -341,7 +398,12 @@ class Scanner:
         )
 
     def _scan(
-        self, conn: sqlite3.Connection, label: str, refresh_lookups: bool, progress: Progress
+        self,
+        conn: sqlite3.Connection,
+        label: str,
+        refresh_lookups: bool,
+        progress: Progress,
+        full: bool = False,
     ) -> str:
         library = self.store.load()
         folder: FolderEntry | None = library.folder(label)
@@ -354,12 +416,13 @@ class Scanner:
         files = inventory(
             self.settings, root, folder.platform, self.store.ignored_filenames(library)
         )
-        found = Found(*self._members(root, files, progress))
+        cache = FileCache(conn, label, reuse=not full)
+        found = Found(*self._members(root, files, progress, cache), cache=cache)
         found.byte_orders = read_byte_orders(
-            self.settings, folder.platform, root, files, found.members, progress
+            self.settings, folder.platform, root, files, found.members, progress, cache
         )
         found.cards = read_cards(
-            self.settings, folder.platform, root, files, found.members, progress
+            self.settings, folder.platform, root, files, found.members, progress, cache
         )
         if self.settings.platforms.profiles[folder.platform].title_ids:
             self._title_ids(root, files, found, progress)
@@ -381,17 +444,21 @@ class Scanner:
         modes = self.settings.platforms.profiles[folder.platform].igir_merge_modes
         # igir reports nothing until it is done: this step has no file count.
         progress.stage("Matching checksums with igir")
+        # A full scan has igir hash every file again too.
+        fresh = {"fresh": True} if full else {}
         if modes:
             # Arcade: each mode identifies the sets built its way; none misidentifies.
             by_path: dict[str, set[str]] = {}
             for mode in modes:
                 found_now = igir.identified_files(
-                    self.report_runner(self.settings, dat_file, root, merge=mode)
+                    self.report_runner(self.settings, dat_file, root, merge=mode, **fresh)
                 )
                 for path, games in found_now.items():
                     by_path.setdefault(path, set()).update(games)
         else:
-            by_path = igir.identified_files(self.report_runner(self.settings, dat_file, root))
+            by_path = igir.identified_files(
+                self.report_runner(self.settings, dat_file, root, **fresh)
+            )
         parts = {
             e.lower() for e in self.settings.platforms.profiles[folder.platform].part_extensions
         }
@@ -408,15 +475,26 @@ class Scanner:
                 unmatched.append(f)
         dat = self.registry.load_active(conn, library, folder.platform)
         if unmatched and self.settings.headers.get(folder.platform):
+            index = _crc_index(dat)
+            name = headerless_step(self.settings, folder.platform)
             for f in progress.each("Checking header-stripped data", unmatched):
-                games = headerless_matches(self.settings, folder.platform, root / f.rel_path, dat)
-                found.identify(f.rel_path, games, METHOD_HEADERLESS)
+                keys = cache.get(
+                    f,
+                    name,
+                    lambda f=f: headerless_keys(self.settings, folder.platform, root / f.rel_path),
+                )
+                found.identify(f.rel_path, _look(index, keys), METHOD_HEADERLESS)
         unmatched = [f for f in unmatched if f.rel_path not in found.identified]
         if self.settings.byte_orders.get(folder.platform):
+            index = _crc_index(dat)
+            name = byte_order_step(self.settings, folder.platform)
             for f in progress.each("Checking byte orders", unmatched):
-                as_is, native = byte_order_matches(
-                    self.settings, folder.platform, root / f.rel_path, dat
+                keys = cache.get(
+                    f,
+                    name,
+                    lambda f=f: byte_order_keys(self.settings, folder.platform, root / f.rel_path),
                 )
+                as_is, native = _look(index, keys["as_is"]), _look(index, keys["native"])
                 found.identify(f.rel_path, as_is, METHOD_CHECKSUM)
                 found.identify(f.rel_path, native - as_is, METHOD_BYTESWAPPED)
         unmatched = [f for f in unmatched if f.rel_path not in found.identified]
@@ -458,9 +536,26 @@ class Scanner:
             if on
         ]
         notes = []
-        step = "Looking up unmatched files online" if services else "Hashing unmatched files"
-        for f in progress.each(step, unmatched):
-            hashes = content_hashes(self.settings, platform, root / f.rel_path)
+        stage = "Looking up unmatched files online" if services else "Hashing unmatched files"
+        name = step(
+            "content-hashes",
+            profile.rom_extensions,
+            self.settings.headers.get(platform, []),
+            self.settings.byte_orders.get(platform),
+            self.settings.lookups.max_hash_bytes,
+        )
+        for f in progress.each(stage, unmatched):
+            hashes = [
+                ContentHash(**h)
+                for h in found.cache.get(
+                    f,
+                    name,
+                    lambda f=f: [
+                        asdict(h)
+                        for h in content_hashes(self.settings, platform, root / f.rel_path)
+                    ],
+                )
+            ]
             found.hashes[f.rel_path] = hashes
             skipped = None
             if not hashes:
@@ -572,13 +667,15 @@ class Scanner:
             if size in unmatched_sizes or any(per_game[(g, size)] > 1 for g in games[f.rel_path])
         ] + [(f, size) for f, size in unmatched if size in identified_sizes]
         limit = self.settings.lookups.max_hash_bytes
+        byte_order = self.settings.byte_orders.get(platform)
+        name = step("payload-sha1", sorted(rom_extensions), limit, byte_order)
         for f, size in progress.each("Looking for duplicates", wanted):
-            sha1 = payload_sha1(
-                root / f.rel_path,
-                rom_extensions,
-                limit,
-                self._rvz_sha1,
-                self.settings.byte_orders.get(platform),
+            sha1 = found.cache.get(
+                f,
+                name,
+                lambda f=f: payload_sha1(
+                    root / f.rel_path, rom_extensions, limit, self._rvz_sha1, byte_order
+                ),
             )
             if sha1 is not None:
                 # An RVZ's key starts with the disc's size, which is what is stored.
@@ -599,10 +696,17 @@ class Scanner:
         config = self.settings.title_ids
         if config is None:
             return
+        name = step("title", config)
+
+        def read(f: InventoryFile) -> list | None:
+            title = titles.read_title(root / f.rel_path, PurePosixPath(f.rel_path).name, config)
+            return None if title is None else [title.title_id, title.version, title.name]
+
         for f in progress.each("Reading title IDs", files):
             if f.kind not in ("rom", "archive"):
                 continue
-            title = titles.read_title(root / f.rel_path, PurePosixPath(f.rel_path).name, config)
+            value = found.cache.get(f, name, lambda f=f: read(f))
+            title = None if value is None else titles.Title(*value)
             if title is not None:
                 found.identify(f.rel_path, {titles.identity_name(title, config)}, METHOD_TITLE_ID)
 
@@ -615,13 +719,11 @@ class Scanner:
         if config is None:
             return
         index = _crc_index(dat)
-        for f in progress.each("Checking trimmed images", unmatched):
-            card = found.cards.get(f.rel_path)
-            if card is None or not card[0].trimmed:
-                continue
-            info, member = card
+        name = step("padded-crc", config)
+
+        def read(f: InventoryFile, info: cards.CardInfo, member: str | None) -> str | None:
             try:
-                crc = cards.padded_crc(
+                return cards.padded_crc(
                     config,
                     root / f.rel_path,
                     member,
@@ -629,6 +731,15 @@ class Scanner:
                     self.settings.apply.copy_chunk_bytes,
                 )
             except (OSError, zipfile.BadZipFile, KeyError):
+                return None
+
+        for f in progress.each("Checking trimmed images", unmatched):
+            card = found.cards.get(f.rel_path)
+            if card is None or not card[0].trimmed:
+                continue
+            info, member = card
+            crc = found.cache.get(f, name, lambda f=f, i=info, m=member: read(f, i, m))
+            if crc is None:
                 continue
             found.identify(f.rel_path, index.get((crc, info.image_size), set()), METHOD_UNTRIMMED)
 
@@ -684,17 +795,26 @@ class Scanner:
                 found.forget(rel_path)
                 found.identify(rel_path, {game}, METHOD_MANUAL)
 
-    def _members(self, root: Path, files: list[InventoryFile], progress: Progress):
+    def _members(
+        self, root: Path, files: list[InventoryFile], progress: Progress, cache: FileCache
+    ):
         members: list[tuple[str, archives.Member]] = []
         problems: list[tuple[str, str]] = []
         in_archives = [f for f in files if f.kind == "archive"]
-        for f in progress.each("Reading archives", in_archives):
+
+        def read(f: InventoryFile) -> dict:
             try:
-                found = archives.list_members(self.settings, root / f.rel_path, self.seven_zip)
+                listed = archives.list_members(self.settings, root / f.rel_path, self.seven_zip)
             except archives.ArchiveError as exc:
-                problems.append((f.rel_path, str(exc)))
+                return {"error": str(exc)}
+            return {"members": [[m.name, m.size, m.crc32] for m in listed]}
+
+        for f in progress.each("Reading archives", in_archives):
+            value = cache.get(f, "members", lambda f=f: read(f))
+            if "error" in value:
+                problems.append((f.rel_path, value["error"]))
                 continue
-            members += [(f.rel_path, m) for m in found]
+            members += [(f.rel_path, archives.Member(*m)) for m in value["members"]]
         return members, problems
 
     def _store(self, conn, label, files, dat_sha1, found: "Found") -> None:
@@ -761,6 +881,7 @@ class Scanner:
                 "INSERT INTO byte_order VALUES (?, ?, ?)",
                 [(label, rel, word) for rel, word in found.byte_orders.items()],
             )
+            found.cache.save(conn, {f.rel_path for f in files})
             conn.executemany(
                 "INSERT INTO suggestion VALUES (?, ?, ?, ?)",
                 [
@@ -797,6 +918,8 @@ class Found:
     byte_orders: dict[str, int] = field(default_factory=dict)
     # rel_path -> (cards.CardInfo, zip member or None), for card images (3DS)
     cards: dict[str, tuple] = field(default_factory=dict)
+    # What earlier scans read from unchanged files; this scan's reads are added to it.
+    cache: FileCache = field(default_factory=lambda: FileCache(None, ""))
 
     def identify(self, rel_path, games, method, score=CHECKSUM_SCORE) -> None:
         for game in sorted(games):

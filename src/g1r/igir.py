@@ -45,9 +45,14 @@ def identified_files(rows: list[ReportRow]) -> dict[str, set[str]]:
 
 
 def run_report(
-    settings: Settings, dat_file: Path, input_dir: Path, merge: str | None = None
+    settings: Settings,
+    dat_file: Path,
+    input_dir: Path,
+    merge: str | None = None,
+    fresh: bool = False,
 ) -> list[ReportRow]:
-    """`merge`: igir's --merge-roms mode, for arcade sets."""
+    """`merge`: igir's --merge-roms mode, for arcade sets. `fresh`: hash every file again,
+    without igir's cache (a full scan)."""
     data_dir = settings.paths.data_dir
     work = data_dir / settings.igir.work_dir
     work.mkdir(parents=True, exist_ok=True)
@@ -62,8 +67,7 @@ def run_report(
             str(dat_file),
             "--input",
             str(input_dir),
-            "--cache-path",
-            str(cache),
+            *(["--disable-cache"] if fresh else ["--cache-path", str(cache)]),
             "--report-output",
             str(report),
             *(["--merge-roms", merge] if merge else []),
