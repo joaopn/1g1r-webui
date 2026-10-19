@@ -1026,6 +1026,18 @@ def _part(rel_path: str, parts) -> bool:
     return PurePosixPath(rel_path).suffix.lower().lstrip(".") in parts
 
 
+def rom_paths(conn: sqlite3.Connection, label: str) -> list[str]:
+    """The ROM files in the folder (what folder_summary counts as roms)."""
+    return [
+        row["rel_path"]
+        for row in conn.execute(
+            "SELECT rel_path FROM folder_file WHERE folder_label = ? "
+            "AND kind IN ('rom', 'archive') AND place = 'folder'",
+            (label,),
+        )
+    ]
+
+
 def unmatched_files(conn: sqlite3.Connection, label: str, parts=frozenset()) -> list[sqlite3.Row]:
     """Unidentified ROM files; parts of a game (cue sheets, tracks) wait for conversion."""
     found = conn.execute(

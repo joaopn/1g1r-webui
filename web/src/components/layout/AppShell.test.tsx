@@ -22,6 +22,7 @@ const FOLDERS = [
     needs_dat: false,
     counts: {},
     reclaim_bytes: 0,
+    progress: { processed: 0, to_process: 0 },
     delete_originals: false,
     hidden: false,
     conversion: {

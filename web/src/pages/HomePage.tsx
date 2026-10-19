@@ -1,5 +1,6 @@
 import { useMutation } from "@tanstack/react-query";
 import { Download, Info, RefreshCw, TriangleAlert } from "lucide-react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { PlatformIcon } from "@/components/PlatformIcon";
@@ -9,8 +10,53 @@ import { formatBytes, formatCount, formatFiles, formatWhen } from "@/lib/format"
 import { foldersByName } from "@/lib/platforms";
 import { invalidateFolder, useFolders, useMeta } from "@/lib/queries";
 import { scanProgress, useStartScan } from "@/lib/scan";
+import { readJson, writeJson } from "@/lib/storage";
 import type { FolderCard, Scan } from "@/lib/types";
 import { cn } from "@/lib/utils";
+
+const DETAIL_KEY = "g1r.home.detail.v1";
+const DETAILS = [
+  { id: "simplified", label: "Simplified" },
+  { id: "extended", label: "Extended" },
+] as const;
+type Detail = (typeof DETAILS)[number]["id"];
+
+function isDetail(value: unknown): value is Detail {
+  return DETAILS.some((d) => d.id === value);
+}
+
+/** Simplified | Extended: how much each card shows, remembered per browser. */
+function DetailSwitch({ value, onChange }: { value: Detail; onChange: (d: Detail) => void }) {
+  return (
+    <fieldset className="flex shrink-0 overflow-hidden rounded-full border border-border text-sm">
+      <legend className="sr-only">Card detail</legend>
+      {DETAILS.map((d) => {
+        const active = d.id === value;
+        return (
+          <label
+            key={d.id}
+            className={cn(
+              "cursor-pointer px-3 py-1 transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring",
+              active
+                ? "bg-primary text-primary-foreground"
+                : "bg-card hover:bg-accent hover:text-accent-foreground",
+            )}
+          >
+            <input
+              type="radio"
+              name="home-detail"
+              className="sr-only"
+              value={d.id}
+              checked={active}
+              onChange={() => onChange(d.id)}
+            />
+            {d.label}
+          </label>
+        );
+      })}
+    </fieldset>
+  );
+}
 
 /** The card's scan button and, behind the card, the running scan's progress. */
 function ScanBackground({ scan }: { scan: Scan | null }) {
@@ -81,27 +127,36 @@ function CardActions({ folder }: { folder: FolderCard }) {
 export function HomePage() {
   const meta = useMeta();
   const folders = useFolders();
+  const [detail, setDetail] = useState<Detail>(() => readJson(DETAIL_KEY, "extended", isDetail));
+  const changeDetail = (d: Detail) => {
+    setDetail(d);
+    writeJson(DETAIL_KEY, d);
+  };
+  const extended = detail === "extended";
   if (!meta.data || !folders.data) return <p className="text-muted-foreground">Loading…</p>;
   const ui = meta.data.ui;
   const shown = folders.data.filter((f) => !f.hidden);
   const hidden = folders.data.length - shown.length;
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="font-semibold text-2xl tracking-tight">Home</h1>
-        <p className="text-muted-foreground text-sm">
-          Everything here is a proposal until you apply it, and what is applied can be undone.
-          {hidden > 0 ? (
-            <>
-              {" "}
-              {formatCount(hidden)} hidden {hidden === 1 ? "set is" : "sets are"} left out (
-              <Link to="/settings/folders" className="underline underline-offset-2">
-                Settings → Folders
-              </Link>
-              ).
-            </>
-          ) : null}
-        </p>
+      <header className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="font-semibold text-2xl tracking-tight">Home</h1>
+          <p className="text-muted-foreground text-sm">
+            Everything here is a proposal until you apply it, and what is applied can be undone.
+            {hidden > 0 ? (
+              <>
+                {" "}
+                {formatCount(hidden)} hidden {hidden === 1 ? "set is" : "sets are"} left out (
+                <Link to="/settings/folders" className="underline underline-offset-2">
+                  Settings → Folders
+                </Link>
+                ).
+              </>
+            ) : null}
+          </p>
+        </div>
+        <DetailSwitch value={detail} onChange={changeDetail} />
       </header>
       {shown.length === 0 ? (
         <div className="max-w-xl rounded-lg border border-border bg-card p-6">
@@ -113,54 +168,63 @@ export function HomePage() {
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(20rem,1fr))] gap-4">
+        <div className="grid grid-cols-[repeat(auto-fill,18rem)] items-start gap-4">
           {foldersByName(shown, meta.data.platforms).map((folder) => {
             const platform = meta.data.platforms[folder.platform];
-            const stats = [
-              {
-                label: "identified",
-                value: `${formatCount(folder.summary.identified)} / ${formatCount(folder.summary.roms)}`,
-              },
-              {
-                label: "unmatched",
-                value: formatCount(folder.summary.unmatched),
-                attention: folder.summary.unmatched > 0,
-              },
-              {
-                label: "games with several versions",
-                value: formatCount(folder.counts.several ?? 0),
-              },
-              {
-                label: "undecided",
-                value: formatCount(folder.counts.undecided ?? 0),
-                attention: (folder.counts.undecided ?? 0) > 0,
-              },
-              { label: "proposed moves", value: formatCount(folder.counts.proposals ?? 0) },
-              {
-                label: "to convert",
-                value: formatCount(folder.conversion.to_convert),
-                attention: folder.conversion.to_convert > 0,
-              },
-              {
-                label: "conversions flagged",
-                value: formatCount(folder.conversion.flagged),
-                attention: folder.conversion.flagged > 0,
-              },
-              {
-                label: "would free",
-                value: formatBytes(folder.reclaim_bytes, ui.byte_unit_base, ui.byte_units),
-              },
-              {
-                label:
-                  folder.discarded.files > 0
-                    ? `already discarded · ${formatFiles(folder.discarded.files)}`
-                    : "already discarded",
-                value:
-                  folder.discarded.files > 0
-                    ? formatBytes(folder.discarded.bytes, ui.byte_unit_base, ui.byte_units)
-                    : "nothing",
-              },
-            ];
+            const stats = extended
+              ? [
+                  {
+                    label: "identified",
+                    value: `${formatCount(folder.summary.identified)} / ${formatCount(folder.summary.roms)}`,
+                  },
+                  {
+                    label: "unmatched",
+                    value: formatCount(folder.summary.unmatched),
+                    attention: folder.summary.unmatched > 0,
+                  },
+                  {
+                    label: "games with several versions",
+                    value: formatCount(folder.counts.several ?? 0),
+                  },
+                  {
+                    label: "undecided",
+                    value: formatCount(folder.counts.undecided ?? 0),
+                    attention: (folder.counts.undecided ?? 0) > 0,
+                  },
+                  { label: "proposed moves", value: formatCount(folder.counts.proposals ?? 0) },
+                  {
+                    label: "to convert",
+                    value: formatCount(folder.conversion.to_convert),
+                    attention: folder.conversion.to_convert > 0,
+                  },
+                  {
+                    label: "conversions flagged",
+                    value: formatCount(folder.conversion.flagged),
+                    attention: folder.conversion.flagged > 0,
+                  },
+                  {
+                    label: "would free",
+                    value: formatBytes(folder.reclaim_bytes, ui.byte_unit_base, ui.byte_units),
+                  },
+                  {
+                    label:
+                      folder.discarded.files > 0
+                        ? `already discarded · ${formatFiles(folder.discarded.files)}`
+                        : "already discarded",
+                    value:
+                      folder.discarded.files > 0
+                        ? formatBytes(folder.discarded.bytes, ui.byte_unit_base, ui.byte_units)
+                        : "nothing",
+                  },
+                ]
+              : [
+                  { label: "processed", value: formatCount(folder.progress.processed) },
+                  {
+                    label: "to process",
+                    value: formatCount(folder.progress.to_process),
+                    attention: folder.progress.to_process > 0,
+                  },
+                ];
             const progress = scanProgress(folder.scan);
             return (
               <div
@@ -189,12 +253,16 @@ export function HomePage() {
                     {folder.location ?? `mount ${folder.mount} unavailable`}
                   </p>
                   <p className="mt-2 text-xs">
-                    {folder.dat ? (
-                      `DAT ${folder.dat.header_name} · ${folder.dat.version ?? "?"}`
-                    ) : (
-                      <span className="text-status-warn">No DAT yet</span>
-                    )}
-                    <br />
+                    {extended ? (
+                      <>
+                        {folder.dat ? (
+                          `DAT ${folder.dat.header_name} · ${folder.dat.version ?? "?"}`
+                        ) : (
+                          <span className="text-status-warn">No DAT yet</span>
+                        )}
+                        <br />
+                      </>
+                    ) : null}
                     {folder.scan ? (
                       folder.scan.status === "done" ? (
                         `Scanned ${formatWhen(folder.scan.finished_at)}`

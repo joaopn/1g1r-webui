@@ -385,8 +385,11 @@ def table(
     query: str = "",
     page: int = 1,
     folder_view: FolderView | None = None,
+    games: list[GameRow] | None = None,
 ) -> Table:
-    games = game_rows(settings, conn, label, ranking, folder_view)
+    """`games`: the folder's game rows when the caller already has them."""
+    if games is None:
+        games = game_rows(settings, conn, label, ranking, folder_view)
     tests = {
         "all": lambda g: True,
         "several": lambda g: len(g.rows) > 1,

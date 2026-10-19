@@ -1,9 +1,10 @@
 """Warnings for a folder's Home card (design §3): things to look at before any apply."""
 
 import sqlite3
+from collections.abc import Iterable
 from pathlib import Path
 
-from g1r import hasheous
+from g1r import conversion, hasheous, matching
 
 WARN = "warn"
 BAD = "bad"
@@ -72,3 +73,26 @@ def warnings(
 
 def _files(n: int) -> str:
     return f"{n} file" if n == 1 else f"{n} files"
+
+
+def progress(
+    rom_paths: Iterable[str],
+    games: list[matching.GameRow],
+    conversion_rows: list[conversion.ConversionRow],
+    unmatched_paths: Iterable[str],
+) -> dict[str, int]:
+    """ROM files with nothing left to do, and the rest.
+
+    A file is left to process when it is unmatched, waits for a conversion (or a look at
+    a flagged one), or belongs to a game still undecided or with a move proposed.
+    """
+    pending = set(unmatched_paths)
+    for row in conversion_rows:
+        if row.status in conversion.CONVERTING or row.status == conversion.FLAGGED:
+            pending.update([row.rel_path, *row.parts])
+    for game in games:
+        if game.has_proposals or game.status == matching.STATUS_UNDECIDED:
+            pending.update(r.version.rel_path for r in game.rows)
+    roms = set(rom_paths)
+    to_process = len(roms & pending)
+    return {"processed": len(roms) - to_process, "to_process": to_process}

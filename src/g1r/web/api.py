@@ -378,17 +378,17 @@ def build_router(
         library = store.load()
         result = []
         for folder in library.folders:
-            table = matching.table(
-                settings,
-                conn,
-                folder.label,
-                store.ranking_for(folder),
-                folder_view=produces(library, folder, conn),
+            ranking = store.ranking_for(folder)
+            games = matching.game_rows(
+                settings, conn, folder.label, ranking, produces(library, folder, conn)
             )
+            table = matching.table(settings, conn, folder.label, ranking, games=games)
+            converting = conversion_rows(library, folder, conn)
             info = folder_info(library, folder)
             scan = scanner.latest_scan(conn, folder.label)
             dat = registry.active_version(conn, library, folder.platform)
-            summary = scanner.folder_summary(conn, folder.label, parts_of(folder))
+            parts = parts_of(folder)
+            summary = scanner.folder_summary(conn, folder.label, parts)
             result.append(
                 {
                     **info,
@@ -399,7 +399,13 @@ def build_router(
                     "needs_dat": dat is None and not title_ids(folder.platform),
                     "counts": table.counts,
                     "reclaim_bytes": table.reclaim_bytes,
-                    "conversion": conversion.counts(conversion_rows(library, folder, conn)),
+                    "conversion": conversion.counts(converting),
+                    "progress": dashboard.progress(
+                        scanner.rom_paths(conn, folder.label),
+                        games,
+                        converting,
+                        (r["rel_path"] for r in scanner.unmatched_files(conn, folder.label, parts)),
+                    ),
                     "discarded": discarded.totals(settings, folder.label),
                     "warnings": dashboard.warnings(
                         conn,

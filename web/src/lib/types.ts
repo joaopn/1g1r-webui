@@ -132,6 +132,8 @@ export type FolderCard = FolderInfo & {
   counts: Record<string, number>;
   reclaim_bytes: number;
   conversion: ConversionCounts;
+  /** ROM files with nothing left to do, and the rest. */
+  progress: { processed: number; to_process: number };
   discarded: { files: number; bytes: number };
   warnings: FolderWarning[];
 };

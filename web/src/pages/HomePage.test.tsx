@@ -37,9 +37,12 @@ const card = (label: string, platform: string, scan: Scan | null): FolderCard =>
   counts: {},
   reclaim_bytes: 0,
   conversion: { to_convert: 0, flagged: 0 } as FolderCard["conversion"],
+  progress: { processed: 0, to_process: 0 },
   discarded: { files: 0, bytes: 0 },
   warnings: [],
 });
+
+beforeEach(() => localStorage.clear());
 
 function renderPage(folders: FolderCard[]) {
   const calls: { url: string; init?: RequestInit }[] = [];
@@ -145,4 +148,22 @@ test("a hint links to where it is acted on, and the card still opens the set", a
     "href",
     "/folders/nes/matching",
   );
+});
+
+test("Simplified shows processed and to process, hides the DAT, and is remembered", async () => {
+  const folder: FolderCard = {
+    ...card("gb", "gb", SCAN),
+    dat: { header_name: "Nintendo - Game Boy", version: "2026.10.07" } as FolderCard["dat"],
+    summary: { counts: {}, roms: 10, identified: 9, unmatched: 1, methods: {} },
+    progress: { processed: 7, to_process: 3 },
+  };
+  renderPage([folder]);
+  expect(await screen.findByText(/DAT Nintendo - Game Boy/)).toBeInTheDocument();
+  expect(screen.getByText("identified")).toBeInTheDocument();
+  await userEvent.click(screen.getByLabelText("Simplified"));
+  expect(screen.queryByText(/DAT Nintendo - Game Boy/)).toBeNull();
+  expect(screen.queryByText("identified")).toBeNull();
+  expect(screen.getByText("processed").nextSibling).toHaveTextContent("7");
+  expect(screen.getByText("to process").nextSibling).toHaveTextContent("3");
+  expect(localStorage.getItem("g1r.home.detail.v1")).toBe(JSON.stringify("simplified"));
 });
