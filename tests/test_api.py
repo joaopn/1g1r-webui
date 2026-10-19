@@ -405,3 +405,15 @@ def test_each_version_names_the_dat_that_identified_it(setup):
     assert len(dats) == 1 and dats <= {"uploaded DAT", "No-Intro"}
     assert version["dat"]["header_name"] == "Nintendo - Nintendo Entertainment System"
     assert version["dat"]["source_label"] in ("Uploaded file", "No-Intro (DAT-o-MATIC)")
+
+
+def test_the_global_dat_order(setup):
+    client, store, _ = setup
+    first = client.get("/api/dat-order").json()
+    assert not first["own"] and [e["id"] for e in first["entries"]][:2] == ["nointro", "upload"]
+    order = [e["id"] for e in first["entries"]][::-1]
+    saved = client.put("/api/dat-order", json={"order": order, "off": ["tosec"]}).json()
+    assert saved["own"] and [e["id"] for e in saved["entries"]] == order
+    assert [e["id"] for e in saved["entries"] if not e["on"]] == ["tosec"]
+    assert store.load().dat_order == order
+    assert client.put("/api/dat-order", json={"order": None}).json()["own"] is False

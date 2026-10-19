@@ -167,7 +167,8 @@ class Pinned(BaseModel):
 
 
 class DatOrder(BaseModel):
-    order: list[str]
+    # None: back to the global order (a platform's), or to the default (the global one).
+    order: list[str] | None
     off: list[str] = []
 
 
@@ -291,17 +292,21 @@ def build_router(
             }
         return found
 
+    def entry_label(entry: str) -> str:
+        source = settings.dats.sources.get(entry)
+        return source.label if source else LOOKUP_LABELS.get(entry, entry)
+
+    def own_order(library: Library, platform: str) -> bool:
+        dats = library.dats.get(platform)
+        return dats is not None and dats.order is not None
+
     def dat_order(conn, library: Library, platform: str) -> list[dict]:
         """The platform's identification order: each source's active DAT, and the online
         lookups, with whether each is on."""
         return [
             {
                 "id": e.id,
-                "label": (
-                    settings.dats.sources[e.id].label
-                    if e.id in settings.dats.sources
-                    else LOOKUP_LABELS.get(e.id, e.id)
-                ),
+                "label": entry_label(e.id),
                 "on": e.on,
                 "lookup": e.lookup,
                 "dat": row_dict(e.version),
@@ -595,6 +600,7 @@ def build_router(
             **folder_info(library, folder),
             "dat": row_dict(registry.active_version(conn, library, folder.platform)),
             "dat_order": dat_order(conn, library, folder.platform),
+            "dat_order_own": own_order(library, folder.platform),
             "scan": row_dict(scanner.latest_scan(conn, label)),
             "summary": scanner.folder_summary(conn, label, parts_of(folder)),
             "unmatched": [dict(r) for r in scanner.unmatched_files(conn, label, parts_of(folder))],
@@ -1111,6 +1117,7 @@ def build_router(
                 "platform": pid,
                 "active": row_dict(registry.active_version(conn, library, pid)),
                 "order": dat_order(conn, library, pid),
+                "own_order": own_order(library, pid),
                 "versions": [dict(v) for v in registry.versions(conn, pid)],
                 "folders": [f.label for f in library.folders if f.platform == pid],
                 "downloads": [
@@ -1179,6 +1186,31 @@ def build_router(
             raise not_found("no such platform")
         registry_call(lambda: registry.set_order(platform, body.order, body.off))
         return dat_order(conn, store.load(), platform)
+
+    def global_order(library: Library) -> dict:
+        off = set(library.dat_off)
+        return {
+            "own": library.dat_order is not None,
+            "entries": [
+                {
+                    "id": entry,
+                    "label": entry_label(entry),
+                    "on": entry not in off,
+                    "lookup": entry in LOOKUP_LABELS,
+                }
+                for entry in registry.global_order(library)
+            ],
+        }
+
+    @router.get("/dat-order")
+    def get_global_order():
+        """The order every platform without its own follows."""
+        return global_order(store.load())
+
+    @router.put("/dat-order")
+    def set_global_order(body: DatOrder):
+        registry_call(lambda: registry.set_global_order(body.order, body.off))
+        return global_order(store.load())
 
     # Console keys (3DS decryption) ----------------------------------------------------
     # Only whether each file is there is ever returned: the keys never leave the server.

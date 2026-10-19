@@ -379,19 +379,45 @@ class DatRegistry:
 
         self.store.update(change)
 
-    def set_order(self, platform: str, order: list[str], off: list[str]) -> None:
-        """The platform's identification order, and the entries switched off."""
-        self._profile(platform)
+    def _check_order(self, order: list[str], off: list[str]) -> None:
         known = set(self.settings.dats.priority)
         if len(set(order)) != len(order) or not set(order) <= known or not set(off) <= known:
             raise RegistryError(f"the order may list only {sorted(known)}, each once")
 
+    def set_order(self, platform: str, order: list[str] | None, off: list[str]) -> None:
+        """The platform's own identification order and the entries switched off there;
+        None: follow the global order again."""
+        self._profile(platform)
+        if order is not None:
+            self._check_order(order, off)
+
         def change(library: Library) -> None:
             dats = library.dats.setdefault(platform, PlatformDats())
-            dats.order = list(order)
-            dats.off = sorted(set(off))
+            dats.order = None if order is None else list(order)
+            dats.off = [] if order is None else sorted(set(off))
 
         self.store.update(change)
+
+    def set_global_order(self, order: list[str] | None, off: list[str]) -> None:
+        """The order every platform without its own follows; None: the default."""
+        if order is not None:
+            self._check_order(order, off)
+
+        def change(library: Library) -> None:
+            library.dat_order = None if order is None else list(order)
+            library.dat_off = [] if order is None else sorted(set(off))
+
+        self.store.update(change)
+
+    def global_order(self, library: Library) -> list[str]:
+        """Every source and lookup in the global order (one the order misses, at the end in
+        its default place)."""
+        chosen = [e for e in (library.dat_order or []) if e in self.settings.dats.priority]
+        return chosen + [e for e in self.settings.dats.priority if e not in chosen]
+
+    def off(self, library: Library, platform: str) -> set[str]:
+        dats = library.dats.get(platform, PlatformDats())
+        return set(dats.off if dats.order is not None else library.dat_off)
 
     # Reading ---------------------------------------------------------------------
 
@@ -409,7 +435,8 @@ class DatRegistry:
         dats = library.dats.get(platform, PlatformDats())
         default = self.settings.dats.priority
         present = [e for e in default if e in dats.active or e in LOOKUP_ENTRIES]
-        order = [e for e in (dats.order or []) if e in present]
+        chosen = dats.order if dats.order is not None else self.global_order(library)
+        order = [e for e in chosen if e in present]
         for entry in present:
             if entry in order:
                 continue
@@ -428,6 +455,7 @@ class DatRegistry:
     def entries(self, conn, library: Library, platform: str) -> list[Entry]:
         """The platform's identification order, each DAT with its stored version."""
         dats = library.dats.get(platform, PlatformDats())
+        off = self.off(library, platform)
         found = []
         for entry in self.order(library, platform):
             version = None
@@ -438,7 +466,7 @@ class DatRegistry:
                 ).fetchone()
                 if version is None:
                     continue
-            found.append(Entry(entry, entry not in dats.off, version))
+            found.append(Entry(entry, entry not in off, version))
         return found
 
     def active_versions(self, conn, library: Library, platform: str) -> list[sqlite3.Row]:

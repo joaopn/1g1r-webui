@@ -56,6 +56,7 @@ class PlatformDats(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     active: dict[str, ActiveDat] = Field(default_factory=dict)
+    # The platform's own order; None: the global one.
     order: list[str] | None = None
     # Entries switched off: they identify nothing until switched on again.
     off: list[str] = Field(default_factory=list)
@@ -84,6 +85,10 @@ class Library(BaseModel):
     lookups: LookupSwitches = Field(default_factory=LookupSwitches)
     platform_targets: dict[str, str] = Field(default_factory=dict)
     dats: dict[str, PlatformDats] = Field(default_factory=dict)
+    # The order sources and lookups identify files in on every platform without its own
+    # order, and the entries switched off there (None: the configured default).
+    dat_order: list[str] | None = None
+    dat_off: list[str] = Field(default_factory=list)
     ignored_filenames: list[str] | None = None
     folders: list[FolderEntry] = Field(default_factory=list)
 
