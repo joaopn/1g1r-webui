@@ -2,6 +2,7 @@ import { useMutation } from "@tanstack/react-query";
 import { Download, Pin, PinOff, Upload } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { DatOrderEditor } from "@/components/DatOrderEditor";
 import { PlatformIcon } from "@/components/PlatformIcon";
 import { ScreenScraperCredentials } from "@/components/ScreenScraperCredentials";
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +12,7 @@ import { formatCount, formatWhen } from "@/lib/format";
 import { platformsByName } from "@/lib/platforms";
 import { keys, queryClient, useDats, useMeta, useSettingsData } from "@/lib/queries";
 import type { DatRow, Meta } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 const errorText = (err: unknown) => (err instanceof ApiError ? err.message : String(err));
 
@@ -160,12 +162,14 @@ function DatRowView({ row, meta }: { row: DatRow; meta: Meta }) {
     onError,
   });
   const pin = useMutation({
-    mutationFn: (pinned: boolean) => api(`/dats/${row.platform}/pin`, json("PUT", { pinned })),
+    mutationFn: ({ source, pinned }: { source: string; pinned: boolean }) =>
+      api(`/dats/${row.platform}/pin`, json("PUT", { source, pinned })),
     onSuccess: refresh,
     onError,
   });
-  const active = row.active;
-  const source = active ? meta.dat_sources[active.source] : null;
+  // Each source's active DAT, in the platform's identification order.
+  const actives = row.order.filter((e) => e.dat);
+  const activeIds = new Set(actives.map((e) => e.dat?.id));
   return (
     <tr
       className="border-border border-b align-top last:border-b-0 hover:bg-accent/20"
@@ -181,33 +185,75 @@ function DatRowView({ row, meta }: { row: DatRow; meta: Meta }) {
         ) : null}
       </td>
       <td className="px-3 py-2.5">
-        {active ? (
-          <div className="space-y-1">
-            <div>{active.header_name}</div>
-            <div className="text-muted-foreground text-xs">
-              {source?.label} · version {active.version ?? "?"} · {formatCount(active.game_count)}{" "}
-              games · sha1{" "}
-              <code title={active.sha1}>{active.sha1.slice(0, meta.ui.hash_display_length)}</code>
-            </div>
-            <div className="flex flex-wrap gap-1">
-              {source?.identification_only ? (
-                <Badge variant="outline" className="border-status-warn text-status-warn">
-                  identification only
-                </Badge>
-              ) : null}
-              {!active.has_parent_clone && !source?.identification_only ? (
-                <Badge variant="outline">no parent/clone</Badge>
-              ) : null}
-              {!active.matches_platform ? (
-                <Badge variant="outline" className="border-status-warn text-status-warn">
-                  name differs
-                </Badge>
-              ) : null}
-            </div>
-          </div>
+        {actives.length > 0 ? (
+          <ol className="space-y-2">
+            {actives.map((entry, index) => {
+              const dat = entry.dat;
+              if (!dat) return null;
+              const source = meta.dat_sources[dat.source];
+              return (
+                <li key={entry.id} className={cn("space-y-1", !entry.on && "opacity-60")}>
+                  <div>
+                    {actives.length > 1 ? (
+                      <span className="text-muted-foreground tabular-nums">{index + 1}. </span>
+                    ) : null}
+                    {dat.header_name}
+                    {!entry.on ? <span className="text-muted-foreground"> (off)</span> : null}
+                  </div>
+                  <div className="text-muted-foreground text-xs">
+                    {source?.label} · version {dat.version ?? "?"} · {formatCount(dat.game_count)}{" "}
+                    games · sha1{" "}
+                    <code title={dat.sha1}>{dat.sha1.slice(0, meta.ui.hash_display_length)}</code>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1">
+                    {source?.identification_only ? (
+                      <Badge variant="outline" className="border-status-warn text-status-warn">
+                        identification only
+                      </Badge>
+                    ) : null}
+                    {!dat.has_parent_clone && !source?.identification_only ? (
+                      <Badge variant="outline">no parent/clone</Badge>
+                    ) : null}
+                    {!dat.matches_platform ? (
+                      <Badge variant="outline" className="border-status-warn text-status-warn">
+                        name differs
+                      </Badge>
+                    ) : null}
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      onClick={() => pin.mutate({ source: entry.id, pinned: !entry.pinned })}
+                      title={
+                        entry.pinned
+                          ? "Unpin"
+                          : "Pin: this source's DAT never switches without unpinning"
+                      }
+                    >
+                      {entry.pinned ? (
+                        <Pin className="size-3" aria-hidden="true" />
+                      ) : (
+                        <PinOff className="size-3" aria-hidden="true" />
+                      )}
+                      {entry.pinned ? "pinned" : "pin"}
+                    </Button>
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
         ) : (
           <span className="text-muted-foreground">none</span>
         )}
+        {actives.length > 1 ? (
+          <div className="mt-2">
+            <DatOrderEditor
+              platform={row.platform}
+              platformName={platform?.name ?? row.platform}
+              entries={row.order}
+              compact
+            />
+          </div>
+        ) : null}
       </td>
       <td className="px-3 py-2.5">
         {row.versions.length === 0 ? (
@@ -216,7 +262,7 @@ function DatRowView({ row, meta }: { row: DatRow; meta: Meta }) {
           <ul className="space-y-1 text-xs">
             {row.versions.map((v) => (
               <li key={v.id} className="flex items-center gap-2">
-                {active?.id === v.id ? (
+                {activeIds.has(v.id) ? (
                   <span className="font-medium">
                     ● {meta.dat_sources[v.source]?.label} {v.version ?? ""}
                   </span>
@@ -228,7 +274,7 @@ function DatRowView({ row, meta }: { row: DatRow; meta: Meta }) {
                     <Button
                       variant="link"
                       size="xs"
-                      disabled={row.pinned}
+                      disabled={actives.some((e) => e.id === v.source && e.pinned)}
                       onClick={() => activate.mutate(v.id)}
                     >
                       use
@@ -264,21 +310,6 @@ function DatRowView({ row, meta }: { row: DatRow; meta: Meta }) {
           >
             <Upload className="size-3.5" aria-hidden="true" /> Upload
           </Button>
-          {active ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => pin.mutate(!row.pinned)}
-              title={row.pinned ? "Unpin" : "Pin: never switch without unpinning"}
-            >
-              {row.pinned ? (
-                <Pin className="size-3.5" aria-hidden="true" />
-              ) : (
-                <PinOff className="size-3.5" aria-hidden="true" />
-              )}
-              {row.pinned ? "pinned" : "pin"}
-            </Button>
-          ) : null}
           <input
             ref={fileInput}
             type="file"
@@ -318,9 +349,10 @@ export function DatsSettingsPage() {
       title="DATs"
       intro={
         <>
-          Each platform matches against exactly one active DAT, recorded in{" "}
-          <code className="text-xs">{data.data?.library_file}</code>. Downloads and uploads are kept
-          as versions; a new version is used only when you choose it.
+          Each platform has one active DAT per source, recorded in{" "}
+          <code className="text-xs">{data.data?.library_file}</code>, and an order: each DAT
+          identifies the files the ones above it missed (DAT order). Downloads and uploads are kept
+          as versions; the first of a source is used at once, a newer one only when you choose it.
         </>
       }
     >

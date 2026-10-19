@@ -77,6 +77,16 @@ export type DatVersion = {
   added_at: string;
 };
 
+/** One step of a platform's identification order: a source's active DAT, or a lookup. */
+export type DatOrderEntry = {
+  id: string;
+  label: string;
+  on: boolean;
+  lookup: boolean;
+  dat: DatVersion | null;
+  pinned: boolean;
+};
+
 export type Summary = {
   counts: Record<string, number>;
   roms: number;
@@ -149,6 +159,7 @@ export type FileRow = { rel_path: string; size: number; kind: string };
 export type UnsupportedFile = { rel_path: string; size: number; reason: string };
 
 export type FolderDetail = FolderInfo & {
+  dat_order: DatOrderEntry[];
   scan: Scan | null;
   dat: DatVersion | null;
   summary: Summary;
@@ -269,8 +280,9 @@ export type Game = {
 
 export type DatRow = {
   platform: string;
+  /** The first DAT of the order. */
   active: DatVersion | null;
-  pinned: boolean;
+  order: DatOrderEntry[];
   versions: DatVersion[];
   folders: string[];
   /** Where this platform's DAT can be downloaded from, one button each. */

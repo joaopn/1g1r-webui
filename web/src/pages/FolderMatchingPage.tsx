@@ -7,6 +7,7 @@ import { ApplyDialog } from "@/components/apply/ApplyDialog";
 import { RunPanel } from "@/components/apply/RunPanel";
 import { useRestore } from "@/components/apply/useRestore";
 import { Box } from "@/components/Box";
+import { DatOrderEditor } from "@/components/DatOrderEditor";
 import { GamesTable } from "@/components/games/GamesTable";
 import { RankingEditor } from "@/components/RankingEditor";
 import { ScanPanel } from "@/components/ScanPanel";
@@ -89,9 +90,10 @@ export function FolderMatchingPage() {
   if (!meta.data || !folder.data) return <p className="text-muted-foreground">Loading…</p>;
   const f = folder.data;
   const ignored = f.others.filter((file) => file.kind === "ignored");
-  const source = f.dat ? meta.data.dat_sources[f.dat.source] : null;
   const other = (f.summary.counts.other ?? 0) + (f.summary.counts.ignored ?? 0);
   const scanning = f.scan?.status === "running";
+  // The DATs identifying this set, in order (switched-off ones left out).
+  const dats = f.dat_order.filter((e) => e.on && e.dat);
   const lookupsOn =
     !!settingsData.data &&
     (settingsData.data.lookups.hasheous || settingsData.data.lookups.screenscraper);
@@ -117,26 +119,49 @@ export function FolderMatchingPage() {
         </div>
       ) : null}
 
-      <ScanPanel label={label} scan={f.scan} title="Matching">
-        <span className="font-medium">DAT</span>{" "}
-        {f.dat ? (
-          <>
-            {f.dat.header_name}{" "}
-            <span className="text-muted-foreground">
-              · {source?.label} · {f.dat.version ?? "?"}
-            </span>{" "}
-            {source?.identification_only ? (
-              <Badge
-                variant="outline"
-                className="border-status-warn text-status-warn"
-                title="No parent/clone data: versions are grouped from Retool's clone lists and DAT names"
-              >
-                identification only
-              </Badge>
-            ) : null}
-          </>
+      <ScanPanel
+        label={label}
+        scan={f.scan}
+        title="Matching"
+        actions={
+          f.dat_order.some((e) => e.dat) ? (
+            <DatOrderEditor
+              platform={f.platform}
+              platformName={meta.data.platforms[f.platform]?.name ?? f.platform}
+              entries={f.dat_order}
+            />
+          ) : null
+        }
+      >
+        {dats.length > 0 ? (
+          <ol className="space-y-0.5">
+            {dats.map((entry, index) => {
+              const source = meta.data.dat_sources[entry.id];
+              return (
+                <li key={entry.id}>
+                  <span className="font-medium">{dats.length > 1 ? `${index + 1}. ` : "DAT "}</span>
+                  {entry.dat?.header_name}{" "}
+                  <span className="text-muted-foreground">
+                    · {entry.label} · {entry.dat?.version ?? "?"}
+                  </span>{" "}
+                  {source?.identification_only ? (
+                    <Badge
+                      variant="outline"
+                      className="border-status-warn text-status-warn"
+                      title="No parent/clone data: versions are grouped from Retool's clone lists and DAT names"
+                    >
+                      identification only
+                    </Badge>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ol>
         ) : (
-          <span className="text-status-warn">none — add one in Settings → DATs</span>
+          <>
+            <span className="font-medium">DAT</span>{" "}
+            <span className="text-status-warn">none — add one in Settings → DATs</span>
+          </>
         )}
       </ScanPanel>
 

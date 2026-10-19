@@ -53,7 +53,7 @@ export function RankingEditor({
         <Button variant="outline" size="sm" data-testid="ranking-button">
           <SlidersHorizontal className="size-3.5" aria-hidden="true" />
           Ranking
-          <span className="hidden text-muted-foreground lg:inline">
+          <span className="hidden max-w-80 truncate text-muted-foreground lg:inline">
             · {summary}
             {isDefault ? " (default)" : ""}
           </span>
