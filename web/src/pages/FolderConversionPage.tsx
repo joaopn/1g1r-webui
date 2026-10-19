@@ -45,7 +45,7 @@ export function FolderConversionPage() {
     <div className="space-y-6">
       <FolderHeader folder={f} meta={meta.data} section="Conversion" />
 
-      <ScanPanel label={label} scan={f.scan}>
+      <ScanPanel label={label} scan={f.scan} title="Scan">
         <span className="font-medium">Target</span> {target?.label}{" "}
         <span className="text-muted-foreground">
           · accepts {target?.accepts.join(", ")} as they are · set for every {platformName} folder

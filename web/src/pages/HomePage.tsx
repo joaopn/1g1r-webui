@@ -68,7 +68,7 @@ function CardActions({ folder }: { folder: FolderCard }) {
         aria-label={`Scan ${folder.label}`}
         title={guard ?? "Scan for conversion and matching"}
         disabled={Boolean(guard) || running || scan.isPending}
-        onClick={() => scan.mutate()}
+        onClick={() => scan.mutate({})}
       >
         <RefreshCw className={running ? "size-4 animate-spin" : "size-4"} aria-hidden="true" />
         Scan

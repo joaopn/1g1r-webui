@@ -5,10 +5,12 @@ import { formatCount } from "@/lib/format";
 import { invalidateFolder } from "@/lib/queries";
 import type { Scan } from "@/lib/types";
 
-/** Starts the folder's scan, which feeds both conversion and matching. */
+/** Starts the folder's scan, which feeds both conversion and matching. A quick scan reuses
+ * what earlier scans read from unchanged files; `full` reads every file again. */
 export function useStartScan(label: string) {
   return useMutation({
-    mutationFn: () => api(`/folders/${label}/scan`, { method: "POST" }),
+    mutationFn: ({ full = false }: { full?: boolean } = {}) =>
+      api(`/folders/${label}/scan${full ? "?full=true" : ""}`, { method: "POST" }),
     onSuccess: () => invalidateFolder(label),
     onError: (err) => toast.error(err instanceof ApiError ? err.message : String(err)),
   });

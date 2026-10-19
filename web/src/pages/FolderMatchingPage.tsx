@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { ApplyDialog } from "@/components/apply/ApplyDialog";
 import { RunPanel } from "@/components/apply/RunPanel";
 import { useRestore } from "@/components/apply/useRestore";
+import { Box } from "@/components/Box";
 import { GamesTable } from "@/components/games/GamesTable";
 import { RankingEditor } from "@/components/RankingEditor";
 import { ScanPanel } from "@/components/ScanPanel";
@@ -103,7 +104,20 @@ export function FolderMatchingPage() {
     <div className="space-y-6">
       <FolderHeader folder={f} meta={meta.data} section="Matching & 1G1R" />
 
-      <ScanPanel label={label} scan={f.scan}>
+      {f.summary.roms > 0 ? (
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          <StatCard value={formatCount(f.summary.roms)} label="ROM files" />
+          <StatCard value={formatCount(f.summary.identified)} label="identified" />
+          <StatCard
+            value={formatCount(f.summary.unmatched)}
+            label="unmatched"
+            attention={f.summary.unmatched > 0}
+          />
+          <StatCard value={formatCount(other)} label="other files" />
+        </div>
+      ) : null}
+
+      <ScanPanel label={label} scan={f.scan} title="Matching">
         <span className="font-medium">DAT</span>{" "}
         {f.dat ? (
           <>
@@ -127,21 +141,6 @@ export function FolderMatchingPage() {
       </ScanPanel>
 
       <UnsupportedFiles files={f.unsupported} platform={f.platform} meta={meta.data} />
-
-      <RunPanel label={label} meta={meta.data} />
-
-      {f.summary.roms > 0 ? (
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          <StatCard value={formatCount(f.summary.roms)} label="ROM files" />
-          <StatCard value={formatCount(f.summary.identified)} label="identified" />
-          <StatCard
-            value={formatCount(f.summary.unmatched)}
-            label="unmatched"
-            attention={f.summary.unmatched > 0}
-          />
-          <StatCard value={formatCount(other)} label="other files" />
-        </div>
-      ) : null}
       {(f.summary.waiting ?? 0) > 0 ? (
         <p className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-muted-foreground text-sm">
           {formatCount(f.summary.waiting ?? 0)} cue sheet and track file(s) wait for conversion:
@@ -156,10 +155,10 @@ export function FolderMatchingPage() {
         </p>
       ) : null}
 
-      <section className="space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="font-semibold text-lg">Games</h2>
-          <div className="flex flex-wrap items-center gap-2">
+      <Box
+        title="1G1R"
+        actions={
+          <>
             <RankingEditor
               meta={meta.data}
               ranking={f.ranking}
@@ -176,8 +175,19 @@ export function FolderMatchingPage() {
               <Archive className="size-4" aria-hidden="true" />
               Apply 1G1R{proposed > 0 ? ` (${formatFiles(proposed)})` : ""}
             </Button>
-          </div>
-        </div>
+          </>
+        }
+      >
+        <p className="text-muted-foreground">
+          {proposed > 0
+            ? `${formatFiles(proposed)} proposed to move to discarded/; review the games below, then apply.`
+            : "No moves proposed."}
+        </p>
+      </Box>
+
+      <RunPanel label={label} meta={meta.data} />
+
+      <section className="space-y-3" aria-label="Games">
         {games.data ? (
           <GamesTable
             label={label}
