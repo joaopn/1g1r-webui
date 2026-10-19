@@ -20,6 +20,9 @@ SOURCE_RETOOL = "retool-clone-list"
 SOURCE_NAME = "dat-name"
 SOURCE_SINGLE = "single"
 SOURCE_TITLE_ID = "title-id"
+# Identifications of one ROM file: online lookups and name matches never look into an
+# archive with several ROMs (scanner), so the file is one ROM whatever its DAT game lists.
+SINGLE_FILE_METHODS = frozenset({"hasheous", "fuzzy"})
 TOSEC_STYLE = "tosec"
 NOINTRO_STYLE = "nointro"
 
@@ -217,7 +220,12 @@ def build_groups(
                 title(game, known),
                 game in parents,
                 known is not None and known.bios,
-                incomplete=known is not None and len(known.roms) < dats.most_roms.get(game, 0),
+                incomplete=known is not None
+                and (
+                    len(known.roms) < dats.most_roms.get(game, 0)
+                    # One file standing for a game its DAT lists as several (one disk).
+                    or (method in SINGLE_FILE_METHODS and len(known.roms) > 1)
+                ),
                 dat_sha1=dat_sha1,
             )
         )

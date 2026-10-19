@@ -225,3 +225,43 @@ def test_a_partial_version_is_never_kept_over_a_whole_one(settings):
         only_partial, ranking(), {}, set(), only_partial
     )
     assert status == matching.STATUS_UNDECIDED and winner is None and len(candidates) == 2
+
+
+def test_one_disk_named_online_is_never_kept_over_the_whole_game(settings):
+    """B3: Hasheous names a lone disk as the game its DAT lists with every disk."""
+    full = SourceDat(
+        "full",
+        Dat(
+            DatHeader(name="Commodore - Amiga"),
+            [
+                DatGame(
+                    name="Game (Europe)",
+                    roms=[DatRom(f"d{i}", 1, None, None, None) for i in (1, 2)],
+                ),
+                DatGame(
+                    name="Game (USA)",
+                    cloneof="Game (Europe)",
+                    roms=[DatRom(f"u{i}", 1, None, None, None) for i in (1, 2)],
+                ),
+            ],
+            "logiqx",
+        ),
+    )
+    identities = [
+        ("Game (Europe).zip", "Game (Europe)", "dat-checksum", "full"),
+        ("Game (USA) (Disk 2).ipf", "Game (USA)", "hasheous", ""),
+    ]
+    (group,) = build_groups(settings, DatSet([full]), identities)
+    assert {v.rel_path: v.incomplete for v in group.versions} == {
+        "Game (Europe).zip": False,
+        "Game (USA) (Disk 2).ipf": True,
+    }
+    # USA ranks above Europe, but the USA version is one disk: the whole game is kept.
+    status, _, winner, _ = matching._decide(group, ranking(), {}, set(), group)
+    assert status == matching.STATUS_DECIDED and winner.rel_path == "Game (Europe).zip"
+
+
+def test_single_file_methods_are_the_scanners():
+    from g1r import grouping, scanner
+
+    assert grouping.SINGLE_FILE_METHODS == {scanner.METHOD_HASHEOUS, scanner.METHOD_FUZZY}

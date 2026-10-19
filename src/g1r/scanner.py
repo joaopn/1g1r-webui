@@ -59,8 +59,8 @@ METHOD_TITLE_ID = "title-id"
 # identity.dat_sha1 of an identification that needed no DAT (title IDs).
 NO_DAT = ""
 METHOD_DUPLICATE = "duplicate"
-METHOD_HASHEOUS = "hasheous"
-METHOD_FUZZY = "fuzzy"
+METHOD_HASHEOUS = "hasheous"  # also in grouping.SINGLE_FILE_METHODS
+METHOD_FUZZY = "fuzzy"  # also in grouping.SINGLE_FILE_METHODS
 METHOD_MANUAL = "manual"
 CHECKSUM_SCORE = 1.0
 
