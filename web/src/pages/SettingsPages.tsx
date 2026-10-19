@@ -73,7 +73,6 @@ export function PlatformsSettingsPage() {
           <thead className="border-border border-b text-left text-muted-foreground text-xs uppercase tracking-wide">
             <tr>
               <th className="px-3 py-2">Platform</th>
-              <th className="px-3 py-2">No-Intro DAT</th>
               <th className="px-3 py-2">ROM extensions</th>
               <th className="px-3 py-2">Target format</th>
             </tr>
@@ -87,7 +86,6 @@ export function PlatformsSettingsPage() {
                     {p.name}
                   </span>
                 </td>
-                <td className="px-3 py-2 text-muted-foreground">{p.dat_name}</td>
                 <td className="px-3 py-2 text-muted-foreground">{p.rom_extensions.join(", ")}</td>
                 <td className="px-3 py-2">
                   <select
