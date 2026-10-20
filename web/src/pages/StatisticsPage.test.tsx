@@ -36,6 +36,14 @@ const STATS: Statistics = {
       coverage: { nointro: { covered: 1, total: 3, dat: DAT } },
     },
     {
+      label: "nes-2",
+      platform: "nes",
+      platform_short: "NES",
+      roms: 1000,
+      identified: 999,
+      coverage: { nointro: { covered: 999, total: 1000, dat: DAT } },
+    },
+    {
       label: "psx",
       platform: "gb",
       platform_short: "GB",
@@ -134,11 +142,21 @@ test("coverage per DAT source, empty cells, DAT info and the missing games", asy
     </QueryClientProvider>,
   );
   const nes = await screen.findByTestId("statistics-nes");
-  expect(within(nes).getByText("8 / 10")).toBeInTheDocument();
+  // The identified files sit in the Set cell; no Identified column, no views, no filters.
+  expect(within(nes).getByText("8 / 10 identified")).toBeInTheDocument();
+  expect(screen.queryByTestId("header-identified")).toBeNull();
+  expect(screen.queryByTestId("quick-views")).toBeNull();
+  expect(screen.queryByTestId("filters-button")).toBeNull();
   expect(within(nes).getByTestId("coverage-nes-nointro")).toHaveTextContent("33.3%");
+  expect(within(nes).getByTestId("coverage-nes-nointro")).not.toHaveClass("text-status-good");
+  // Two folders of one platform: a line each. Rounded down, so 999 of 1000 is not 100%.
+  const nes2 = screen.getByTestId("coverage-nes-2-nointro");
+  expect(nes2).toHaveTextContent("99.9%");
+  expect(nes2).not.toHaveClass("text-status-good");
   // No Redump DAT for NES: an empty cell. TOSEC has no DAT anywhere: no column.
   expect(within(nes).queryByTestId("coverage-nes-redump")).toBeNull();
   expect(screen.getByTestId("coverage-psx-redump")).toHaveTextContent("100.0%");
+  expect(screen.getByTestId("coverage-psx-redump")).toHaveClass("text-status-good");
   expect(screen.queryByText("TOSEC")).toBeNull();
 
   const info = screen.getByTestId("dat-info");
@@ -174,6 +192,7 @@ test("coverage per DAT source, empty cells, DAT info and the missing games", asy
   // The page's own table keeps its order.
   expect(screen.getAllByTestId(/^statistics-/).map((r) => r.dataset.testid)).toEqual([
     "statistics-nes",
+    "statistics-nes-2",
     "statistics-psx",
   ]);
 });

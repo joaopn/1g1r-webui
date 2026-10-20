@@ -2,7 +2,7 @@ import { ChevronRight } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { PlatformIcon } from "@/components/PlatformIcon";
-import { type DataColumn, DataTable, type RowView } from "@/components/table/DataTable";
+import { type DataColumn, DataTable } from "@/components/table/DataTable";
 import {
   Dialog,
   DialogContent,
@@ -13,15 +13,17 @@ import {
 import { formatCount } from "@/lib/format";
 import { useMeta, useMissing, useStatistics } from "@/lib/queries";
 import type { DatInfo, Meta, MissingGame, Statistics, StatisticsFolder } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
-const ALL: RowView<StatisticsFolder>[] = [{ id: "all", label: "All", test: () => true }];
-const ALL_MISSING: RowView<MissingGame>[] = [{ id: "all", label: "All", test: () => true }];
 // The missing-games table's URL parameters, apart from the page table's.
 const MISSING_PREFIX = "m.";
 
 const share = (covered: number, total: number) => (total ? covered / total : 0);
+// Rounded down, so only a complete DAT reads 100% (roundingMode is not in TS's ES2022 lib).
+const FLOOR = { roundingMode: "floor" } as Intl.NumberFormatOptions;
 const percent = (value: number, digits: number) =>
   value.toLocaleString("en-US", {
+    ...FLOOR,
     style: "percent",
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
@@ -89,8 +91,16 @@ function CoverageTable({
       {
         id: "folder",
         label: "Set",
-        render: (f) => <span className="font-medium">{f.label}</span>,
+        render: (f) => (
+          <div className="truncate">
+            <span className="font-medium">{f.label}</span>
+            <span className="block truncate text-muted-foreground text-xs tabular-nums">
+              {formatCount(f.identified)} / {formatCount(f.roms)} identified
+            </span>
+          </div>
+        ),
         sortValue: (f) => f.label,
+        title: (f) => `${formatCount(f.identified)} of ${formatCount(f.roms)} ROM files identified`,
       },
       {
         id: "platform",
@@ -98,17 +108,6 @@ function CoverageTable({
         render: (f) => <PlatformIcon platform={meta.platforms[f.platform]} />,
         sortValue: (f) => f.platform_short,
         title: (f) => meta.platforms[f.platform]?.name,
-      },
-      {
-        id: "identified",
-        label: "Identified",
-        render: (f) => (
-          <span className="tabular-nums">
-            {formatCount(f.identified)} / {formatCount(f.roms)}
-          </span>
-        ),
-        sortValue: (f) => share(f.identified, f.roms),
-        title: (f) => `${formatCount(f.identified)} of ${formatCount(f.roms)} ROM files identified`,
       },
       ...sources.map(
         (s): DataColumn<StatisticsFolder> => ({
@@ -121,7 +120,10 @@ function CoverageTable({
             return (
               <button
                 type="button"
-                className="rounded px-1 tabular-nums underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-ring"
+                className={cn(
+                  "rounded px-1 tabular-nums underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-ring",
+                  cell.covered === cell.total && "font-medium text-status-good",
+                )}
                 onClick={() => onOpen({ label: f.label, source: s.id })}
                 data-testid={`coverage-${f.label}-${s.id}`}
               >
@@ -153,6 +155,7 @@ function CoverageTable({
       name="statistics"
       label="DAT coverage"
       noun="sets"
+      fit
       rows={stats.folders}
       rowKey={(f) => f.label}
       rowTestId={(f) => `statistics-${f.label}`}
@@ -160,24 +163,12 @@ function CoverageTable({
       sizes={sizes}
       defaultColumns={[...meta.ui.statistics_columns_default, ...sources.map((s) => s.id)]}
       defaultSort={{ id: "folder", order: "asc" }}
-      views={ALL}
       search={(f, needle) =>
         f.label.toLocaleLowerCase().includes(needle) ||
         f.platform_short.toLocaleLowerCase().includes(needle)
       }
       searchLabel="Search sets"
       searchPlaceholder="Search sets or platforms"
-      filters={[
-        {
-          id: "platform",
-          label: "Platform",
-          options: [...new Set(stats.folders.map((f) => f.platform))].sort().map((p) => ({
-            value: p,
-            label: meta.platforms[p]?.name ?? p,
-          })),
-          valueOf: (f) => f.platform,
-        },
-      ]}
       meta={meta}
     />
   );
@@ -280,7 +271,6 @@ function MissingDialog({
           sizes={meta.ui.missing_columns}
           defaultColumns={meta.ui.missing_columns_default.filter((id) => hasData(id))}
           defaultSort={{ id: "name", order: "asc" }}
-          views={ALL_MISSING}
           search={(g, needle) =>
             g.name.toLocaleLowerCase().includes(needle) ||
             g.entries.some((e) => e.toLocaleLowerCase().includes(needle))

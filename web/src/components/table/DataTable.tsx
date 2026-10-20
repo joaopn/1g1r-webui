@@ -37,19 +37,21 @@ export type RowFilter<T> = {
 };
 
 const FILTER_PREFIX = "f.";
+const ALL_ROWS: RowView<unknown>[] = [{ id: "all", label: "All", test: () => true }];
 
 export function DataTable<T>({
   name,
   label,
   noun,
   rows,
+  fit = false,
   rowKey,
   rowTestId,
   columns,
   sizes,
   defaultColumns,
   defaultSort,
-  views,
+  views = ALL_ROWS,
   search,
   searchLabel,
   searchPlaceholder,
@@ -65,13 +67,16 @@ export function DataTable<T>({
   label: string;
   noun: string;
   rows: T[];
+  /** As wide as its columns (a resized column resizes the table), not the full width. */
+  fit?: boolean;
   rowKey: (row: T) => string;
   rowTestId?: (row: T) => string;
   columns: DataColumn<T>[];
   sizes: Record<string, ColumnSize>;
   defaultColumns: string[];
   defaultSort?: { id: string; order: "asc" | "desc" };
-  views: RowView<T>[];
+  /** Quick views; none given shows every row without a views bar. */
+  views?: RowView<T>[];
   search: (row: T, needle: string) => boolean;
   searchLabel: string;
   searchPlaceholder: string;
@@ -183,17 +188,19 @@ export function DataTable<T>({
   const grid = "grid items-center gap-3 [grid-template-columns:var(--table-grid)]";
 
   return (
-    <div className="space-y-3">
-      <QuickViewBar
-        name={`${name}-view`}
-        views={views.map((v) => ({
-          id: v.id,
-          label: v.label,
-          count: filtered.filter(v.test).length,
-        }))}
-        value={view.id}
-        onChange={(id) => update({ view: id === views[0].id ? "" : id })}
-      />
+    <div className={cn("space-y-3", fit && "w-fit max-w-full")}>
+      {views === ALL_ROWS ? null : (
+        <QuickViewBar
+          name={`${name}-view`}
+          views={views.map((v) => ({
+            id: v.id,
+            label: v.label,
+            count: filtered.filter(v.test).length,
+          }))}
+          value={view.id}
+          onChange={(id) => update({ view: id === views[0].id ? "" : id })}
+        />
+      )}
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative min-w-56 flex-1">
           <Search

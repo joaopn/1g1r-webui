@@ -97,9 +97,8 @@ ui:
   statistics_columns:
     folder: {rem: 12, min: 6, max: 30}
     platform: {rem: 6, min: 4, max: 14}
-    identified: {rem: 8, min: 6, max: 14}
     source: {rem: 7, min: 5, max: 14}
-  statistics_columns_default: [folder, platform, identified]
+  statistics_columns_default: [folder, platform]
   # Its missing-games table.
   missing_columns:
     name: {rem: 18, min: 8, max: 48}
