@@ -682,8 +682,22 @@ igir:
 # Online identification for files the local DAT misses. Off until switched on in
 # Settings -> Online lookups; only content hashes (CRC32, MD5, SHA1) are sent.
 lookups:
-  # Files larger than this are not hashed for a lookup (bytes).
+  # Files larger than this are not hashed for a lookup (bytes); they are read into memory.
+  # CHDs are streamed instead (chd below), whatever their size.
   max_hash_bytes: 268435456
+  # A CHD is looked up by its largest data track, as Redump lists it: the tracks are
+  # streamed through igir's chdman library by a helper script, nothing is written to disk.
+  # The compressed file's own hash is never sent (no database lists it).
+  chd:
+    node: node
+    script: /usr/local/lib/g1r/chd-hashes.mjs
+    chdman_module: /usr/local/lib/node_modules/igir/dist/addons/chdman/index.js
+    chunk_bytes: 1048576
+    # One CHD may take this long, plus its size read at min_bytes_per_second.
+    timeout_seconds: 600
+    min_bytes_per_second: 2097152
+    # Track types never looked up (audio tracks are shared between releases).
+    audio_track_types: [AUDIO]
   hasheous:
     url: https://hasheous.org/api/v1/Lookup/ByHash?returnAllSources=true&returnFields=Signatures
     site: https://hasheous.org

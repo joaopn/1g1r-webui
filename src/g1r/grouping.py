@@ -8,7 +8,7 @@ removed. Fuzzy matching never forms a group.
 import json
 from dataclasses import dataclass, field
 from functools import cache
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from g1r import titles
 from g1r.config import Settings
@@ -23,6 +23,12 @@ SOURCE_TITLE_ID = "title-id"
 # Identifications of one ROM file: online lookups and name matches never look into an
 # archive with several ROMs (scanner), so the file is one ROM whatever its DAT game lists.
 SINGLE_FILE_METHODS = frozenset({"hasheous", "fuzzy"})
+
+
+def is_disc_image(settings: Settings, rel_path: str) -> bool:
+    """A disc format holding a whole disc (`platforms.disc_formats`: CHD, RVZ)."""
+    suffix = PurePosixPath(rel_path).suffix.lower().lstrip(".")
+    return suffix in settings.platforms.disc_formats
 TOSEC_STYLE = "tosec"
 NOINTRO_STYLE = "nointro"
 
@@ -224,7 +230,12 @@ def build_groups(
                 and (
                     len(known.roms) < dats.most_roms.get(game, 0)
                     # One file standing for a game its DAT lists as several (one disk).
-                    or (method in SINGLE_FILE_METHODS and len(known.roms) > 1)
+                    # A disc image (CHD, RVZ) holds every track of its disc: it is whole.
+                    or (
+                        method in SINGLE_FILE_METHODS
+                        and len(known.roms) > 1
+                        and not is_disc_image(settings, rel_path)
+                    )
                 ),
                 dat_sha1=dat_sha1,
             )

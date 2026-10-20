@@ -3,10 +3,13 @@
 The data is the bare file, or each ROM member of a zip; on platforms with copier headers
 the header-stripped data is hashed too, since databases list either form. On platforms whose
 dumps come in several byte orders (N64), a swapped file is hashed in the native order too.
+A CHD stands for its largest data track (decoded by `chd_track_hashes`), never for itself.
 """
 
 import hashlib
+import json
 import struct
+import subprocess
 import zipfile
 import zlib
 from collections.abc import Callable
@@ -179,12 +182,51 @@ def payload_sha1(
     return found[0] if found else None
 
 
+# Reads a CHD's tracks: {"type": ..., "tracks": [{index, type, size, crc32, md5, sha1}]}.
+ChdReader = Callable[[Settings, Path], dict | None]
+
+
+def chd_track_hashes(settings: Settings, path: Path) -> dict | None:
+    """Each track's hashes, from the helper script; None when the CHD cannot be read."""
+    config = settings.lookups.chd
+    command = [config.node, config.script, config.chdman_module, str(config.chunk_bytes), str(path)]
+    try:
+        timeout = config.timeout_seconds + path.stat().st_size / config.min_bytes_per_second
+        result = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+    try:
+        return json.loads(result.stdout)
+    except ValueError:
+        return None
+
+
+def disc_track(settings: Settings, read: dict | None) -> ContentHash | None:
+    """The track a disc is looked up by: its largest data track."""
+    tracks = [
+        t
+        for t in (read or {}).get("tracks", [])
+        if t["type"] not in settings.lookups.chd.audio_track_types
+    ]
+    if not tracks:
+        return None
+    track = max(tracks, key=lambda t: t["size"])
+    return ContentHash(FULL, track["size"], track["crc32"], track["md5"], track["sha1"])
+
+
 def payload_count(hashes: list[ContentHash]) -> int:
     """How many ROM payloads the hashes cover (a payload may also have a headerless hash)."""
     return sum(1 for h in hashes if h.variant.split(":")[0] == FULL)
 
 
-def content_hashes(settings: Settings, platform: str, path: Path) -> list[ContentHash]:
+def content_hashes(
+    settings: Settings, platform: str, path: Path, read_chd: ChdReader = chd_track_hashes
+) -> list[ContentHash]:
+    if path.suffix.lower() == CHD_SUFFIX:
+        track = disc_track(settings, read_chd(settings, path))
+        return [track] if track is not None else []
     profile = settings.platforms.profiles[platform]
     extensions = {e.lower() for e in profile.rom_extensions}
     rules = settings.headers.get(platform, [])

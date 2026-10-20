@@ -47,6 +47,8 @@ RUN git init -q /tmp/cl && cd /tmp/cl \
  && rm -rf /tmp/cl
 
 COPY docker/tool-versions.sh /usr/local/bin/tool-versions
+# Streams a CHD's tracks into their hashes for online lookups (lookups.chd).
+COPY docker/chd-hashes.mjs /usr/local/lib/g1r/chd-hashes.mjs
 RUN chmod +x /usr/local/bin/tool-versions && tool-versions
 
 # The web app, in its own venv.

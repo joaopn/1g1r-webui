@@ -322,8 +322,19 @@ class HasheousConfig(_Strict):
     not_found_ttl_days: float = Field(ge=0)
 
 
+class ChdLookupConfig(_Strict):
+    node: str
+    script: str
+    chdman_module: str
+    chunk_bytes: int = Field(gt=0)
+    timeout_seconds: float = Field(gt=0)
+    min_bytes_per_second: float = Field(gt=0)
+    audio_track_types: list[str]
+
+
 class LookupsConfig(_Strict):
     max_hash_bytes: int = Field(gt=0)
+    chd: ChdLookupConfig
     hasheous: HasheousConfig
 
 

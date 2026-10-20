@@ -265,3 +265,24 @@ def test_single_file_methods_are_the_scanners():
     from g1r import grouping, scanner
 
     assert grouping.SINGLE_FILE_METHODS == {scanner.METHOD_HASHEOUS, scanner.METHOD_FUZZY}
+
+
+def test_a_disc_image_named_online_is_the_whole_disc(settings):
+    """A CHD holds every track its DAT game lists (cue and bins): never incomplete."""
+    redump = SourceDat(
+        "redump",
+        Dat(
+            DatHeader(name="Sony - PlayStation"),
+            [
+                DatGame(
+                    name="Game (Europe)",
+                    roms=[DatRom(n, 1, None, None, None) for n in ("g.cue", "g.bin")],
+                )
+            ],
+            "logiqx",
+        ),
+    )
+    (group,) = build_groups(
+        settings, DatSet([redump]), [("Game (Europe).chd", "Game (Europe)", "hasheous", "")]
+    )
+    assert [v.incomplete for v in group.versions] == [False]
