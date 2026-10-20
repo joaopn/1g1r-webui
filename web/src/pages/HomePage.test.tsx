@@ -186,3 +186,19 @@ test("Simplified still shows a running scan", async () => {
   ]);
   expect(await screen.findByTestId("scan-status-nes")).toHaveTextContent("Listing files");
 });
+
+test("a set with nothing left to process gets a green border in both views", async () => {
+  const filled = (label: string, toProcess: number): FolderCard => ({
+    ...card(label, "gb", SCAN),
+    summary: { counts: {}, roms: 10, bytes: 0, identified: 10, unmatched: 0, methods: {} },
+    progress: { processed: 10 - toProcess, to_process: toProcess },
+  });
+  renderPage([filled("done", 0), filled("busy", 2), card("empty", "gb", null)]);
+  const doneCard = await screen.findByTestId("folder-card-done");
+  for (const view of ["Simplified", "Extended"]) {
+    await userEvent.click(screen.getByLabelText(view));
+    expect(doneCard).toHaveClass("border-status-good");
+    expect(screen.getByTestId("folder-card-busy")).not.toHaveClass("border-status-good");
+    expect(screen.getByTestId("folder-card-empty")).not.toHaveClass("border-status-good");
+  }
+});

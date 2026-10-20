@@ -246,10 +246,19 @@ export function HomePage() {
             ) : extended ? (
               <span className="text-muted-foreground">Not scanned yet</span>
             ) : null;
+            // Nothing left to do: every file processed (a folder not scanned yet has no files).
+            const done = folder.summary.roms > 0 && folder.progress.to_process === 0;
             return (
               <div
                 key={folder.label}
-                className="group relative overflow-hidden rounded-lg border border-border bg-card transition-colors hover:border-primary/50 hover:bg-accent/30"
+                data-testid={`folder-card-${folder.label}`}
+                data-done={done || undefined}
+                className={cn(
+                  "group relative overflow-hidden rounded-lg border bg-card transition-colors hover:bg-accent/30",
+                  done
+                    ? "border-status-good ring-1 ring-status-good hover:border-status-good"
+                    : "border-border hover:border-primary/50",
+                )}
               >
                 <ScanBackground scan={folder.scan} />
                 {/* The title's link covers the card (::after); links inside sit above it. */}
