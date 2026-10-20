@@ -438,47 +438,73 @@ def build_router(
             )
         return result
 
-    def statistics_dats(conn, library: Library, folder: FolderEntry) -> dict:
-        """The folder's platform's local DATs by source (switched-off ones too), with their
-        counted games."""
-        profile = platforms[folder.platform]
-        found = {}
-        for entry in registry.entries(conn, library, folder.platform):
-            if entry.version is None:
-                continue
-            version = entry.version
-            dat = registry.load(version)
-            games = statistics.dat_games(
-                settings, version["sha1"], dat, name_style(version), profile.names_from
-            )
-            found[entry.id] = (version, games)
-        return found
+    def statistics_dats(conn, library: Library, folder: FolderEntry) -> dict[str, sqlite3.Row]:
+        """The folder's platform's local DATs by source (switched-off ones too)."""
+        return {
+            e.id: e.version
+            for e in registry.entries(conn, library, folder.platform)
+            if e.version is not None
+        }
+
+    def statistics_games(folder: FolderEntry, version: sqlite3.Row) -> statistics.DatGames:
+        return statistics.dat_games(
+            settings,
+            version["sha1"],
+            registry.load(version),
+            name_style(version),
+            platforms[folder.platform].names_from,
+        )
+
+    def statistics_folder(conn, library: Library, folder: FolderEntry) -> dict:
+        """The folder's row, as kept, or computed now when never computed. `stale`: its
+        files, identities or DATs changed since."""
+        dats = statistics_dats(conn, library, folder)
+        current = statistics.fingerprint(
+            settings, conn, folder.label, [v["sha1"] for v in dats.values()]
+        )
+        kept = statistics.cached(conn, statistics.KIND_FOLDER, folder.label)
+        if kept is None:
+            have = statistics.identified(settings, conn, folder.label)
+            summary = scanner.folder_summary(conn, folder.label, parts_of(folder))
+            cells = {}
+            for source, version in dats.items():
+                covered, total, _ = statistics.coverage(statistics_games(folder, version), have)
+                cells[source] = {"covered": covered, "total": total, "dat": row_dict(version)}
+            value = {
+                "roms": summary["roms"],
+                "identified": summary["identified"],
+                "coverage": cells,
+            }
+            kept = statistics.keep(conn, statistics.KIND_FOLDER, folder.label, current, value)
+        return kept.value | {
+            "label": folder.label,
+            "platform": folder.platform,
+            "platform_short": platforms[folder.platform].short,
+            "computed_at": kept.computed_at,
+            "stale": kept.fingerprint != current,
+        }
+
+    def statistics_features(conn, version: dict) -> dict:
+        """What kind of data a DAT carries (kept by its SHA1: a DAT file never changes)."""
+        sha1 = version["sha1"]
+        kept = statistics.cached(conn, statistics.KIND_DAT, sha1)
+        if kept is None:
+            features = statistics.dat_features(registry.load(version))
+            kept = statistics.keep(conn, statistics.KIND_DAT, sha1, sha1, features)
+        return kept.value
 
     @router.get("/statistics")
     def get_statistics(conn: Conn):
         library = store.load()
-        folders = []
-        local: dict[str, dict[str, sqlite3.Row]] = {}
-        for folder in library.folders:
-            if folder.hidden or folder.platform not in platforms:
-                continue
-            have = statistics.identified(settings, conn, folder.label)
-            summary = scanner.folder_summary(conn, folder.label, parts_of(folder))
-            cells = {}
-            for source, (version, games) in statistics_dats(conn, library, folder).items():
-                local.setdefault(source, {})[version["sha1"]] = version
-                covered, total, _ = statistics.coverage(games, have)
-                cells[source] = {"covered": covered, "total": total, "dat": row_dict(version)}
-            folders.append(
-                {
-                    "label": folder.label,
-                    "platform": folder.platform,
-                    "platform_short": platforms[folder.platform].short,
-                    "roms": summary["roms"],
-                    "identified": summary["identified"],
-                    "coverage": cells,
-                }
-            )
+        folders = [
+            statistics_folder(conn, library, folder)
+            for folder in library.folders
+            if not folder.hidden and folder.platform in platforms
+        ]
+        local: dict[str, dict[str, dict]] = {}
+        for folder in folders:
+            for source, cell in folder["coverage"].items():
+                local.setdefault(source, {})[cell["dat"]["sha1"]] = cell["dat"]
         sources = [
             {"id": sid, "label": source.label, "short_label": source.short_label}
             for sid, source in settings.dats.sources.items()
@@ -486,7 +512,7 @@ def build_router(
         dat_info = []
         for sid, source in settings.dats.sources.items():
             versions = list(local.get(sid, {}).values())
-            features = [statistics.dat_features(registry.load(v)) for v in versions]
+            features = [statistics_features(conn, v) for v in versions]
             dat_info.append(
                 {
                     "id": sid,
@@ -509,22 +535,36 @@ def build_router(
             "rules": settings.statistics.model_dump(),
         }
 
+    @router.post("/statistics/refresh")
+    def refresh_statistics(conn: Conn):
+        statistics.forget(conn)
+        return get_statistics(conn)
+
     @router.get("/statistics/{label}/{source}/missing")
     def get_missing(label: str, source: str, conn: Conn):
         folder = folder_or_404(label)
         library = store.load()
-        found = statistics_dats(conn, library, folder)
-        if source not in found:
+        dats = statistics_dats(conn, library, folder)
+        if source not in dats:
             raise not_found(f"{label!r} has no {source!r} DAT")
-        version, games = found[source]
-        have = statistics.identified(settings, conn, folder.label)
-        covered, total, missing = statistics.coverage(games, have)
-        return {
-            "dat": row_dict(version),
-            "covered": covered,
-            "total": total,
-            "rows": statistics.missing_rows(settings, games, missing),
-        }
+        version = dats[source]
+        current = statistics.fingerprint(
+            settings, conn, folder.label, [v["sha1"] for v in dats.values()]
+        )
+        key = statistics.missing_key(label, source)
+        kept = statistics.cached(conn, statistics.KIND_MISSING, key)
+        if kept is None or kept.fingerprint != current:
+            games = statistics_games(folder, version)
+            have = statistics.identified(settings, conn, folder.label)
+            covered, total, missing = statistics.coverage(games, have)
+            value = {
+                "dat": row_dict(version),
+                "covered": covered,
+                "total": total,
+                "rows": statistics.missing_rows(settings, games, missing),
+            }
+            kept = statistics.keep(conn, statistics.KIND_MISSING, key, current, value)
+        return kept.value
 
     @router.post("/folders", status_code=HTTPStatus.CREATED)
     def add_folder(body: NewFolder):
@@ -564,6 +604,7 @@ def build_router(
             lambda lib: setattr(lib, "folders", [f for f in lib.folders if f.label != label])
         )
         filecache.forget(conn, label)
+        statistics.forget(conn, label)
         igir.cache_path(settings, label).unlink(missing_ok=True)
 
     @router.put("/folders/{label}/hidden")

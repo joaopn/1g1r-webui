@@ -9,8 +9,13 @@ versions is in the folder; a left-out version never covers one.
 
 A file identified by another DAT covers a game of this one when its DAT game's ROM checksums
 cover every ROM of that game, or when this DAT lists the same game name.
+
+The figures are kept in the statistics_cache table and recomputed on request (the page's
+Refresh); a folder's fingerprint tells whether its files, identities or DATs changed since.
 """
 
+import hashlib
+import json
 import re
 import sqlite3
 from dataclasses import dataclass, field
@@ -273,3 +278,67 @@ def dat_features(dat: Dat) -> dict:
         "years": any(g.year for g in games),
         "publishers": any(g.manufacturer for g in games),
     }
+
+
+KIND_FOLDER = "folder"
+KIND_MISSING = "missing"
+KIND_DAT = "dat"
+
+
+def fingerprint(settings: Settings, conn: sqlite3.Connection, label: str, sha1s: list[str]) -> str:
+    """What a folder's figures depend on: its files, their identities, its DATs and the
+    counting rules."""
+    digest = hashlib.sha1(usedforsecurity=False)
+    digest.update(json.dumps([sha1s, settings.statistics.model_dump()]).encode())
+    for table, columns in (
+        ("folder_file", "rel_path, kind, place"),
+        ("identity", "rel_path, game_name, method, dat_sha1"),
+    ):
+        rows = conn.execute(
+            f"SELECT {columns} FROM {table} WHERE folder_label = ? ORDER BY {columns}", (label,)
+        )
+        for row in rows:
+            digest.update(json.dumps(list(row)).encode())
+    return digest.hexdigest()
+
+
+@dataclass(frozen=True)
+class Cached:
+    fingerprint: str
+    computed_at: str
+    value: dict
+
+
+def cached(conn: sqlite3.Connection, kind: str, key: str) -> Cached | None:
+    row = conn.execute(
+        "SELECT fingerprint, computed_at, value FROM statistics_cache WHERE kind = ? AND key = ?",
+        (kind, key),
+    ).fetchone()
+    if row is None:
+        return None
+    return Cached(row["fingerprint"], row["computed_at"], json.loads(row["value"]))
+
+
+def keep(conn: sqlite3.Connection, kind: str, key: str, fingerprint: str, value: dict) -> Cached:
+    conn.execute(
+        "INSERT OR REPLACE INTO statistics_cache (kind, key, fingerprint, value) "
+        "VALUES (?, ?, ?, ?)",
+        (kind, key, fingerprint, json.dumps(value)),
+    )
+    return cached(conn, kind, key)
+
+
+def missing_key(label: str, source: str) -> str:
+    return json.dumps([label, source])
+
+
+def forget(conn: sqlite3.Connection, label: str | None = None) -> None:
+    """Drop a folder's figures, or (no label) everything kept."""
+    if label is None:
+        conn.execute("DELETE FROM statistics_cache")
+        return
+    conn.execute("DELETE FROM statistics_cache WHERE kind = ? AND key = ?", (KIND_FOLDER, label))
+    conn.execute(
+        "DELETE FROM statistics_cache WHERE kind = ? AND json_extract(key, '$[0]') = ?",
+        (KIND_MISSING, label),
+    )

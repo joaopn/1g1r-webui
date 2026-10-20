@@ -1,6 +1,7 @@
+from contextlib import closing
 from pathlib import Path
 
-from g1r import statistics
+from g1r import db, statistics
 from g1r.dats import Dat, DatGame, DatHeader, DatRom
 from g1r.grouping import NOINTRO_STYLE, TOSEC_STYLE
 
@@ -16,6 +17,10 @@ def game(name, crc, category=None, rom_name=None, **extra):
 
 def dat(*games):
     return Dat(DatHeader("Nintendo - Nintendo Entertainment System"), list(games), "logiqx")
+
+
+def connect(settings):
+    return db.connect(settings.paths.database_path, settings.database.busy_timeout_ms)
 
 
 def settings_of(make_settings):
@@ -103,3 +108,34 @@ def test_statistics_api(setup):  # noqa: F811
     missing = client.get(f"/api/statistics/nes/{source}/missing").json()
     assert missing["rows"] == []
     assert client.get("/api/statistics/nes/nope/missing").status_code == 404
+
+
+def test_statistics_are_kept_until_refreshed(setup):  # noqa: F811
+    client, _, settings = setup
+    scanned(client)
+    first = client.get("/api/statistics").json()["folders"][0]
+    assert first["stale"] is False and first["computed_at"]
+    with closing(connect(settings)) as conn:
+        conn.execute("UPDATE statistics_cache SET value = json_set(value, '$.roms', -1)")
+        kept = client.get("/api/statistics").json()["folders"][0]
+        assert kept["roms"] == -1 and kept["stale"] is False
+        # A file losing its identity marks the figures as changed, without recomputing them.
+        conn.execute("DELETE FROM identity WHERE rowid = (SELECT min(rowid) FROM identity)")
+    changed = client.get("/api/statistics").json()["folders"][0]
+    assert changed["roms"] == -1 and changed["stale"] is True
+    fresh = client.post("/api/statistics/refresh").json()["folders"][0]
+    assert fresh["stale"] is False and fresh["identified"] == first["identified"] - 1
+    assert fresh["roms"] == first["roms"]
+
+
+def test_missing_games_follow_the_folder(setup):  # noqa: F811
+    client, _, settings = setup
+    scanned(client)
+    source = next(iter(client.get("/api/statistics").json()["folders"][0]["coverage"]))
+    url = f"/api/statistics/nes/{source}/missing"
+    before = client.get(url).json()
+    assert before["rows"] == []
+    with closing(connect(settings)) as conn:
+        conn.execute("DELETE FROM identity")
+    after = client.get(url).json()
+    assert after["covered"] == 0 and len(after["rows"]) == after["total"]
