@@ -250,3 +250,37 @@ test("a set with nothing left to process gets a green border in both views", asy
     expect(screen.getByTestId("folder-card-empty")).not.toHaveClass("border-status-good");
   }
 });
+
+test("Hide completed leaves out sets with nothing left to process, and is remembered", async () => {
+  const filled = (label: string, toProcess: number): FolderCard => ({
+    ...card(label, "gb", SCAN),
+    summary: { counts: {}, roms: 10, bytes: 0, identified: 10, unmatched: 0, methods: {} },
+    progress: {
+      processed: 10 - toProcess,
+      to_process: toProcess,
+      to_match: toProcess,
+      to_convert: 0,
+    },
+  });
+  renderPage([filled("done", 0), filled("busy", 2), card("empty", "gb", null)]);
+  expect(await screen.findByTestId("folder-card-done")).toBeInTheDocument();
+  await userEvent.click(screen.getByLabelText("Hide completed"));
+  expect(screen.queryByTestId("folder-card-done")).toBeNull();
+  expect(screen.getByTestId("folder-card-busy")).toBeInTheDocument();
+  expect(screen.getByTestId("folder-card-empty")).toBeInTheDocument();
+  expect(screen.getByText(/1 completed set is hidden/)).toBeInTheDocument();
+  expect(localStorage.getItem("g1r.home.hide-completed.v1")).toBe("true");
+});
+
+test("with every set completed and hidden, the page says so", async () => {
+  localStorage.setItem("g1r.home.hide-completed.v1", "true");
+  renderPage([
+    {
+      ...card("done", "gb", SCAN),
+      summary: { counts: {}, roms: 10, bytes: 0, identified: 10, unmatched: 0, methods: {} },
+      progress: { processed: 10, to_process: 0, to_match: 0, to_convert: 0 },
+    },
+  ]);
+  expect(await screen.findByText("Every set is completed")).toBeInTheDocument();
+  expect(screen.queryByText("No sets yet")).toBeNull();
+});

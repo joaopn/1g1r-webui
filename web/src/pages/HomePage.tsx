@@ -25,6 +25,17 @@ const DETAILS = [
 ] as const;
 type Detail = (typeof DETAILS)[number]["id"];
 
+const HIDE_COMPLETED_KEY = "g1r.home.hide-completed.v1";
+
+function isBoolean(value: unknown): value is boolean {
+  return typeof value === "boolean";
+}
+
+/** Nothing left to do: every file processed (a folder not scanned yet has no files). */
+function isCompleted(folder: FolderCard): boolean {
+  return folder.summary.roms > 0 && folder.progress.to_process === 0;
+}
+
 function isDetail(value: unknown): value is Detail {
   return DETAILS.some((d) => d.id === value);
 }
@@ -138,10 +149,19 @@ export function HomePage() {
     writeJson(DETAIL_KEY, d);
   };
   const extended = detail === "extended";
+  const [hideCompleted, setHideCompleted] = useState(() =>
+    readJson(HIDE_COMPLETED_KEY, false, isBoolean),
+  );
+  const changeHideCompleted = (hide: boolean) => {
+    setHideCompleted(hide);
+    writeJson(HIDE_COMPLETED_KEY, hide);
+  };
   if (!meta.data || !folders.data) return <p className="text-muted-foreground">Loading…</p>;
   const ui = meta.data.ui;
-  const shown = folders.data.filter((f) => !f.hidden);
-  const hidden = folders.data.length - shown.length;
+  const visible = folders.data.filter((f) => !f.hidden);
+  const hidden = folders.data.length - visible.length;
+  const shown = hideCompleted ? visible.filter((f) => !isCompleted(f)) : visible;
+  const completedOut = visible.length - shown.length;
   return (
     <div className="space-y-6">
       <header className="flex items-start justify-between gap-4">
@@ -159,11 +179,32 @@ export function HomePage() {
                 ).
               </>
             ) : null}
+            {completedOut > 0
+              ? ` ${formatCount(completedOut)} completed ${completedOut === 1 ? "set is" : "sets are"} hidden.`
+              : null}
           </p>
         </div>
-        <DetailSwitch value={detail} onChange={changeDetail} />
+        <div className="flex shrink-0 items-center gap-4">
+          <label className="flex cursor-pointer items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="size-4 accent-primary"
+              checked={hideCompleted}
+              onChange={(e) => changeHideCompleted(e.target.checked)}
+            />
+            Hide completed
+          </label>
+          <DetailSwitch value={detail} onChange={changeDetail} />
+        </div>
       </header>
-      {shown.length === 0 ? (
+      {shown.length === 0 && completedOut > 0 ? (
+        <div className="max-w-xl rounded-lg border border-border bg-card p-6">
+          <h2 className="font-medium">Every set is completed</h2>
+          <p className="mt-1 text-muted-foreground text-sm">
+            Untick <strong>Hide completed</strong> to see them.
+          </p>
+        </div>
+      ) : shown.length === 0 ? (
         <div className="max-w-xl rounded-lg border border-border bg-card p-6">
           <h2 className="font-medium">No sets yet</h2>
           <p className="mt-1 text-muted-foreground text-sm">
@@ -275,8 +316,7 @@ export function HomePage() {
             ) : extended ? (
               <span className="text-muted-foreground">Not scanned yet</span>
             ) : null;
-            // Nothing left to do: every file processed (a folder not scanned yet has no files).
-            const done = folder.summary.roms > 0 && folder.progress.to_process === 0;
+            const done = isCompleted(folder);
             // Pending conversions come first: the card opens where there is work to apply.
             const page = folder.conversion.to_convert > 0 ? "conversion" : "matching";
             const target = `/folders/${folder.label}/${page}`;
