@@ -58,6 +58,7 @@ export function DataTable<T>({
   actionsClassName = "w-10",
   note,
   meta,
+  paramPrefix = "",
 }: {
   /** Names the remembered columns and widths. */
   name: string;
@@ -80,8 +81,11 @@ export function DataTable<T>({
   actionsClassName?: string;
   note?: ReactNode;
   meta: Meta;
+  /** Prefixes the URL parameters, so a second table on the page keeps its own view. */
+  paramPrefix?: string;
 }) {
-  const [params, setParams] = useSearchParams();
+  const [urlParams, setParams] = useSearchParams();
+  const params = { get: (key: string) => urlParams.get(paramPrefix + key) };
   const prefs = useMemo(
     () =>
       columnPrefs(
@@ -135,12 +139,12 @@ export function DataTable<T>({
   const visible = sorted.slice((page - 1) * pageSize, page * pageSize);
 
   const update = (changes: Record<string, string>, keepPage = false) => {
-    const next = new URLSearchParams(params);
+    const next = new URLSearchParams(urlParams);
     for (const [key, value] of Object.entries(changes)) {
-      if (value) next.set(key, value);
-      else next.delete(key);
+      if (value) next.set(paramPrefix + key, value);
+      else next.delete(paramPrefix + key);
     }
-    if (!keepPage) next.delete("page");
+    if (!keepPage) next.delete(`${paramPrefix}page`);
     setParams(next, { replace: true });
   };
   const onSort = (id: string) =>

@@ -12,12 +12,14 @@ import {
   LookupsSettingsPage,
   PlatformsSettingsPage,
 } from "@/pages/SettingsPages";
+import { StatisticsPage } from "@/pages/StatisticsPage";
 
 export function App() {
   return (
     <Routes>
       <Route element={<AppShell />}>
         <Route index element={<HomePage />} />
+        <Route path="statistics" element={<StatisticsPage />} />
         <Route path="folders/:label/matching" element={<FolderMatchingPage />} />
         <Route path="folders/:label/conversion" element={<FolderConversionPage />} />
         <Route path="folders/:label/discarded" element={<FolderDiscardedPage />} />

@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
   Archive,
+  ChartColumn,
   ChevronRight,
   FileCog,
   FolderTree,
@@ -183,6 +184,14 @@ function NavItems({ onNavigate }: { onNavigate?: () => void }) {
       <NavLink to="/" end onClick={onNavigate} className={({ isActive }) => rowClass(isActive)}>
         <House className="size-4 shrink-0" aria-hidden="true" />
         <span className="flex-1">Home</span>
+      </NavLink>
+      <NavLink
+        to="/statistics"
+        onClick={onNavigate}
+        className={({ isActive }) => rowClass(isActive)}
+      >
+        <ChartColumn className="size-4 shrink-0" aria-hidden="true" />
+        <span className="flex-1">Statistics</span>
       </NavLink>
       {groups.map((group) => (
         <NavGroup key={group.id} group={group} onNavigate={onNavigate} />

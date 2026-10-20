@@ -10,8 +10,10 @@ import type {
   GlobalDatOrder,
   KeyStatus,
   Meta,
+  Missing,
   Run,
   SettingsData,
+  Statistics,
   UnmatchedFile,
 } from "@/lib/types";
 
@@ -22,6 +24,8 @@ export const queryClient = new QueryClient({
 export const keys = {
   meta: ["meta"] as const,
   folders: ["folders"] as const,
+  statistics: ["statistics"] as const,
+  missing: (label: string, source: string) => ["missing", label, source] as const,
   folder: (label: string) => ["folder", label] as const,
   games: (label: string) => ["games", label] as const,
   conversion: (label: string) => ["conversion", label] as const,
@@ -105,3 +109,12 @@ export function invalidateFolder(label: string) {
 
 export const useGlobalDatOrder = () =>
   useQuery({ queryKey: keys.datOrder, queryFn: () => api<GlobalDatOrder>("/dat-order") });
+
+export const useStatistics = () =>
+  useQuery({ queryKey: keys.statistics, queryFn: () => api<Statistics>("/statistics") });
+
+export const useMissing = (label: string, source: string) =>
+  useQuery({
+    queryKey: keys.missing(label, source),
+    queryFn: () => api<Missing>(`/statistics/${label}/${source}/missing`),
+  });

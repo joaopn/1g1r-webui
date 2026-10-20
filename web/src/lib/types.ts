@@ -42,6 +42,11 @@ export type Meta = {
     conversion_columns_default: string[];
     discarded_columns: Record<string, ColumnSize>;
     discarded_columns_default: string[];
+    statistics_columns: Record<string, ColumnSize>;
+    statistics_columns_default: string[];
+    missing_columns: Record<string, ColumnSize>;
+    missing_columns_default: string[];
+    percent_digits: number;
   };
   platforms: Record<string, Platform>;
   archive_extensions: string[];
@@ -418,3 +423,56 @@ export type UnmatchedFile = {
   hasheous: { status: LookupStatus; detail: string } | null;
   suggestions: { game_name: string; score: number }[];
 };
+
+/** GET /statistics: how much of each local DAT every folder covers (games only). */
+export type Coverage = { covered: number; total: number; dat: DatVersion };
+
+export type StatisticsFolder = {
+  label: string;
+  platform: string;
+  platform_short: string;
+  roms: number;
+  identified: number;
+  /** By DAT source; a source the folder's platform has no DAT of is absent. */
+  coverage: Record<string, Coverage>;
+};
+
+export type DatInfo = {
+  id: string;
+  label: string;
+  dats: number;
+  identification_only: boolean;
+  checksums: string[];
+  categories: string[];
+  parent_clone: boolean;
+  bios: boolean;
+  serials: boolean;
+  years: boolean;
+  publishers: boolean;
+};
+
+export type Statistics = {
+  sources: { id: string; label: string; short_label: string }[];
+  folders: StatisticsFolder[];
+  dat_info: DatInfo[];
+  rules: {
+    categories: string[];
+    excluded_tags: string[];
+    tosec_excluded_flags: string[];
+    tosec_year_pattern: string;
+  };
+};
+
+export type MissingGame = {
+  key: string;
+  name: string;
+  versions: number;
+  years: string | null;
+  publishers: string | null;
+  regions: string | null;
+  languages: string | null;
+  serials: string | null;
+  entries: string[];
+};
+
+export type Missing = { dat: DatVersion; covered: number; total: number; rows: MissingGame[] };
