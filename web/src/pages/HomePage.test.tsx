@@ -314,3 +314,36 @@ test("a badge with no set says so", async () => {
   expect(screen.queryByTestId("folder-card-busy")).toBeNull();
   expect(screen.queryByText("No sets yet")).toBeNull();
 });
+
+test("warnings sit in a two-line slot, most severe first, in full on hover", async () => {
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+  renderPage([
+    {
+      ...card("nes", "nes", SCAN),
+      warnings: [
+        { level: "warn", text: "Not NES ROMs or archives: 2 files.", link: null },
+        { level: "bad", text: "The last scan failed: a long reason.", link: null },
+      ],
+    },
+    card("gb", "gb", SCAN),
+  ]);
+  const slot = await screen.findByTestId("warnings-nes");
+  expect(slot).toHaveClass("line-clamp-2", "h-8");
+  expect(slot.textContent).toBe(
+    "The last scan failed: a long reason. Not NES ROMs or archives: 2 files. ",
+  );
+  // A set without warnings keeps the slot, empty, so the cards have one size.
+  expect(screen.getByTestId("warnings-gb")).toHaveClass("h-8");
+  expect(screen.getByTestId("warnings-gb")).toBeEmptyDOMElement();
+  await userEvent.hover(slot);
+  expect(await screen.findByRole("tooltip")).toHaveTextContent(
+    "The last scan failed: a long reason.Not NES ROMs or archives: 2 files.",
+  );
+});

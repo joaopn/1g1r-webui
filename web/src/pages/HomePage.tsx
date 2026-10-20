@@ -122,6 +122,69 @@ function ScanBackground({ scan }: { scan: Scan | null }) {
 }
 
 /** Scan, and before it the platform's default DAT when the set has none. */
+// Most severe first.
+const SEVERITY = ["bad", "warn", "info"] as const;
+
+/** The card's warnings in a two-line slot (empty when there are none), most severe first;
+ * the full text shows on hover. */
+function Warnings({ folder, onOpen }: { folder: FolderCard; onOpen: () => void }) {
+  const warnings = [...folder.warnings].sort(
+    (a, b) => SEVERITY.indexOf(a.level) - SEVERITY.indexOf(b.level),
+  );
+  const text = (
+    // biome-ignore lint/a11y/noStaticElementInteractions lint/a11y/useKeyWithClickEvents: the card's title link is the keyboard path; this keeps a click on the warnings opening the set.
+    <p
+      className="relative z-10 mt-3 line-clamp-2 h-8 cursor-pointer text-xs leading-4"
+      data-testid={`warnings-${folder.label}`}
+      onClick={onOpen}
+    >
+      {warnings.map((w) => {
+        const Icon = w.level === "info" ? Info : TriangleAlert;
+        return (
+          <span
+            key={w.text}
+            className={cn(
+              w.level === "bad"
+                ? "text-status-bad"
+                : w.level === "warn"
+                  ? "text-status-warn"
+                  : "text-muted-foreground",
+            )}
+          >
+            <Icon className="-mt-0.5 mr-1 inline size-3.5" aria-hidden="true" />
+            {w.text}
+            {w.link ? (
+              <>
+                {" "}
+                <Link
+                  to={w.link.to}
+                  className="text-primary underline underline-offset-2"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {w.link.text}
+                </Link>
+              </>
+            ) : null}{" "}
+          </span>
+        );
+      })}
+    </p>
+  );
+  if (warnings.length === 0) return text;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{text}</TooltipTrigger>
+      <TooltipContent className="max-w-72" data-testid={`warnings-full-${folder.label}`}>
+        <ul className="space-y-1">
+          {warnings.map((w) => (
+            <li key={w.text}>{w.text}</li>
+          ))}
+        </ul>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 function CardActions({ folder }: { folder: FolderCard }) {
   const scan = useStartScan(folder.label);
   const download = useMutation({
@@ -142,7 +205,7 @@ function CardActions({ folder }: { folder: FolderCard }) {
       : "Upload a DAT in Settings → DATs first"
     : undefined;
   return (
-    <div className="relative flex flex-wrap items-center gap-2 px-4 pb-4">
+    <div className="relative mt-auto flex flex-wrap items-center gap-2 px-4 pb-4">
       {folder.dat_download ? (
         <Button
           size="sm"
@@ -200,7 +263,9 @@ export function HomePage() {
   const shown = visible.filter(filter.test);
   // The header sits in the card grid, so it spans exactly the centred columns.
   return (
-    <div className="grid grid-cols-[repeat(auto-fill,18rem)] items-start justify-center gap-4">
+    // Every card row is as tall as the tallest card (auto-rows-fr), so all cards of a view
+    // have one size; the header keeps its own height.
+    <div className="grid auto-rows-fr grid-cols-[repeat(auto-fill,18rem)] grid-rows-[auto] justify-center gap-4">
       <header className="col-span-full mb-2 flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-64 flex-1">
           <h1 className="font-semibold text-2xl tracking-tight">Home</h1>
@@ -355,7 +420,7 @@ export function HomePage() {
               data-done={done || undefined}
               data-tone={tone ?? undefined}
               className={cn(
-                "group relative overflow-hidden rounded-lg border bg-card transition-colors hover:bg-accent/30",
+                "group relative flex flex-col overflow-hidden rounded-lg border bg-card transition-colors hover:bg-accent/30",
                 tone ? CARD_BORDERS[tone] : "border-border hover:border-primary/50",
               )}
             >
@@ -377,60 +442,27 @@ export function HomePage() {
                 <p className="mt-1 truncate text-muted-foreground text-xs">
                   {folder.location ?? `mount ${folder.mount} unavailable`}
                 </p>
-                {extended || scanLine ? (
-                  <p className="mt-2 text-xs">
-                    {extended ? (
-                      <>
-                        {folder.dat ? (
-                          `DAT ${folder.dat.header_name} · ${folder.dat.version ?? "?"}`
-                        ) : (
-                          <span className="text-status-warn">No DAT yet</span>
-                        )}
-                        <br />
-                      </>
-                    ) : null}
-                    {scanLine}
-                  </p>
-                ) : null}
-                {folder.warnings.length > 0 ? (
-                  <ul className="mt-3 space-y-1 text-xs" data-testid={`warnings-${folder.label}`}>
-                    {folder.warnings.map((w) =>
-                      w.level === "info" ? (
-                        <li
-                          key={w.text}
-                          className="flex items-start gap-1.5 rounded-md border border-border bg-muted/50 px-2 py-1.5 text-muted-foreground"
-                        >
-                          <Info className="mt-px size-3.5 shrink-0" aria-hidden="true" />
-                          <span>
-                            {w.text}
-                            {w.link ? (
-                              <>
-                                {" "}
-                                <Link
-                                  to={w.link.to}
-                                  className="relative z-10 text-primary underline underline-offset-2"
-                                >
-                                  {w.link.text}
-                                </Link>
-                              </>
-                            ) : null}
-                          </span>
-                        </li>
+                {/* Fixed slots, so the figures sit at the same height on every card. */}
+                <p className="mt-2 text-xs leading-4">
+                  {extended ? (
+                    <span
+                      className="block truncate"
+                      title={
+                        folder.dat
+                          ? `${folder.dat.header_name} · ${folder.dat.version ?? "?"}`
+                          : undefined
+                      }
+                    >
+                      {folder.dat ? (
+                        `DAT ${folder.dat.header_name} · ${folder.dat.version ?? "?"}`
                       ) : (
-                        <li
-                          key={w.text}
-                          className={cn(
-                            "flex items-start gap-1.5",
-                            w.level === "bad" ? "text-status-bad" : "text-status-warn",
-                          )}
-                        >
-                          <TriangleAlert className="mt-px size-3.5 shrink-0" aria-hidden="true" />
-                          {w.text}
-                        </li>
-                      ),
-                    )}
-                  </ul>
-                ) : null}
+                        <span className="text-status-warn">No DAT yet</span>
+                      )}
+                    </span>
+                  ) : null}
+                  <span className="block min-h-4 truncate">{scanLine}</span>
+                </p>
+                <Warnings folder={folder} onOpen={() => navigate(target)} />
                 {folder.summary.roms > 0 ? (
                   <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2">
                     {stats.map((s) => (
