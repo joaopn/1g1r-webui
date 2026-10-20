@@ -21,6 +21,8 @@ from g1r import conversion, cso, decrypt, discs, hashing, moves
 from g1r.config import Settings
 
 CRC_FORMAT = "08x"
+# Inside a disc conversion's work directory: the files unpacked or decoded for chdman.
+UNPACKED = "source"
 
 # Writes one archive member's bytes to a new file: (settings, archive, member, output).
 Extractor = Callable[[Settings, Path, str, Path], None]
@@ -65,6 +67,11 @@ def extract_member(settings: Settings, archive: Path, member: str, output: Path)
     if result.returncode != 0:
         detail = result.stderr.strip().splitlines()
         raise moves.MoveError(detail[-1] if detail else f"7-Zip exited with {result.returncode}")
+
+
+def _drop_unpacked(work: Path) -> None:
+    """Remove what was unpacked for the conversion as soon as the output is written."""
+    shutil.rmtree(work / UNPACKED, ignore_errors=True)
 
 
 class Converter:
@@ -219,9 +226,11 @@ class Converter:
             originals = discs.sheet_paths(disc) if sheet else [disc]
             each, whole = self._digests(originals)
             if step.disc_mode == discs.RVZ:
-                self._rvz(step, disc, whole, temp)
+                self._rvz(step, disc, whole, temp, work)
                 return
             discs.create(chdman, step.disc_mode, disc, temp)
+            # The checks below compare with the digests above: the unpacked copy goes now.
+            _drop_unpacked(work)
             discs.verify(chdman, temp)
             back = work / "back"
             back.mkdir()
@@ -247,25 +256,26 @@ class Converter:
         checked against it."""
         if self.settings.cso is None:
             raise moves.MoveError("no cso settings: CSO images cannot be read")
-        image = work / "source" / f"{source.stem}.{discs.ISO}"
+        image = work / UNPACKED / f"{source.stem}.{discs.ISO}"
         image.parent.mkdir(parents=True, exist_ok=True)
         cso.decode(self.settings.cso, source, image)
         return image
 
-    def _rvz(self, step, image: Path, sha1: str, temp: Path) -> None:
+    def _rvz(self, step, image: Path, sha1: str, temp: Path, work: Path) -> None:
         """dolphin-tool makes the RVZ; the disc it holds must have the image's SHA1."""
         dolphin = self.settings.dolphin
         user_dir = self.settings.paths.data_dir / dolphin.user_dir
         # dolphin-tool would replace an existing file: claim the temporary name first.
         temp.open("xb").close()
         discs.make_rvz(dolphin, user_dir, image, temp)
+        _drop_unpacked(work)
         if discs.rvz_sha1(dolphin, user_dir, temp) != sha1:
             raise moves.MoveError(f"the RVZ of {step.source.name} does not hold the same disc")
 
     def _unpack(self, step, work: Path) -> Path:
         """Extract an archive's disc files to `work/source`, each checked against the CRC32
         and size the scan listed; return the cue sheet or ISO among them."""
-        source = work / "source"
+        source = work / UNPACKED
         found = None
         for name, size, crc in step.inner:
             relative = PurePosixPath(name)

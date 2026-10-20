@@ -1,10 +1,11 @@
 import zipfile
+import zlib
 from http import HTTPStatus
 from pathlib import Path
 
 import pytest
 
-from g1r import db, journal, moves
+from g1r import conversion, converter, db, discs, journal, moves
 from g1r.converter import Converter, crc_and_size
 
 from .test_api import scanned, setup  # noqa: F401  (fixture)
@@ -247,3 +248,45 @@ def test_recovery_settles_cut_off_conversions(tmp_path):
     assert carried[0] == "A"
     member = conn.execute("SELECT member FROM archive_member WHERE rel_path = 'a.zip'").fetchone()
     assert member[0] == "a.nes"
+
+
+def test_the_unpacked_disc_is_deleted_once_the_chd_is_written(make_settings, tmp_path, monkeypatch):
+    """Only the CHD and the tracks extracted back from it share the disk, never the unpacked
+    copy too: the check compares with the digests taken before chdman ran."""
+    settings = make_settings()
+    image = b"disc data" * 64
+    archive = tmp_path / "Game.7z"
+    archive.write_bytes(b"7z")
+    output = tmp_path / "Game.chd"
+    work = moves.work_path(settings.apply, output)
+    unpacked = work / converter.UNPACKED
+
+    def extract(settings_, archive_, member, out):
+        out.write_bytes(image)
+
+    def create(chdman, mode, disc, chd):
+        assert disc.read_bytes() == image
+        chd.write_bytes(image)
+
+    def verify(chdman, chd):
+        assert not unpacked.exists()
+
+    def extract_dvd(chdman, chd, out):
+        assert not unpacked.exists()
+        out.write_bytes(chd.read_bytes())
+
+    monkeypatch.setattr(discs, "create", create)
+    monkeypatch.setattr(discs, "verify", verify)
+    monkeypatch.setattr(discs, "extract_dvd", extract_dvd)
+    crc, size = format(zlib.crc32(image), "08x"), len(image)
+    Converter(settings, extract=extract)(
+        step(
+            archive,
+            output,
+            recipe=conversion.RECIPE_ARCHIVE_DISC,
+            disc_mode=discs.CREATEDVD,
+            inner=(("Game.iso", size, crc),),
+        )
+    )
+    assert output.read_bytes() == image and not work.exists()
+

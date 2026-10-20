@@ -255,8 +255,9 @@ def _conversion_space(row: conversion.ConversionRow, sources, member) -> int:
     if row.recipe in (conversion.RECIPE_UNWRAP, conversion.RECIPE_BYTESWAP) and member:
         return member["size"]
     if row.recipe == conversion.RECIPE_ARCHIVE_DISC:
+        # The unpacked copy and the output, then the output and the tracks extracted back.
         unpacked = sum(m.get("size") or 0 for m in row.members)
-        return unpacked + unpacked + unpacked
+        return unpacked + unpacked
     if row.recipe == conversion.RECIPE_DISC:
         return total + total
     return total
