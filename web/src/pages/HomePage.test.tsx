@@ -2,6 +2,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { queryClient } from "@/lib/queries";
 import type { FolderCard, Scan } from "@/lib/types";
 import { META } from "@/test/fixtures";
@@ -37,7 +38,7 @@ const card = (label: string, platform: string, scan: Scan | null): FolderCard =>
   counts: {},
   reclaim_bytes: 0,
   conversion: { to_convert: 0, flagged: 0 } as FolderCard["conversion"],
-  progress: { processed: 0, to_process: 0 },
+  progress: { processed: 0, to_process: 0, to_match: 0, to_convert: 0 },
   discarded: { files: 0, bytes: 0 },
   warnings: [],
 });
@@ -54,9 +55,11 @@ function renderPage(folders: FolderCard[]) {
   queryClient.clear();
   render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter>
-        <HomePage />
-      </MemoryRouter>
+      <TooltipProvider>
+        <MemoryRouter>
+          <HomePage />
+        </MemoryRouter>
+      </TooltipProvider>
     </QueryClientProvider>,
   );
   return calls;
@@ -171,7 +174,7 @@ test("a card with conversions to apply opens Conversion", async () => {
   );
 });
 
-test("Simplified shows processed, to process and size, hides the DAT and last scan, and is remembered", async () => {
+test("Simplified shows processed, size, to convert and to match with hints, hides the DAT and last scan, and is remembered", async () => {
   const folder: FolderCard = {
     ...card("gb", "gb", SCAN),
     dat: { header_name: "Nintendo - Game Boy", version: "2026.10.07" } as FolderCard["dat"],
@@ -183,7 +186,7 @@ test("Simplified shows processed, to process and size, hides the DAT and last sc
       unmatched: 1,
       methods: {},
     },
-    progress: { processed: 7, to_process: 3 },
+    progress: { processed: 7, to_process: 3, to_match: 2, to_convert: 1 },
   };
   renderPage([folder]);
   expect(await screen.findByText(/DAT Nintendo - Game Boy/)).toBeInTheDocument();
@@ -193,9 +196,28 @@ test("Simplified shows processed, to process and size, hides the DAT and last sc
   await userEvent.click(screen.getByLabelText("Simplified"));
   expect(screen.queryByText(/DAT Nintendo - Game Boy/)).toBeNull();
   expect(screen.queryByText("identified")).toBeNull();
-  expect(screen.getByText("processed").nextSibling).toHaveTextContent("7");
-  expect(screen.getByText("to process").nextSibling).toHaveTextContent("3");
+  // Processed and folder size first, then to convert and to match.
+  expect(screen.getAllByRole("term").map((t) => t.textContent)).toEqual([
+    "processed",
+    "folder size",
+    "to convert",
+    "to match",
+  ]);
+  expect(screen.getByText("processed").nextSibling).toHaveTextContent("7 / 10");
+  expect(screen.getByText("to convert").nextSibling).toHaveTextContent("1");
+  expect(screen.getByText("to match").nextSibling).toHaveTextContent("2");
   expect(screen.getByText("folder size").nextSibling).toHaveTextContent("3.0 MiB");
+  // jsdom has no ResizeObserver; the tooltip's positioning needs one.
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+  await userEvent.hover(screen.getByText("to match"));
+  expect(await screen.findByRole("tooltip")).toHaveTextContent(/unmatched, or in a game undecided/);
   expect(screen.queryByText(/Scanned /)).toBeNull();
   expect(localStorage.getItem("g1r.home.detail.v1")).toBe(JSON.stringify("simplified"));
 });
@@ -212,7 +234,12 @@ test("a set with nothing left to process gets a green border in both views", asy
   const filled = (label: string, toProcess: number): FolderCard => ({
     ...card(label, "gb", SCAN),
     summary: { counts: {}, roms: 10, bytes: 0, identified: 10, unmatched: 0, methods: {} },
-    progress: { processed: 10 - toProcess, to_process: toProcess },
+    progress: {
+      processed: 10 - toProcess,
+      to_process: toProcess,
+      to_match: toProcess,
+      to_convert: 0,
+    },
   });
   renderPage([filled("done", 0), filled("busy", 2), card("empty", "gb", null)]);
   const doneCard = await screen.findByTestId("folder-card-done");

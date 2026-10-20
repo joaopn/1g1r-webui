@@ -238,8 +238,9 @@ def test_games_keep_leave_and_ranking(setup):
     assert store.load().folder("nes").ranking is None
     home = client.get("/api/folders").json()[0]
     assert home["counts"]["several"] == 2 and home["summary"]["identified"] == 5
-    # To process: the undecided game's two versions and odd.nes (unmatched, to wrap).
-    assert home["progress"] == {"processed": 3, "to_process": 3}
+    # To process: the undecided game's two versions and odd.nes (unmatched, to wrap), which
+    # counts both to match and to convert.
+    assert home["progress"] == {"processed": 3, "to_process": 3, "to_match": 3, "to_convert": 1}
 
 
 def test_healthz(setup):

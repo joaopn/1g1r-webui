@@ -1,10 +1,11 @@
 import { useMutation } from "@tanstack/react-query";
 import { Download, Info, RefreshCw, TriangleAlert } from "lucide-react";
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { PlatformIcon } from "@/components/PlatformIcon";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ApiError, api } from "@/lib/api";
 import { formatBytes, formatCount, formatFiles, formatWhen } from "@/lib/format";
 import { foldersByName } from "@/lib/platforms";
@@ -13,6 +14,9 @@ import { scanProgress, useStartScan } from "@/lib/scan";
 import { readJson, writeJson } from "@/lib/storage";
 import type { FolderCard, Scan } from "@/lib/types";
 import { cn } from "@/lib/utils";
+
+/** One figure on a card, with the hint shown on hover. */
+type Stat = { label: string; value: string; hint: string; attention?: boolean };
 
 const DETAIL_KEY = "g1r.home.detail.v1";
 const DETAILS = [
@@ -127,6 +131,7 @@ function CardActions({ folder }: { folder: FolderCard }) {
 export function HomePage() {
   const meta = useMeta();
   const folders = useFolders();
+  const navigate = useNavigate();
   const [detail, setDetail] = useState<Detail>(() => readJson(DETAIL_KEY, "extended", isDetail));
   const changeDetail = (d: Detail) => {
     setDetail(d);
@@ -171,45 +176,57 @@ export function HomePage() {
         <div className="grid grid-cols-[repeat(auto-fill,18rem)] items-start gap-4">
           {foldersByName(shown, meta.data.platforms).map((folder) => {
             const platform = meta.data.platforms[folder.platform];
-            const size: { label: string; value: string; attention?: boolean } = {
+            const size: Stat = {
               label: "folder size",
               value: formatBytes(folder.summary.bytes, ui.byte_unit_base, ui.byte_units),
+              hint: "Size of the ROM files in the folder",
             };
-            const stats = extended
+            const stats: Stat[] = extended
               ? [
                   {
                     label: "identified",
                     value: `${formatCount(folder.summary.identified)} / ${formatCount(folder.summary.roms)}`,
+                    hint: "ROM files identified by a DAT, Hasheous or by hand, out of all ROM files",
                   },
                   {
                     label: "unmatched",
                     value: formatCount(folder.summary.unmatched),
                     attention: folder.summary.unmatched > 0,
+                    hint: "ROM files nothing identified yet",
                   },
                   {
                     label: "games with several versions",
                     value: formatCount(folder.counts.several ?? 0),
+                    hint: "Games with more than one version in the folder",
                   },
                   {
                     label: "undecided",
                     value: formatCount(folder.counts.undecided ?? 0),
                     attention: (folder.counts.undecided ?? 0) > 0,
+                    hint: "Games where the ranking cannot pick the version to keep: choose one on the Matching page",
                   },
-                  { label: "proposed moves", value: formatCount(folder.counts.proposals ?? 0) },
+                  {
+                    label: "proposed moves",
+                    value: formatCount(folder.counts.proposals ?? 0),
+                    hint: "Games with versions proposed to move to discarded/ by Apply 1G1R",
+                  },
                   {
                     label: "to convert",
                     value: formatCount(folder.conversion.to_convert),
                     attention: folder.conversion.to_convert > 0,
+                    hint: "Conversions waiting to be applied on the Conversion page (a multi-file disc counts once)",
                   },
                   {
                     label: "conversions flagged",
                     value: formatCount(folder.conversion.flagged),
                     attention: folder.conversion.flagged > 0,
+                    hint: "Conversions that need a look on the Conversion page before they can run",
                   },
                   size,
                   {
                     label: "would free",
                     value: formatBytes(folder.reclaim_bytes, ui.byte_unit_base, ui.byte_units),
+                    hint: "Space the proposed moves would free in the folder",
                   },
                   {
                     label:
@@ -220,16 +237,28 @@ export function HomePage() {
                       folder.discarded.files > 0
                         ? formatBytes(folder.discarded.bytes, ui.byte_unit_base, ui.byte_units)
                         : "nothing",
+                    hint: "Files already moved to discarded/, and their size",
                   },
                 ]
               : [
-                  { label: "processed", value: formatCount(folder.progress.processed) },
                   {
-                    label: "to process",
-                    value: formatCount(folder.progress.to_process),
-                    attention: folder.progress.to_process > 0,
+                    label: "processed",
+                    value: `${formatCount(folder.progress.processed)} / ${formatCount(folder.summary.roms)}`,
+                    hint: "ROM files with nothing left to do, out of all ROM files",
                   },
                   size,
+                  {
+                    label: "to convert",
+                    value: formatCount(folder.progress.to_convert),
+                    attention: folder.progress.to_convert > 0,
+                    hint: "ROM files waiting for a conversion, or flagged for a look, on the Conversion page",
+                  },
+                  {
+                    label: "to match",
+                    value: formatCount(folder.progress.to_match),
+                    attention: folder.progress.to_match > 0,
+                    hint: "ROM files unmatched, or in a game undecided or with a move proposed, on the Matching page. A file can be both to match and to convert",
+                  },
                 ];
             const progress = scanProgress(folder.scan);
             // Simplified leaves out the last scan's date; a running or failed scan still shows.
@@ -250,6 +279,7 @@ export function HomePage() {
             const done = folder.summary.roms > 0 && folder.progress.to_process === 0;
             // Pending conversions come first: the card opens where there is work to apply.
             const page = folder.conversion.to_convert > 0 ? "conversion" : "matching";
+            const target = `/folders/${folder.label}/${page}`;
             return (
               <div
                 key={folder.label}
@@ -271,10 +301,7 @@ export function HomePage() {
                       className="min-w-0 truncate font-medium group-hover:text-primary"
                       title={platform?.name ?? folder.platform}
                     >
-                      <Link
-                        to={`/folders/${folder.label}/${page}`}
-                        className="after:absolute after:inset-0 after:content-['']"
-                      >
+                      <Link to={target} className="after:absolute after:inset-0 after:content-['']">
                         {platform?.name ?? folder.platform}
                       </Link>
                     </h2>
@@ -340,17 +367,27 @@ export function HomePage() {
                   {folder.summary.roms > 0 ? (
                     <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2">
                       {stats.map((s) => (
-                        <div key={s.label}>
-                          <dt className="text-muted-foreground text-xs">{s.label}</dt>
-                          <dd
-                            className={cn(
-                              "font-semibold tabular-nums",
-                              s.attention && "text-status-warn",
-                            )}
-                          >
-                            {s.value}
-                          </dd>
-                        </div>
+                        <Tooltip key={s.label}>
+                          {/* Above the card's link so the hint shows; a click still opens the set. */}
+                          <TooltipTrigger asChild>
+                            {/* biome-ignore lint/a11y/noStaticElementInteractions lint/a11y/useKeyWithClickEvents: the card's title link is the keyboard path; this keeps a click on a figure opening the set. */}
+                            <div
+                              className="relative z-10 cursor-pointer"
+                              onClick={() => navigate(target)}
+                            >
+                              <dt className="text-muted-foreground text-xs">{s.label}</dt>
+                              <dd
+                                className={cn(
+                                  "font-semibold tabular-nums",
+                                  s.attention && "text-status-warn",
+                                )}
+                              >
+                                {s.value}
+                              </dd>
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent className="max-w-64">{s.hint}</TooltipContent>
+                        </Tooltip>
                       ))}
                     </dl>
                   ) : null}

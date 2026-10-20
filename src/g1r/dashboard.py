@@ -81,18 +81,26 @@ def progress(
     conversion_rows: list[conversion.ConversionRow],
     unmatched_paths: Iterable[str],
 ) -> dict[str, int]:
-    """ROM files with nothing left to do, and the rest.
+    """ROM files with nothing left to do, and the rest, split by what is left.
 
-    A file is left to process when it is unmatched, waits for a conversion (or a look at
-    a flagged one), or belongs to a game still undecided or with a move proposed.
+    A file is left to match when it is unmatched or belongs to a game still undecided or
+    with a move proposed, and left to convert when it waits for a conversion (or a look at
+    a flagged one). A file can be left for both, so the two may add up to more than
+    `to_process`.
     """
-    pending = set(unmatched_paths)
-    for row in conversion_rows:
-        if row.status in conversion.CONVERTING or row.status == conversion.FLAGGED:
-            pending.update([row.rel_path, *row.parts])
+    to_match = set(unmatched_paths)
     for game in games:
         if game.has_proposals or game.status == matching.STATUS_UNDECIDED:
-            pending.update(r.version.rel_path for r in game.rows)
+            to_match.update(r.version.rel_path for r in game.rows)
+    to_convert: set[str] = set()
+    for row in conversion_rows:
+        if row.status in conversion.CONVERTING or row.status == conversion.FLAGGED:
+            to_convert.update([row.rel_path, *row.parts])
     roms = set(rom_paths)
-    to_process = len(roms & pending)
-    return {"processed": len(roms) - to_process, "to_process": to_process}
+    to_process = len(roms & (to_match | to_convert))
+    return {
+        "processed": len(roms) - to_process,
+        "to_process": to_process,
+        "to_match": len(roms & to_match),
+        "to_convert": len(roms & to_convert),
+    }
