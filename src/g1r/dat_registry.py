@@ -248,7 +248,10 @@ class DatRegistry:
     def _tosec_merged(self, platform: str, archive: zipfile.ZipFile, member_dir: str) -> bytes:
         profile = self._profile(platform)
         dats = tosec.platform_dats(
-            archive, member_dir, profile.tosec_prefixes, self.settings.dats.max_upload_bytes
+            archive,
+            profile.tosec_dir or member_dir,
+            profile.tosec_prefixes,
+            self.settings.dats.max_upload_bytes,
         )
         return tosec.merge(dats, f"{profile.dat_name} {TOSEC_MARK}")
 

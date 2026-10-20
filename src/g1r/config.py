@@ -181,6 +181,13 @@ class PlatformProfile(_Strict):
     # TOSEC: the pack's DATs merged into this platform's DAT, by the start of their names
     # (the TOSEC download is offered when set).
     tosec_prefixes: list[str] = Field(default_factory=list)
+    # The pack folder those DATs are in (None: the TOSEC source's member_dir); disc systems
+    # are under TOSEC-ISO/.
+    tosec_dir: str | None = None
+    # ROM formats kept as they are (also in rom_extensions): never converted, and never
+    # discarded on a name match or for a version in another format (Dreamcast .cdi: a CD-R
+    # image chdman cannot read, often a cut-down rip of a GD-ROM).
+    keep_extensions: list[str] = Field(default_factory=list)
     # The default ranking criteria for this platform's folders (None: the global default).
     ranking_criteria: list[str] | None = None
 
@@ -223,6 +230,11 @@ class PlatformsConfig(_Strict):
                 )
             if profile.kind not in PLATFORM_KINDS:
                 raise ValueError(f"platform {platform_id}: kind must be one of {PLATFORM_KINDS}")
+            stray = set(profile.keep_extensions) - set(profile.rom_extensions)
+            if stray:
+                raise ValueError(
+                    f"platform {platform_id}: keep_extensions not in rom_extensions {sorted(stray)}"
+                )
         return self
 
     def enabled_profiles(self) -> dict[str, PlatformProfile]:

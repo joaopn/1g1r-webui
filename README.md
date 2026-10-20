@@ -47,7 +47,7 @@ Files are read bare or inside `.zip`/`.7z`. Files in other formats are listed an
 | Atari Lynx | `lnx`, `lyx` | zip | No-Intro |
 | ColecoVision | `col`, `rom`, `bin` | zip | No-Intro |
 | Commodore 64 | `crt`, `d64`; with TOSEC also `d71`, `d81`, `g64`, `nib`, `t64`, `tap`, `prg`, `p00`, `lnx` | zip | No-Intro or TOSEC |
-| Dreamcast | `chd`, `cue`/`bin`, `gdi` | chd | Redump |
+| Dreamcast | `chd`, `cue`/`bin`, `gdi`; `cdi` kept as it is (chdman cannot read it) | chd | Redump, TOSEC |
 | Game Boy | `gb` | zip | No-Intro |
 | Game Boy Advance | `gba` | zip | No-Intro |
 | Game Boy Color | `gbc` | zip | No-Intro |

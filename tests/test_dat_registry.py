@@ -180,7 +180,8 @@ def test_where_each_platform_downloads_from(env):
     assert registry.downloads("amiga") == ["libretro", "tosec"]
     assert registry.downloads("c64") == ["libretro", "tosec"]
     # The libretro mirror keeps a disc's data track only: archived sets would not match it.
-    assert registry.downloads("dc") == ["redump"]
+    # Dreamcast also takes TOSEC (CDIs, prototypes, homebrew).
+    assert registry.downloads("dc") == ["redump", "tosec"]
     assert registry.downloads("psx") == ["redump"]
     # No public Switch DAT: identified by title ID, and a DAT can still be uploaded.
     assert registry.downloads("switch") == []

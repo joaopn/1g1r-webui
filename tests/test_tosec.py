@@ -64,6 +64,13 @@ PACK_DATS = {
     "TOSEC/Commodore Amiga - Games - [ADF] (TOSEC-v2025_CM).dat": dat(
         "Commodore Amiga - Games - [ADF]", {"Turrican (1990)(Rainbow Arts)": b"adf"}, "adf"
     ),
+    # Disc systems are in TOSEC-ISO/; Dreamcast leaves its firmware DAT out.
+    "TOSEC-ISO/Sega Dreamcast - Games - [CDI] (TOSEC-v2025_CM).dat": dat(
+        "Sega Dreamcast - Games - [CDI]", {"Karous (2007)(Milestone)(JP)[cr]": b"cdi"}, "cdi"
+    ),
+    "TOSEC-ISO/Sega Dreamcast - Firmware (TOSEC-v2017_CM).dat": dat(
+        "Sega Dreamcast - Firmware", {"Dreamcast BIOS (1998)(Sega)": b"bios"}, "bin"
+    ),
 }
 
 
@@ -138,4 +145,13 @@ def test_uploading_the_pack_fills_every_tosec_platform(client):
     assert {(r["platform"], r["message"]) for r in results} == {
         ("amiga", "added"),
         ("c64", "added"),
+        ("dc", "added"),
     }
+
+
+def test_dreamcast_takes_its_dats_from_tosec_iso(make_settings):
+    profile = make_settings().platforms.profiles["dc"]
+    archive = zipfile.ZipFile(io.BytesIO(pack()))
+    dats = tosec.platform_dats(archive, profile.tosec_dir, profile.tosec_prefixes, 10**6)
+    merged = parse_dat_bytes(tosec.merge(dats, profile.dat_name))
+    assert [g.name for g in merged.games] == ["Karous (2007)(Milestone)(JP)[cr]"]

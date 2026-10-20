@@ -277,6 +277,7 @@ def build_router(
             profile.names_from,
             profile.title_ids,
             dats,
+            frozenset(e.lower() for e in profile.keep_extensions),
         )
 
     def dat_names(conn) -> dict[str, dict]:

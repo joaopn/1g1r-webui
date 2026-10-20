@@ -130,6 +130,7 @@ def rows(
     profile = settings.platforms.profiles[platform]
     rom_extensions = {e.lower() for e in profile.rom_extensions}
     part_extensions = {e.lower() for e in profile.part_extensions}
+    keep_extensions = {e.lower() for e in profile.keep_extensions}
     disc_formats = {e.lower() for e in settings.platforms.disc_formats}
     to_disc = target.produces in disc_formats
     files = conn.execute(
@@ -199,6 +200,8 @@ def rows(
             row.note = "already stripped of data (scrubbed or trimmed): never converted further"
         elif cards.ENCRYPTED in file_notes.get(rel, []) and row.container == PLAIN:
             _decrypt(settings, label, row, profile, root, dat, delete_originals)
+        elif kept := keep_as_is(rel, f["kind"], roms, keep_extensions):
+            row.status, row.note = ACCEPTED, f".{kept} is kept as it is: it is never converted"
         elif to_disc and f["kind"] == "rom" and ext in discs.SHEETS:
             sheet = sheets.get(rel)
             if isinstance(sheet, str):
@@ -289,6 +292,15 @@ def rows(
         if row.status == PART and row.rel_path not in converting:
             row.status, row.note = FLAGGED, "its cue sheet cannot be converted (see the cue)"
     return result
+
+
+def keep_as_is(rel_path: str, kind: str, roms: list[dict], keep: set[str]) -> str | None:
+    """The keep-as-is format (`keep_extensions`) of a bare file, or of an archive whose ROMs
+    are all in one, else None."""
+    if kind != "archive":
+        return _ext(rel_path) if _ext(rel_path) in keep else None
+    found = {_ext(m["name"]) for m in roms}
+    return found.pop() if len(found) == 1 and found <= keep else None
 
 
 def _cue_sheets(files, root: Path | None) -> tuple[dict, dict]:

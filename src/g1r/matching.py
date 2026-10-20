@@ -12,6 +12,7 @@ from g1r import journal, titles
 from g1r.config import PLAIN, RankingConfig, Settings
 from g1r.dats import Dat, DatHeader, parse_dat
 from g1r.grouping import (
+    NAME_METHODS,
     DatSet,
     Group,
     SourceDat,
@@ -153,10 +154,43 @@ class FolderView:
     # The platform's DATs in its identification order: (sha1, name style), each DAT's names
     # read in its own style (No-Intro/Redump or TOSEC).
     dats: tuple[tuple[str, str], ...] = ()
+    # Formats kept as they are (`keep_extensions`, Dreamcast .cdi): such a version is never
+    # discarded on a name match or for a version in another format, nor the reason one is.
+    keep: frozenset[str] = frozenset()
 
 
 def is_part(rel_path: str, parts: frozenset[str]) -> bool:
     return PurePosixPath(rel_path).suffix.lower().lstrip(".") in parts
+
+
+def _keep_formats(conn: sqlite3.Connection, label: str, keep: frozenset[str]) -> set[str]:
+    """The folder's files in a keep-as-is format: bare, or an archive holding one."""
+    if not keep:
+        return set()
+    found = {
+        r[0]
+        for r in conn.execute("SELECT rel_path FROM folder_file WHERE folder_label = ?", (label,))
+        if is_part(r[0], keep)
+    }
+    found.update(
+        r[0]
+        for r in conn.execute(
+            "SELECT rel_path, member FROM archive_member WHERE folder_label = ?", (label,)
+        )
+        if is_part(r[1], keep)
+    )
+    return found
+
+
+def _kept_as_is(group: Group, keep_formats: set[str]) -> set[str]:
+    """The group's keep-as-is versions left out of ranking and kept: every one matched by
+    name, and every one when the game also has a version in another format."""
+    mixed = any(v.rel_path not in keep_formats for v in group.versions)
+    return {
+        v.rel_path
+        for v in group.versions
+        if v.rel_path in keep_formats and (mixed or v.method in NAME_METHODS)
+    }
 
 
 def game_rows(
@@ -239,6 +273,7 @@ def game_rows(
         "SELECT rel_path, note FROM file_note WHERE folder_label = ? ORDER BY note", (label,)
     ):
         file_notes.setdefault(rel, []).append(note)
+    keep_formats = _keep_formats(conn, label, view.keep)
     triples = [(r["rel_path"], r["game_name"], r["method"]) for r in identities]
     quads = [(*t, r["dat_sha1"]) for t, r in zip(triples, identities, strict=True)]
     groups = (
@@ -251,11 +286,16 @@ def game_rows(
         # Ranking and picks see only the versions still in the folder, and (title IDs) only
         # the base game: its DLC are kept and its updates proposed, whatever is kept.
         extras = {v.rel_path: v.role for v in group.versions if v.role in EXTRA_ROLES}
+        as_is = _kept_as_is(group, keep_formats)
         present = Group(
             group.key,
             group.name,
             group.source,
-            [v for v in group.versions if v.rel_path not in gone and v.rel_path not in extras],
+            [
+                v
+                for v in group.versions
+                if v.rel_path not in gone and v.rel_path not in extras and v.rel_path not in as_is
+            ],
         )
         # Identical copies are ranked once; the copy standing for them is the first.
         copies = _copies(present.versions, payloads, prefer, archives)
@@ -278,6 +318,13 @@ def game_rows(
                 status, reason = STATUS_APPLIED, "its updates are in discarded/"
             else:
                 reason = "its DLC are kept"
+        if as_is and not present.versions and not any(v.rel_path in gone for v in group.versions):
+            status, reason, winner, candidates = (
+                STATUS_SINGLE if len(group.versions) == 1 else STATUS_LEFT,
+                "kept as it is: matched by name, or its format is never discarded",
+                None,
+                set(),
+            )
         if group.versions and all(v.bios for v in group.versions):
             # Every arcade game needs its BIOS set: never proposed for discarding.
             status, reason, winner, candidates = (
@@ -297,6 +344,8 @@ def game_rows(
             operation = None
             discard_reason = REASON_DISCARDED
             role = extras.get(version.rel_path)
+            if version.rel_path in as_is:
+                keep = True
             if role is not None:
                 keep = role == titles.DLC
                 if role == titles.UPDATE and version.rel_path not in gone and status != STATUS_LEFT:
@@ -335,7 +384,9 @@ def game_rows(
                     file_notes.get(version.rel_path, []),
                 )
             )
-        kept = next((r for r in rows if r.keep), None)
+        kept = next((r for r in rows if r.keep and r.version is winner), None) or next(
+            (r for r in rows if r.keep), None
+        )
         result.append(GameRow(group, status, reason, rows, kept, candidates))
     return result
 

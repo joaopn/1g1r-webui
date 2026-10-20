@@ -23,6 +23,8 @@ SOURCE_TITLE_ID = "title-id"
 # Identifications of one ROM file: online lookups and name matches never look into an
 # archive with several ROMs (scanner), so the file is one ROM whatever its DAT game lists.
 SINGLE_FILE_METHODS = frozenset({"hasheous", "fuzzy"})
+# Identified by name, not by checksum (scanner.METHOD_FUZZY, METHOD_MANUAL).
+NAME_METHODS = frozenset({"fuzzy", "manual"})
 
 
 def is_disc_image(settings: Settings, rel_path: str) -> bool:

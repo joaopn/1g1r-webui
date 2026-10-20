@@ -490,10 +490,18 @@ platforms:
       dat_family: redump
       redump_system: dc
       # GD-ROMs: Redump's cue sheets (with the high-density area) or a .gdi and its tracks.
-      rom_extensions: [chd, cue, gdi, bin, raw]
+      # .cdi: DiscJuggler CD-R images (homebrew, indie, translations, rips), kept as they are.
+      rom_extensions: [chd, cue, gdi, bin, raw, cdi]
       part_extensions: [cue, gdi, bin, raw]
+      keep_extensions: [cdi]
       targets: [chd]
       default_target: chd
+      # TOSEC lists CDIs, prototypes and homebrew Redump does not (Firmware and Various
+      # Unverified Dumps left out).
+      tosec_dir: "TOSEC-ISO/"
+      tosec_prefixes: ["Sega Dreamcast - Games - ", "Sega Dreamcast - Homebrew - ",
+                       "Sega Dreamcast - Demos - ", "Sega Dreamcast - Applications - ",
+                       "Sega Dreamcast - Multimedia - ", "Sega Dreamcast - Samplers - "]
     psx:
       name: PlayStation
       short: "PS1"
