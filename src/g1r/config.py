@@ -284,6 +284,8 @@ class DatsConfig(_Strict):
     directory: str
     families: dict[str, DatFamilyConfig]
     sources: dict[str, DatSourceConfig]
+    # Suffixes a platform's DAT name may carry (format variants); any other names another set.
+    variant_suffixes: list[str]
     download_timeout_seconds: float = Field(gt=0)
     max_upload_bytes: int = Field(gt=0)
     user_agent: str

@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from g1r import db
-from g1r.dat_registry import DatRegistry, RegistryError, name_style
+from g1r.dat_registry import DatRegistry, RegistryError, header_matches, name_style
 from g1r.library import LibraryStore
 
 DATA = Path(__file__).parent / "data"
@@ -141,6 +141,50 @@ def test_pack_is_split_by_platform(env):
     assert "not a supported platform" in results["vita.dat"].message
     assert "skipped" in results["bad.dat"].message
     assert set(store.load().dats) == {"nes", "gb"}
+
+
+NES_HEADER = b"Nintendo - Nintendo Entertainment System (Headered)"
+WII_DEV_KIT = NOINTRO.replace(NES_HEADER, b"Nintendo - Wii (Development Kit Hard Drives)")
+
+
+@pytest.mark.parametrize(
+    ("platform", "name", "matches"),
+    [
+        ("wii", "Nintendo - Wii", True),
+        ("n64", "Nintendo - Nintendo 64 (BigEndian)", True),
+        ("nes", "Nintendo - Nintendo Entertainment System (Headered) (Parent-Clone)", True),
+        ("amiga", "Commodore - Amiga (TOSEC)", True),
+        # B7: a DAT-o-MATIC side set is not the platform's games.
+        ("wii", "Nintendo - Wii (Development Kit Hard Drives)", False),
+        ("wii", "Nintendo - Wii (Digital) (CDN)", False),
+        ("3ds", "Nintendo - Nintendo 3DS (Digital) (CDN)", False),
+        ("psx", "Sony - PlayStation (PS one Classics) (PSN)", False),
+        ("gba", "Nintendo - Game Boy Advance (e-Reader)", False),
+        ("wii", "Nintendo - Wii U", False),
+        ("gb", "Nintendo - Game Boy Advance", False),
+    ],
+)
+def test_header_matches_only_format_variants(make_settings, platform, name, matches):
+    settings = make_settings()
+    assert header_matches(settings, settings.platforms.profiles[platform], name) is matches
+
+
+def test_pack_skips_side_sets(env):
+    _, store, registry, conn, _ = env
+    pack = zip_of({"No-Intro/nes.dat": NOINTRO, "No-Intro/wii-devkit.dat": WII_DEV_KIT})
+    results = {r.member: r for r in registry.add_pack(conn, pack)}
+    assert results["wii-devkit.dat"].platform is None
+    assert results["wii-devkit.dat"].message == "skipped: another Wii set, not its games"
+    assert set(store.load().dats) == {"nes"}
+
+
+def test_recheck_flags_a_side_set_stored_before(env):
+    _, _, registry, conn, _ = env
+    version = registry.add_upload(conn, "wii", WII_DEV_KIT, "wii.dat")
+    conn.execute("UPDATE dat_version SET matches_platform = 1 WHERE id = ?", (version,))
+    registry.recheck_names(conn)
+    row = conn.execute("SELECT matches_platform FROM dat_version WHERE id = ?", (version,))
+    assert row.fetchone()["matches_platform"] == 0
 
 
 def test_rejections(env, make_settings):

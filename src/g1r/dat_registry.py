@@ -6,6 +6,7 @@ singly or as a daily pack, which is split by platform), and any uploaded overrid
 
 import hashlib
 import io
+import re
 import sqlite3
 import urllib.parse
 import urllib.request
@@ -69,9 +70,31 @@ class Entry:
         return self.id in LOOKUP_ENTRIES
 
 
-def header_matches(profile: PlatformProfile, header_name: str) -> bool:
-    """No-Intro names some DATs with a suffix, e.g. 'Nintendo - ... (Headered)'."""
-    return header_name == profile.dat_name or header_name.startswith(profile.dat_name + " (")
+def _suffixes(profile: PlatformProfile, header_name: str) -> list[str] | None:
+    """The parenthesised groups after the platform's DAT name, or None when the name is not
+    the platform's name followed only by such groups."""
+    if not header_name.startswith(profile.dat_name):
+        return None
+    rest = header_name[len(profile.dat_name) :]
+    groups = re.findall(r" (\([^()]*\))", rest)
+    return groups if "".join(f" {g}" for g in groups) == rest else None
+
+
+def header_matches(settings: Settings, profile: PlatformProfile, header_name: str) -> bool:
+    """The platform's DAT name, alone or with format variants ('... (Headered)'); another
+    suffix names a different set ('Nintendo - Wii (Development Kit Hard Drives)')."""
+    groups = _suffixes(profile, header_name)
+    allowed = {*settings.dats.variant_suffixes, TOSEC_MARK}
+    return groups is not None and all(g in allowed for g in groups)
+
+
+def side_set_of(settings: Settings, header_name: str) -> str | None:
+    """The platform whose DAT name this one extends with a suffix that is not a variant."""
+    for platform, profile in settings.platforms.enabled_profiles().items():
+        groups = _suffixes(profile, header_name)
+        if groups and not header_matches(settings, profile, header_name):
+            return platform
+    return None
 
 
 class DatRegistry:
@@ -144,10 +167,22 @@ class DatRegistry:
                 sha1,
                 len(dat.games),
                 int(dat.has_parent_clone),
-                int(header_matches(profile, dat.header.name)),
+                int(header_matches(self.settings, profile, dat.header.name)),
             ),
         )
         return cursor.lastrowid
+
+    def recheck_names(self, conn: sqlite3.Connection) -> None:
+        """At start-up: whether each stored DAT's name is its platform's follows the current
+        rule, so a side set taken for the platform before (B7) shows "name differs"."""
+        for row in conn.execute("SELECT id, platform, header_name FROM dat_version").fetchall():
+            profile = self.settings.platforms.profiles.get(row["platform"])
+            if profile is None:
+                continue
+            conn.execute(
+                "UPDATE dat_version SET matches_platform = ? WHERE id = ?",
+                (int(header_matches(self.settings, profile, row["header_name"])), row["id"]),
+            )
 
     def _maybe_activate(self, conn, platform: str, version_id: int) -> None:
         source = conn.execute(
@@ -284,9 +319,17 @@ class DatRegistry:
             except DatError as exc:
                 results.append(PackResult(name, None, None, f"skipped: {exc}"))
                 continue
+            header = dat.header.name
             platform = next(
-                (p for p, prof in profiles.items() if header_matches(prof, dat.header.name)), None
+                (p for p, prof in profiles.items() if header_matches(self.settings, prof, header)),
+                None,
             )
+            side = side_set_of(self.settings, header) if platform is None else None
+            if side is not None:
+                label = profiles[side].name
+                message = f"skipped: another {label} set, not its games"
+                results.append(PackResult(name, None, None, message))
+                continue
             if platform is None:
                 results.append(PackResult(name, None, None, "skipped: not a supported platform"))
                 continue

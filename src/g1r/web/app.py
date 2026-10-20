@@ -46,6 +46,7 @@ def create_app(
         conn = db.open_database(settings)
         scanner.fail_interrupted(conn)
         journal.recover(settings.apply, conn)
+        registry.recheck_names(conn)
         conn.close()
         store.load()  # fail fast on an invalid library.yaml
         app.state.jobs = Jobs(settings, folder_scanner)

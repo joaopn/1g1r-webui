@@ -683,6 +683,18 @@ dats:
       label: Uploaded file
       short_label: uploaded DAT
       identification_only: false
+  # A DAT belongs to a platform when its header name is the platform's dat_name, alone or
+  # followed by these format variants (No-Intro's daily pack: "Nintendo - Nintendo 64
+  # (BigEndian)", "... (Headered) (Parent-Clone)"). Any other suffix names a different set
+  # ("Nintendo - Wii (Development Kit Hard Drives)", "... (Digital) (CDN)"), never the platform.
+  variant_suffixes:
+    - "(Headered)"
+    - "(Headerless)"
+    - "(Parent-Clone)"
+    - "(BigEndian)"
+    - "(ByteSwapped)"
+    - "(Decrypted)"
+    - "(Encrypted)"
   download_timeout_seconds: 60
   max_upload_bytes: 536870912
   user_agent: "1g1r-webui"
