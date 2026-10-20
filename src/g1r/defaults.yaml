@@ -731,8 +731,12 @@ dolphin:
   convert_args: ["-f", "rvz", "-b", "131072", "-c", "zstd", "-l", "5"]
 
 jobs:
-  # Folder scans run in the background, this many at a time.
-  workers: 1
+  # Folder scans run in the background, this many at a time (each on its own folder).
+  scan_workers: 4
+  # Apply runs (moves, conversions, restores) run one at a time, apart from scans, so an
+  # apply never waits behind a long scan; one at a time keeps each run's free-space check
+  # true while it runs.
+  apply_workers: 1
   # A running scan writes how far it is at most this often.
   progress_interval_seconds: 0.5
 

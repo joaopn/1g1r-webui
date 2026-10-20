@@ -1,7 +1,8 @@
-"""Background work: folder scans and apply runs, in a small thread pool.
+"""Background work: folder scans and apply runs, each in its own small thread pool.
 
-Each job opens its own connection. Starting a job goes through one lock, so a scan and an
-apply can never both start on a folder.
+Scans of different folders run side by side; applies run apart from them, so an apply never
+waits behind a long scan. Each job opens its own connection. Starting a job goes through
+one lock, so a scan and an apply can never both start on a folder.
 """
 
 import threading
@@ -18,8 +19,11 @@ class Jobs:
         self.settings = settings
         self.scanner = scanner
         self.converter = converter or Converter(settings)
-        self.pool = ThreadPoolExecutor(
-            max_workers=settings.jobs.workers, thread_name_prefix="g1r-job"
+        self.scans = ThreadPoolExecutor(
+            max_workers=settings.jobs.scan_workers, thread_name_prefix="g1r-scan"
+        )
+        self.applies = ThreadPoolExecutor(
+            max_workers=settings.jobs.apply_workers, thread_name_prefix="g1r-apply"
         )
         self.starting = threading.Lock()
 
@@ -29,7 +33,7 @@ class Jobs:
     def scan(self, conn, label: str, refresh_lookups: bool = False, full: bool = False) -> int:
         with self.starting:
             scan_id = self.scanner.start(conn, label)
-        self.pool.submit(self._run_scan, scan_id, label, refresh_lookups, full)
+        self.scans.submit(self._run_scan, scan_id, label, refresh_lookups, full)
         return scan_id
 
     def _run_scan(self, scan_id: int, label: str, refresh_lookups: bool, full: bool) -> None:
@@ -48,7 +52,7 @@ class Jobs:
                 raise journal.PlanError(reason)
             plan = check()
             run_id = journal.start_run(conn, label, kind, scope, len(plan))
-        self.pool.submit(self._run_apply, run_id, label, plan, after)
+        self.applies.submit(self._run_apply, run_id, label, plan, after)
         return run_id
 
     def _run_apply(self, run_id: int, label: str, plan, after=None) -> None:
@@ -61,4 +65,5 @@ class Jobs:
                 after()
 
     def shutdown(self) -> None:
-        self.pool.shutdown(wait=True, cancel_futures=True)
+        for pool in (self.scans, self.applies):
+            pool.shutdown(wait=True, cancel_futures=True)

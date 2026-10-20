@@ -336,7 +336,8 @@ class ArchivesConfig(_Strict):
 
 
 class JobsConfig(_Strict):
-    workers: int = Field(gt=0)
+    scan_workers: int = Field(gt=0)
+    apply_workers: int = Field(gt=0)
     progress_interval_seconds: float = Field(ge=0)
 
 
