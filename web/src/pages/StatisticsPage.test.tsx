@@ -161,6 +161,8 @@ test("coverage per DAT source, empty cells, DAT info and the missing games", asy
   // The Set cell's faint background is the identified share; column labels are centred.
   expect(screen.getByTestId("identified-bar-nes").style.transform).toBe("scaleX(0.8)");
   expect(screen.getByTestId("header-nointro")).toHaveClass("text-center");
+  expect(screen.getByTestId("header-platform")).toHaveClass("text-center");
+  expect(within(nes).getByTitle("Nintendo Entertainment System")).toHaveClass("text-center");
   // Kept figures: the oldest computation, and the sets that changed since.
   expect(screen.getByTestId("computed-statistics")).toHaveTextContent(
     "Computed 2026-10-20 09:00 UTC · 1 set changed since",

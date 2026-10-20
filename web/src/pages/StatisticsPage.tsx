@@ -173,7 +173,7 @@ function CoverageTable({
       {
         id: "platform",
         label: "Platform",
-        headerClassName: CENTRED,
+        className: CENTRED,
         render: (f) => <PlatformIcon platform={meta.platforms[f.platform]} />,
         sortValue: (f) => f.platform_short,
         title: (f) => meta.platforms[f.platform]?.name,
