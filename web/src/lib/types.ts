@@ -327,6 +327,8 @@ export type SettingsData = {
     not_found_ttl_days: number;
   };
   fuzzy: { min_score: number; max_suggestions: number; auto_match_threshold: number | null };
+  /** How many folder scans run at a time: the value in use, the default and the most. */
+  parallel_scans: { value: number; default: number; max: number };
   effective_yaml: string;
   library_file: string;
 };

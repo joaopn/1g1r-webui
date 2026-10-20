@@ -97,6 +97,8 @@ class Library(BaseModel):
     dat_order: list[str] | None = None
     dat_off: list[str] = Field(default_factory=list)
     ignored_filenames: list[str] | None = None
+    # How many folder scans run at a time (None: the configured default).
+    parallel_scans: int | None = None
     folders: list[FolderEntry] = Field(default_factory=list)
 
     def folder(self, label: str) -> FolderEntry | None:
@@ -165,6 +167,13 @@ class LibraryStore:
                 update={"criteria": list(profile.ranking_criteria)}
             )
         return self.settings.ranking
+
+    def parallel_scans(self, library: Library) -> int:
+        jobs = self.settings.jobs
+        chosen = library.parallel_scans
+        return (
+            chosen if chosen is not None and chosen <= jobs.max_scan_workers else jobs.scan_workers
+        )
 
     def ignored_filenames(self, library: Library) -> list[str]:
         if library.ignored_filenames is None:

@@ -409,3 +409,20 @@ def test_the_global_dat_order(setup):
     assert [e["id"] for e in saved["entries"] if not e["on"]] == ["tosec"]
     assert store.load().dat_order == order
     assert client.put("/api/dat-order", json={"order": None}).json()["own"] is False
+
+
+def test_parallel_scans_are_set_in_the_ui_within_the_configured_max(setup):
+    client, store, settings = setup
+    jobs = settings.jobs
+    assert client.get("/api/settings").json()["parallel_scans"] == {
+        "value": jobs.scan_workers,
+        "default": jobs.scan_workers,
+        "max": jobs.max_scan_workers,
+    }
+    chosen = jobs.max_scan_workers
+    saved = client.put("/api/settings/parallel-scans", json={"value": chosen}).json()
+    assert saved["parallel_scans"]["value"] == chosen == store.load().parallel_scans
+    too_many = client.put("/api/settings/parallel-scans", json={"value": chosen + 1})
+    assert too_many.status_code == HTTPStatus.BAD_REQUEST
+    reset = client.put("/api/settings/parallel-scans", json={"value": None}).json()
+    assert reset["parallel_scans"]["value"] == jobs.scan_workers

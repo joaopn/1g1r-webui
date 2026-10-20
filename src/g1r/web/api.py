@@ -9,7 +9,7 @@ from typing import Annotated
 
 import yaml
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from g1r import (
     automatch,
@@ -144,6 +144,11 @@ class Targets(BaseModel):
 
 class Ignored(BaseModel):
     patterns: list[str]
+
+
+class ParallelScans(BaseModel):
+    # None: back to the configured default.
+    value: int | None = Field(default=None, gt=0)
 
 
 class ActiveVersion(BaseModel):
@@ -1046,6 +1051,11 @@ def build_router(
                 "not_found_ttl_days": settings.lookups.hasheous.not_found_ttl_days,
             },
             "fuzzy": settings.fuzzy.model_dump(),
+            "parallel_scans": {
+                "value": store.parallel_scans(library),
+                "default": settings.jobs.scan_workers,
+                "max": settings.jobs.max_scan_workers,
+            },
             "effective_yaml": yaml.safe_dump(settings.model_dump(mode="json"), sort_keys=False),
             "library_file": str(settings.paths.library_path),
         }
@@ -1068,6 +1078,14 @@ def build_router(
                 library.platform_targets[platform] = target
 
         store.update(change)
+        return get_settings()
+
+    @router.put("/settings/parallel-scans")
+    def save_parallel_scans(body: ParallelScans, request: Request):
+        if body.value is not None and body.value > settings.jobs.max_scan_workers:
+            raise bad_request(f"at most {settings.jobs.max_scan_workers} scans at a time")
+        store.update(lambda lib: setattr(lib, "parallel_scans", body.value))
+        request.app.state.jobs.limit_changed()
         return get_settings()
 
     @router.put("/settings/ignored")

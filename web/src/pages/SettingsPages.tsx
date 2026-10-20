@@ -519,9 +519,65 @@ export function LookupsSettingsPage() {
   );
 }
 
+/** How many folder scans run at a time; applies always run one at a time. */
+function ParallelScans({ value, fallback, max }: { value: number; fallback: number; max: number }) {
+  const [draft, setDraft] = useState(String(value));
+  useEffect(() => setDraft(String(value)), [value]);
+  const save = useMutation({
+    mutationFn: (chosen: number | null) =>
+      api("/settings/parallel-scans", json("PUT", { value: chosen })),
+    onSuccess: () => {
+      toast.success("Parallel scans saved");
+      queryClient.invalidateQueries({ queryKey: keys.settings });
+    },
+    onError: (err) => toast.error(errorText(err)),
+  });
+  const chosen = Number(draft);
+  const valid = Number.isInteger(chosen) && chosen >= 1 && chosen <= max;
+  return (
+    <section className="max-w-3xl space-y-2 rounded-lg border border-border bg-card p-4 text-sm">
+      <h2 className="font-medium">Parallel scans</h2>
+      <p className="text-muted-foreground">
+        How many folders are scanned at a time; further scans wait in line. Applies (moves,
+        conversions, restores) run one at a time, apart from scans. Default {fallback}, at most{" "}
+        {max}.
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          type="number"
+          aria-label="Parallel scans"
+          min={1}
+          max={max}
+          className="h-8 w-20 rounded-md border border-input bg-background px-2 text-sm"
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+        />
+        <Button
+          size="sm"
+          disabled={!valid || chosen === value || save.isPending}
+          onClick={() => save.mutate(chosen)}
+        >
+          Save
+        </Button>
+        {value !== fallback ? (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={save.isPending}
+            onClick={() => save.mutate(null)}
+          >
+            Use the default
+          </Button>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
 export function AdvancedSettingsPage() {
   const data = useSettingsData();
   if (!data.data) return <p className="text-muted-foreground">Loading…</p>;
+  const parallel = data.data.parallel_scans;
   return (
     <Page
       title="Advanced"
@@ -533,6 +589,7 @@ export function AdvancedSettingsPage() {
         </>
       }
     >
+      <ParallelScans value={parallel.value} fallback={parallel.default} max={parallel.max} />
       <pre className="overflow-x-auto rounded-lg border border-border bg-card p-4 text-xs">
         {data.data.effective_yaml}
       </pre>
