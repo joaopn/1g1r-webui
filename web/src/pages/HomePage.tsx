@@ -248,6 +248,8 @@ export function HomePage() {
             ) : null;
             // Nothing left to do: every file processed (a folder not scanned yet has no files).
             const done = folder.summary.roms > 0 && folder.progress.to_process === 0;
+            // Pending conversions come first: the card opens where there is work to apply.
+            const page = folder.conversion.to_convert > 0 ? "conversion" : "matching";
             return (
               <div
                 key={folder.label}
@@ -270,7 +272,7 @@ export function HomePage() {
                       title={platform?.name ?? folder.platform}
                     >
                       <Link
-                        to={`/folders/${folder.label}/matching`}
+                        to={`/folders/${folder.label}/${page}`}
                         className="after:absolute after:inset-0 after:content-['']"
                       >
                         {platform?.name ?? folder.platform}

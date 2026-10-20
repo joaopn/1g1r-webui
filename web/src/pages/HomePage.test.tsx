@@ -150,6 +150,27 @@ test("a hint links to where it is acted on, and the card still opens the set", a
   );
 });
 
+test("a card with conversions to apply opens Conversion", async () => {
+  renderPage([
+    {
+      ...card("nes", "nes", SCAN),
+      conversion: { to_convert: 2, flagged: 0 } as FolderCard["conversion"],
+    },
+    {
+      ...card("gb", "gb", SCAN),
+      conversion: { to_convert: 0, flagged: 1 } as FolderCard["conversion"],
+    },
+  ]);
+  expect(await screen.findByRole("link", { name: META.platforms.nes.name })).toHaveAttribute(
+    "href",
+    "/folders/nes/conversion",
+  );
+  expect(screen.getByRole("link", { name: META.platforms.gb.name })).toHaveAttribute(
+    "href",
+    "/folders/gb/matching",
+  );
+});
+
 test("Simplified shows processed, to process and size, hides the DAT and last scan, and is remembered", async () => {
   const folder: FolderCard = {
     ...card("gb", "gb", SCAN),
