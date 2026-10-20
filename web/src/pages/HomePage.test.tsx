@@ -279,6 +279,19 @@ test("the badges filter the sets by state, with counts, and are remembered", asy
     "All5Done1Needing conversion2Needing matching2",
   );
   expect(cards()).toEqual(["both", "convert", "done", "empty", "match"]);
+  // Borders and badges share the colour of the state; a set needing both shows conversion.
+  const tone = (label: string) => screen.getByTestId(`folder-card-${label}`).dataset.tone;
+  expect(["done", "convert", "match", "both", "empty"].map(tone)).toEqual([
+    "good",
+    "convert",
+    "match",
+    "convert",
+    undefined,
+  ]);
+  expect(screen.getByTestId("folder-card-match")).toHaveClass("border-status-match");
+  expect(
+    [...screen.getByTestId("quick-views").querySelectorAll("label")].map((l) => l.dataset.tone),
+  ).toEqual([undefined, "good", "convert", "match"]);
   await userEvent.click(screen.getByLabelText(/^Done/));
   expect(cards()).toEqual(["done"]);
   await userEvent.click(screen.getByLabelText(/^Needing conversion/));

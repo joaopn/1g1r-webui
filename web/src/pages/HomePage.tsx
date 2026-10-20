@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { PlatformIcon } from "@/components/PlatformIcon";
-import { QuickViewBar } from "@/components/QuickViewBar";
+import { type ChipTone, QuickViewBar } from "@/components/QuickViewBar";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ApiError, api } from "@/lib/api";
@@ -31,18 +31,36 @@ function isCompleted(folder: FolderCard): boolean {
   return folder.summary.roms > 0 && folder.progress.to_process === 0;
 }
 
+const needsConversion = (f: FolderCard) => f.progress.to_convert > 0;
+const needsMatching = (f: FolderCard) => f.progress.to_match > 0;
+
+/** The card's border: done, else needing conversion (it opens there), else matching. */
+function cardTone(folder: FolderCard): ChipTone | null {
+  if (isCompleted(folder)) return "good";
+  if (needsConversion(folder)) return "convert";
+  if (needsMatching(folder)) return "match";
+  return null;
+}
+// Literal class names, so Tailwind generates them; ring-1 makes 2px without a layout shift.
+const CARD_BORDERS: Record<ChipTone, string> = {
+  good: "border-status-good ring-1 ring-status-good hover:border-status-good",
+  convert: "border-status-convert ring-1 ring-status-convert hover:border-status-convert",
+  match: "border-status-match ring-1 ring-status-match hover:border-status-match",
+};
+
 const SHOW_KEY = "g1r.home.show.v1";
 /** The badges above the cards: which sets to show, one at a time. */
 const SHOWS = [
   { id: "all", label: "All", test: () => true },
-  { id: "done", label: "Done", test: isCompleted },
-  {
-    id: "conversion",
-    label: "Needing conversion",
-    test: (f: FolderCard) => f.progress.to_convert > 0,
-  },
-  { id: "matching", label: "Needing matching", test: (f: FolderCard) => f.progress.to_match > 0 },
-] as const;
+  { id: "done", label: "Done", test: isCompleted, tone: "good" },
+  { id: "conversion", label: "Needing conversion", test: needsConversion, tone: "convert" },
+  { id: "matching", label: "Needing matching", test: needsMatching, tone: "match" },
+] as const satisfies readonly {
+  id: string;
+  label: string;
+  test: (f: FolderCard) => boolean;
+  tone?: ChipTone;
+}[];
 type Show = (typeof SHOWS)[number]["id"];
 
 function isShow(value: unknown): value is Show {
@@ -176,6 +194,7 @@ export function HomePage() {
     id: s.id,
     label: s.label,
     count: visible.filter(s.test).length,
+    tone: "tone" in s ? s.tone : undefined,
   }));
   const filter = SHOWS.find((s) => s.id === show) ?? SHOWS[0];
   const shown = visible.filter(filter.test);
@@ -325,6 +344,7 @@ export function HomePage() {
             <span className="text-muted-foreground">Not scanned yet</span>
           ) : null;
           const done = isCompleted(folder);
+          const tone = cardTone(folder);
           // Pending conversions come first: the card opens where there is work to apply.
           const page = folder.conversion.to_convert > 0 ? "conversion" : "matching";
           const target = `/folders/${folder.label}/${page}`;
@@ -333,11 +353,10 @@ export function HomePage() {
               key={folder.label}
               data-testid={`folder-card-${folder.label}`}
               data-done={done || undefined}
+              data-tone={tone ?? undefined}
               className={cn(
                 "group relative overflow-hidden rounded-lg border bg-card transition-colors hover:bg-accent/30",
-                done
-                  ? "border-status-good ring-1 ring-status-good hover:border-status-good"
-                  : "border-border hover:border-primary/50",
+                tone ? CARD_BORDERS[tone] : "border-border hover:border-primary/50",
               )}
             >
               <ScanBackground scan={folder.scan} />

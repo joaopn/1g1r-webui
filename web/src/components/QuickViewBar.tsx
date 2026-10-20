@@ -1,7 +1,27 @@
 import { formatCount } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-export type QuickViewChip = { id: string; label: string; count: number };
+export type ChipTone = "good" | "convert" | "match";
+export type QuickViewChip = { id: string; label: string; count: number; tone?: ChipTone };
+
+// Literal class names, so Tailwind generates them.
+const TONES: Record<ChipTone, { idle: string; dot: string; active: string }> = {
+  good: {
+    idle: "border-status-good/60",
+    dot: "bg-status-good",
+    active: "border-status-good bg-status-good",
+  },
+  convert: {
+    idle: "border-status-convert/60",
+    dot: "bg-status-convert",
+    active: "border-status-convert bg-status-convert",
+  },
+  match: {
+    idle: "border-status-match/60",
+    dot: "bg-status-match",
+    active: "border-status-match bg-status-match",
+  },
+};
 
 /** The horizontal bar of quick views above a table: one at a time, each with its count. */
 export function QuickViewBar({
@@ -20,6 +40,7 @@ export function QuickViewBar({
       <legend className="sr-only">Show</legend>
       {views.map((view) => {
         const active = view.id === value;
+        const tone = view.tone ? TONES[view.tone] : null;
         return (
           <label
             key={view.id}
@@ -27,9 +48,15 @@ export function QuickViewBar({
               "inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1 text-sm transition-colors",
               "has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring",
               active
-                ? "border-primary bg-primary text-primary-foreground"
-                : "border-border bg-card hover:bg-accent hover:text-accent-foreground",
+                ? tone
+                  ? cn(tone.active, "text-background")
+                  : "border-primary bg-primary text-primary-foreground"
+                : cn(
+                    tone ? tone.idle : "border-border",
+                    "bg-card hover:bg-accent hover:text-accent-foreground",
+                  ),
             )}
+            data-tone={view.tone}
           >
             <input
               type="radio"
@@ -39,11 +66,18 @@ export function QuickViewBar({
               checked={active}
               onChange={() => onChange(view.id)}
             />
+            {tone && !active ? (
+              <span className={cn("size-2 rounded-full", tone.dot)} aria-hidden="true" />
+            ) : null}
             {view.label}
             <span
               className={cn(
                 "text-xs tabular-nums",
-                active ? "text-primary-foreground/80" : "text-muted-foreground",
+                active
+                  ? tone
+                    ? "text-background/80"
+                    : "text-primary-foreground/80"
+                  : "text-muted-foreground",
               )}
             >
               {formatCount(view.count)}
