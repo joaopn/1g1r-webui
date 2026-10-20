@@ -140,4 +140,6 @@ test("coverage per DAT source, empty cells, DAT info and the missing games", asy
   expect(solo).toHaveTextContent("1987, 1988");
   expect(solo).toHaveTextContent("Konami");
   expect(solo).toHaveTextContent("Japan, USA");
+  // No version has a language: the column starts hidden.
+  expect(within(dialog).queryByText("Languages")).toBeNull();
 });

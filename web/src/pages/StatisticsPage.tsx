@@ -242,6 +242,8 @@ function MissingDialog({
       title: (g) => g.entries.join("\n"),
     },
   ];
+  // A column no missing game has a value for starts hidden.
+  const hasData = (id: string) => !isOptional(id) || (missing.data?.rows ?? []).some((g) => g[id]);
   return (
     <DialogContent
       className="max-h-[90vh] overflow-y-auto sm:max-w-5xl"
@@ -268,7 +270,7 @@ function MissingDialog({
           rowTestId={(g) => `missing-${g.key}`}
           columns={columns}
           sizes={meta.ui.missing_columns}
-          defaultColumns={meta.ui.missing_columns_default}
+          defaultColumns={meta.ui.missing_columns_default.filter((id) => hasData(id))}
           defaultSort={{ id: "name", order: "asc" }}
           views={ALL_MISSING}
           search={(g, needle) =>
@@ -285,6 +287,11 @@ function MissingDialog({
     </DialogContent>
   );
 }
+
+// The missing games' columns a DAT may have no data for (No-Intro and Redump give no years).
+const OPTIONAL = ["years", "publishers", "regions", "languages", "serials"] as const;
+type Optional = (typeof OPTIONAL)[number];
+const isOptional = (id: string): id is Optional => (OPTIONAL as readonly string[]).includes(id);
 
 const yesNo = (value: boolean) => (value ? "yes" : "no");
 
