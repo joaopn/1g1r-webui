@@ -1,8 +1,11 @@
-import { ChevronRight } from "lucide-react";
+import { useMutation } from "@tanstack/react-query";
+import { ChevronRight, RefreshCw } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { toast } from "sonner";
 import { PlatformIcon } from "@/components/PlatformIcon";
 import { type DataColumn, DataTable } from "@/components/table/DataTable";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -10,8 +13,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { formatCount } from "@/lib/format";
-import { useMeta, useMissing, useStatistics } from "@/lib/queries";
+import { ApiError, api } from "@/lib/api";
+import { formatCount, formatWhen } from "@/lib/format";
+import { keys, queryClient, useMeta, useMissing, useStatistics } from "@/lib/queries";
 import type { DatInfo, Meta, MissingGame, Statistics, StatisticsFolder } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -29,10 +33,23 @@ const percent = (value: number, digits: number) =>
     maximumFractionDigits: digits,
   });
 
+/** Recomputes every set's figures (the server keeps them until then). */
+function useRefreshStatistics() {
+  return useMutation({
+    mutationFn: () => api<Statistics>("/statistics/refresh", { method: "POST" }),
+    onSuccess: (data) => {
+      queryClient.setQueryData(keys.statistics, data);
+      return queryClient.invalidateQueries({ queryKey: ["missing"] });
+    },
+    onError: (err) => toast.error(err instanceof ApiError ? err.message : String(err)),
+  });
+}
+
 /** Statistics: per folder, the identified files and how much of each local DAT it covers. */
 export function StatisticsPage() {
   const meta = useMeta();
   const stats = useStatistics();
+  const refresh = useRefreshStatistics();
   const [open, setOpen] = useState<{ label: string; source: string } | null>(null);
   const [params, setParams] = useSearchParams();
 
@@ -45,11 +62,30 @@ export function StatisticsPage() {
 
   return (
     <div className="mx-auto w-fit max-w-full space-y-6">
-      <div>
-        <h1 className="font-semibold text-2xl tracking-tight">Statistics</h1>
+      <div className="space-y-1">
+        <div className="flex items-center justify-between gap-4">
+          <h1 className="font-semibold text-2xl tracking-tight">Statistics</h1>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={refresh.isPending || !stats.data}
+            onClick={() => refresh.mutate()}
+            data-testid="refresh-statistics"
+          >
+            <RefreshCw
+              className={cn(
+                "size-4",
+                refresh.isPending && "animate-spin motion-reduce:animate-none",
+              )}
+              aria-hidden="true"
+            />
+            {refresh.isPending ? "Refreshing…" : "Refresh"}
+          </Button>
+        </div>
         <p className="text-muted-foreground text-sm">
           Games of each local DAT found in the set. Click a percentage for the missing games.
         </p>
+        {stats.data ? <Computed folders={stats.data.folders} /> : null}
       </div>
       {stats.isError ? <p className="text-destructive text-sm">{String(stats.error)}</p> : null}
       {meta.data && stats.data ? (
@@ -71,6 +107,24 @@ export function StatisticsPage() {
         <p className="text-muted-foreground text-sm">Loading…</p>
       )}
     </div>
+  );
+}
+
+/** When the shown figures were computed, and how many sets changed since. */
+function Computed({ folders }: { folders: StatisticsFolder[] }) {
+  if (folders.length === 0) return null;
+  const oldest = folders.map((f) => f.computed_at).sort()[0];
+  const stale = folders.filter((f) => f.stale).length;
+  return (
+    <p className="text-muted-foreground text-xs" data-testid="computed-statistics">
+      Computed {formatWhen(oldest)}
+      {stale ? (
+        <span className="text-status-warn">
+          {" "}
+          · {formatCount(stale)} {stale === 1 ? "set" : "sets"} changed since
+        </span>
+      ) : null}
+    </p>
   );
 }
 
@@ -96,11 +150,13 @@ function CoverageTable({
             <span className="font-medium">{f.label}</span>
             <span className="block truncate text-muted-foreground text-xs tabular-nums">
               {formatCount(f.identified)} / {formatCount(f.roms)} identified
+              {f.stale ? <span className="text-status-warn"> · changed</span> : null}
             </span>
           </div>
         ),
         sortValue: (f) => f.label,
-        title: (f) => `${formatCount(f.identified)} of ${formatCount(f.roms)} ROM files identified`,
+        title: (f) =>
+          `${formatCount(f.identified)} of ${formatCount(f.roms)} ROM files identified · computed ${formatWhen(f.computed_at)}${f.stale ? "; files, identities or DATs changed since: Refresh to recompute" : ""}`,
       },
       {
         id: "platform",
@@ -117,17 +173,32 @@ function CoverageTable({
           render: (f) => {
             const cell = f.coverage[s.id];
             if (!cell) return null;
+            const complete = cell.covered === cell.total;
+            const value = share(cell.covered, cell.total);
             return (
               <button
                 type="button"
                 className={cn(
-                  "rounded px-1 tabular-nums underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-ring",
-                  cell.covered === cell.total && "font-medium text-status-good",
+                  "flex w-full flex-col items-end gap-1 rounded px-1 tabular-nums underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-ring",
+                  complete && "font-medium text-status-good",
                 )}
                 onClick={() => onOpen({ label: f.label, source: s.id })}
                 data-testid={`coverage-${f.label}-${s.id}`}
               >
-                {percent(share(cell.covered, cell.total), digits)}
+                {percent(value, digits)}
+                <span
+                  className="block h-1 w-full overflow-hidden rounded-full bg-muted"
+                  aria-hidden="true"
+                >
+                  <span
+                    className={cn(
+                      "block h-full origin-left rounded-full",
+                      complete ? "bg-status-good" : "bg-primary",
+                    )}
+                    style={{ transform: `scaleX(${value})` }}
+                    data-testid={`coverage-bar-${f.label}-${s.id}`}
+                  />
+                </span>
               </button>
             );
           },

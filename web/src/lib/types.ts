@@ -437,6 +437,10 @@ export type StatisticsFolder = {
   identified: number;
   /** By DAT source; a source the folder's platform has no DAT of is absent. */
   coverage: Record<string, Coverage>;
+  /** When the figures were computed (they are kept until Refresh). */
+  computed_at: string;
+  /** The folder's files, identities or DATs changed since. */
+  stale: boolean;
 };
 
 export type DatInfo = {

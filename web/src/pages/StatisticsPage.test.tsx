@@ -34,6 +34,8 @@ const STATS: Statistics = {
       roms: 10,
       identified: 8,
       coverage: { nointro: { covered: 1, total: 3, dat: DAT } },
+      computed_at: "2026-10-20T10:00:00Z",
+      stale: true,
     },
     {
       label: "nes-2",
@@ -42,6 +44,8 @@ const STATS: Statistics = {
       roms: 1000,
       identified: 999,
       coverage: { nointro: { covered: 999, total: 1000, dat: DAT } },
+      computed_at: "2026-10-20T09:00:00Z",
+      stale: false,
     },
     {
       label: "psx",
@@ -50,6 +54,8 @@ const STATS: Statistics = {
       roms: 2,
       identified: 2,
       coverage: { redump: { covered: 2, total: 2, dat: { ...DAT, source: "redump" } } },
+      computed_at: "2026-10-20T11:00:00Z",
+      stale: false,
     },
   ],
   dat_info: [
@@ -149,6 +155,14 @@ test("coverage per DAT source, empty cells, DAT info and the missing games", asy
   expect(screen.queryByTestId("filters-button")).toBeNull();
   expect(within(nes).getByTestId("coverage-nes-nointro")).toHaveTextContent("33.3%");
   expect(within(nes).getByTestId("coverage-nes-nointro")).not.toHaveClass("text-status-good");
+  // A bar under each percentage; complete ones in green.
+  expect(screen.getByTestId("coverage-bar-nes-nointro").style.transform).toBe(`scaleX(${1 / 3})`);
+  expect(screen.getByTestId("coverage-bar-psx-redump")).toHaveClass("bg-status-good");
+  // Kept figures: the oldest computation, and the sets that changed since.
+  expect(screen.getByTestId("computed-statistics")).toHaveTextContent(
+    "Computed 2026-10-20 09:00 UTC · 1 set changed since",
+  );
+  expect(within(nes).getByText("· changed")).toBeInTheDocument();
   // Two folders of one platform: a line each. Rounded down, so 999 of 1000 is not 100%.
   const nes2 = screen.getByTestId("coverage-nes-2-nointro");
   expect(nes2).toHaveTextContent("99.9%");
@@ -195,4 +209,40 @@ test("coverage per DAT source, empty cells, DAT info and the missing games", asy
     "statistics-nes-2",
     "statistics-psx",
   ]);
+});
+
+test("Refresh recomputes and shows the new figures", async () => {
+  const fresh: Statistics = {
+    ...STATS,
+    folders: STATS.folders.map((f) => ({
+      ...f,
+      stale: false,
+      computed_at: "2026-10-20T12:00:00Z",
+    })),
+  };
+  const calls: string[] = [];
+  vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+    calls.push(`${init?.method ?? "GET"} ${url}`);
+    const body = url.endsWith("/meta")
+      ? META
+      : url.endsWith("/statistics/refresh")
+        ? fresh
+        : url.endsWith("/statistics")
+          ? STATS
+          : null;
+    return new Response(JSON.stringify(body));
+  });
+  queryClient.clear();
+  render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>
+        <StatisticsPage />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+  expect(await screen.findByTestId("computed-statistics")).toHaveTextContent("changed since");
+  await userEvent.click(screen.getByTestId("refresh-statistics"));
+  expect(await screen.findByText("Computed 2026-10-20 12:00 UTC")).toBeInTheDocument();
+  expect(screen.queryByText("· changed")).toBeNull();
+  expect(calls).toContain("POST /api/statistics/refresh");
 });
