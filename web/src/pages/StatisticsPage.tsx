@@ -22,6 +22,8 @@ import { cn } from "@/lib/utils";
 // The missing-games table's URL parameters, apart from the page table's.
 const MISSING_PREFIX = "m.";
 
+// Column labels sit centred over their cells.
+const CENTRED = "text-center";
 const share = (covered: number, total: number) => (total ? covered / total : 0);
 // Rounded down, so only a complete DAT reads 100% (roundingMode is not in TS's ES2022 lib).
 const FLOOR = { roundingMode: "floor" } as Intl.NumberFormatOptions;
@@ -145,15 +147,25 @@ function CoverageTable({
       {
         id: "folder",
         label: "Set",
-        render: (f) => (
-          <div className="truncate">
-            <span className="font-medium">{f.label}</span>
-            <span className="block truncate text-muted-foreground text-xs tabular-nums">
-              {formatCount(f.identified)} / {formatCount(f.roms)} identified
-              {f.stale ? <span className="text-status-warn"> · changed</span> : null}
-            </span>
-          </div>
-        ),
+        headerClassName: CENTRED,
+        render: (f) => {
+          const value = share(f.identified, f.roms);
+          return (
+            <div className="relative truncate rounded px-1">
+              <span
+                className="absolute inset-0 origin-left rounded bg-primary/10"
+                style={{ transform: `scaleX(${value})` }}
+                aria-hidden="true"
+                data-testid={`identified-bar-${f.label}`}
+              />
+              <span className="relative font-medium">{f.label}</span>
+              <span className="relative block truncate text-muted-foreground text-xs tabular-nums">
+                {formatCount(f.identified)} / {formatCount(f.roms)} identified
+                {f.stale ? <span className="text-status-warn"> · changed</span> : null}
+              </span>
+            </div>
+          );
+        },
         sortValue: (f) => f.label,
         title: (f) =>
           `${formatCount(f.identified)} of ${formatCount(f.roms)} ROM files identified · computed ${formatWhen(f.computed_at)}${f.stale ? "; files, identities or DATs changed since: Refresh to recompute" : ""}`,
@@ -161,6 +173,7 @@ function CoverageTable({
       {
         id: "platform",
         label: "Platform",
+        headerClassName: CENTRED,
         render: (f) => <PlatformIcon platform={meta.platforms[f.platform]} />,
         sortValue: (f) => f.platform_short,
         title: (f) => meta.platforms[f.platform]?.name,
@@ -170,6 +183,7 @@ function CoverageTable({
           id: s.id,
           label: s.short_label,
           className: "text-right",
+          headerClassName: CENTRED,
           render: (f) => {
             const cell = f.coverage[s.id];
             if (!cell) return null;
@@ -185,7 +199,6 @@ function CoverageTable({
                 onClick={() => onOpen({ label: f.label, source: s.id })}
                 data-testid={`coverage-${f.label}-${s.id}`}
               >
-                {percent(value, digits)}
                 <span
                   className="block h-1 w-full overflow-hidden rounded-full bg-muted"
                   aria-hidden="true"
@@ -199,6 +212,7 @@ function CoverageTable({
                     data-testid={`coverage-bar-${f.label}-${s.id}`}
                   />
                 </span>
+                {percent(value, digits)}
               </button>
             );
           },

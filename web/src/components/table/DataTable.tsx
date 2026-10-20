@@ -24,6 +24,8 @@ export type DataColumn<T> = {
   sortValue?: (row: T) => string | number;
   title?: (row: T) => string | undefined;
   className?: string;
+  /** The header's own classes, when not the cells' (`className`). */
+  headerClassName?: string;
 };
 
 export type RowView<T> = { id: string; label: string; test: (row: T) => boolean };
@@ -257,7 +259,7 @@ export function DataTable<T>({
                   order={order}
                   onSort={onSort}
                   onResize={resize}
-                  className={column.className}
+                  className={column.headerClassName ?? column.className}
                 />
               ))}
             </div>
