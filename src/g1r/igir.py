@@ -68,10 +68,11 @@ def run_report(
     timeout: float,
     merge: str | None = None,
     threads: int | None = None,
+    excess: bool = False,
 ) -> list[ReportRow]:
     """`cache`: igir's cache file (`cache_path`). `merge`: igir's --merge-roms mode, for
     arcade sets. `threads`: files read at once and Node's worker pool size (None: igir's
-    own)."""
+    own). `excess`: an archive holding other files besides the game's ROMs still matches."""
     work = settings.paths.data_dir / settings.igir.work_dir
     work.mkdir(parents=True, exist_ok=True)
     cache.parent.mkdir(parents=True, exist_ok=True)
@@ -90,6 +91,7 @@ def run_report(
             str(report),
             *(["--merge-roms", merge] if merge else []),
             *(["--reader-threads", str(threads)] if threads else []),
+            *(["--allow-excess-sets"] if excess else []),
         ]
         env = {**os.environ, POOL_SIZE_ENV: str(threads)} if threads else None
         try:

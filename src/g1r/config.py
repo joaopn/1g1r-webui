@@ -188,6 +188,10 @@ class PlatformProfile(_Strict):
     # discarded on a name match or for a version in another format (Dreamcast .cdi: a CD-R
     # image chdman cannot read, often a cut-down rip of a GD-ROM).
     keep_extensions: list[str] = Field(default_factory=list)
+    # Archives may hold other files besides the game's ROMs (.url, .nfo, .txt): igir is run
+    # with --allow-excess-sets, and an archive's identification stands only when every ROM
+    # file in it is one of the game's (by CRC32), so a several-games archive is never one.
+    excess_files: bool = False
     # The default ranking criteria for this platform's folders (None: the global default).
     ranking_criteria: list[str] | None = None
 

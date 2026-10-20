@@ -1,5 +1,6 @@
 import os
 import zipfile
+import zlib
 from http import HTTPStatus
 from pathlib import Path
 
@@ -116,14 +117,17 @@ def test_cdi_images_are_kept_as_they_are(dc, roms_root):
     assert client.post("/api/folders/dc/convert/preview", json={}).json()["conversions"] == []
 
 
-def dc_dat(names: list[str]) -> bytes:
-    games = "".join(
-        f'<game name="{n}"><rom name="{n}.bin" size="1" crc="{i:08x}"/></game>'
-        for i, n in enumerate(names)
+def dc_dat(games: dict[str, list[tuple[str, bytes]]]) -> bytes:
+    """A Redump-style DAT: each game's ROMs as (name, data)."""
+    body = "".join(
+        f'<game name="{n}">'
+        + "".join(f'<rom name="{r}" size="{len(d)}" crc="{zlib.crc32(d):08x}"/>' for r, d in roms)
+        + "</game>"
+        for n, roms in games.items()
     )
     return (
         f"<?xml version='1.0'?><datafile><header><name>Sega - Dreamcast</name></header>"
-        f"{games}</datafile>"
+        f"{body}</datafile>"
     ).encode()
 
 
@@ -135,7 +139,9 @@ def identified(make_settings, roms_root):
     (roms_root / "discarded").mkdir()
     found: dict[str, str] = {}
 
-    def report(settings_, dat_file, input_dir, **_):
+    def report(settings_, dat_file, input_dir, **options):
+        # Scene archives carry .url/.nfo files: igir must allow them.
+        assert options.get("excess") is True
         return [igir.ReportRow(g, "FOUND", (str(input_dir / p),)) for p, g in found.items()]
 
     settings = make_settings({"grouping": {"retool_clonelists_dir": "/nonexistent"}})
@@ -153,23 +159,38 @@ def proposed(game):
     return {v["rel_path"]: v["discard_reason"] for v in game["versions"]}
 
 
-def zipped_gdi(path: Path) -> None:
+GDI_SHEET = b"1\n1 0 4 2352 disc.bin 0\n"
+
+
+def zipped_gdi(path: Path, extra: dict[str, bytes] | None = None) -> list[tuple[str, bytes]]:
+    """A zipped one-track .gdi set (plus `extra` files); its ROMs as the DAT lists them."""
+    roms = [("disc.gdi", GDI_SHEET), ("disc.bin", path.name.encode())]
     with zipfile.ZipFile(path, "w") as z:
-        z.writestr("disc.gdi", "1\n1 0 4 2352 disc.bin 0\n")
-        z.writestr("disc.bin", path.name)
+        for name, data in [*roms, *(extra or {}).items()]:
+            z.writestr(name, data)
+    return roms
+
+
+def cdi(path: Path, data: bytes) -> list[tuple[str, bytes]]:
+    path.write_bytes(data)
+    return [(path.name, data)]
 
 
 def test_a_cdi_is_never_discarded_for_a_disc_nor_the_reason_one_is(identified):
     client, folder, found = identified
-    names = ["Game (USA)", "Game (Europe)", "Game (Japan)", "Other (USA)", "Other (Japan)"]
-    client.post("/api/dats/dc/upload", files={"file": ("dc.dat", dc_dat(names))})
-    zipped_gdi(folder / "Game (USA).zip")
-    zipped_gdi(folder / "Game (Europe).zip")
-    (folder / "Game (Japan).cdi").write_bytes(b"rip")
-    (folder / "Other (USA).cdi").write_bytes(b"usa")
-    (folder / "Other (Japan).cdi").write_bytes(b"jpn")
+    entries = {
+        "Game (USA)": zipped_gdi(folder / "Game (USA).zip"),
+        "Game (Europe)": zipped_gdi(folder / "Game (Europe).zip"),
+        "Game (Japan)": cdi(folder / "Game (Japan).cdi", b"rip"),
+        "Other (USA)": cdi(folder / "Other (USA).cdi", b"usa"),
+        "Other (Japan)": cdi(folder / "Other (Japan).cdi", b"jpn"),
+    }
+    client.post("/api/dats/dc/upload", files={"file": ("dc.dat", dc_dat(entries))})
     found.update(
-        {f"{n}.{'cdi' if n.startswith('Other') or 'Japan' in n else 'zip'}": n for n in names}
+        {
+            f"{n}.cdi" if roms[0][0].endswith(".cdi") else f"{n}.zip": n
+            for n, roms in entries.items()
+        }
     )
     scan(client)
     by_name = games(client)
@@ -189,9 +210,8 @@ def test_a_cdi_is_never_discarded_for_a_disc_nor_the_reason_one_is(identified):
 
 def test_a_cdi_matched_by_name_is_never_discarded(identified):
     client, folder, found = identified
-    names = ["Other (USA)", "Other (Japan)"]
-    client.post("/api/dats/dc/upload", files={"file": ("dc.dat", dc_dat(names))})
-    (folder / "Other (USA).cdi").write_bytes(b"usa")
+    entries = {"Other (USA)": cdi(folder / "Other (USA).cdi", b"usa"), "Other (Japan)": []}
+    client.post("/api/dats/dc/upload", files={"file": ("dc.dat", dc_dat(entries))})
     (folder / "my rip.cdi").write_bytes(b"rip")
     found["Other (USA).cdi"] = "Other (USA)"
     scan(client)
@@ -201,3 +221,19 @@ def test_a_cdi_matched_by_name_is_never_discarded(identified):
     other = games(client)["Other"]
     assert other["kept"] == "Other (USA).cdi"
     assert proposed(other) == {"Other (USA).cdi": None, "my rip.cdi": None}
+
+
+def test_extra_files_in_an_archive_only_never_another_rom(identified):
+    client, folder, found = identified
+    readme = {"Game.url": b"[InternetShortcut]", "Game.nfo": b"scene"}
+    entries = {
+        "Game (USA)": zipped_gdi(folder / "Game (USA).zip", readme),
+        # A second disc's ROM inside: the archive is not this one game.
+        "Game (Japan)": zipped_gdi(folder / "Game (Japan).zip", {"other.cdi": b"x"}),
+    }
+    client.post("/api/dats/dc/upload", files={"file": ("dc.dat", dc_dat(entries))})
+    found.update({f"{n}.zip": n for n in entries})
+    scan(client)
+    assert {v["rel_path"] for v in games(client)["Game"]["versions"]} == {"Game (USA).zip"}
+    unmatched = {f["rel_path"] for f in client.get("/api/folders/dc/unmatched").json()}
+    assert unmatched == {"Game (Japan).zip"}

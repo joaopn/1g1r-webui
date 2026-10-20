@@ -494,6 +494,8 @@ platforms:
       rom_extensions: [chd, cue, gdi, bin, raw, cdi]
       part_extensions: [cue, gdi, bin, raw]
       keep_extensions: [cdi]
+      # Scene CDI archives come with .url, .nfo, .txt files.
+      excess_files: true
       targets: [chd]
       default_target: chd
       # TOSEC lists CDIs, prototypes and homebrew Redump does not (Firmware and Various

@@ -424,6 +424,8 @@ class Scanner:
             "timeout": igir.time_limit(self.settings, sum(f.size for f in files)),
             "threads": self.store.igir_threads(library),
         }
+        if self.settings.platforms.profiles[folder.platform].excess_files:
+            run_igir["excess"] = True
         found = Found(*self._members(root, files, progress, cache), cache=cache)
         found.byte_orders = read_byte_orders(
             self.settings, folder.platform, root, files, found.members, progress, cache
@@ -549,6 +551,8 @@ class Scanner:
             by_path = igir.identified_files(
                 self.report_runner(self.settings, dat_file, root, **run_igir)
             )
+        if run_igir.get("excess"):
+            by_path = _without_other_roms(self.settings, platform, root, dat, by_path, found)
         for f in roms:
             if f.rel_path not in found.identified:
                 found.identify(
@@ -940,6 +944,30 @@ class Scanner:
         except sqlite3.Error:
             conn.execute("ROLLBACK")
             raise
+
+
+def _without_other_roms(
+    settings: Settings, platform: str, root: Path, dat: Dat, by_path, found: "Found"
+) -> dict[str, set[str]]:
+    """igir's matches with excess files allowed, less any archive holding a ROM file (a
+    platform extension) that is not one of the game's, or whose CRC32 is not listed."""
+    rom_extensions = {e.lower() for e in settings.platforms.profiles[platform].rom_extensions}
+    crcs = {g.name: {(r.crc or "").lower() for r in g.roms} - {""} for g in dat.games}
+    roms_in: dict[str, list[str | None]] = {}
+    for rel, member in found.members:
+        if PurePosixPath(member.name).suffix.lower().lstrip(".") in rom_extensions:
+            roms_in.setdefault(str(root / rel), []).append(member.crc32)
+    return {
+        path: {
+            game
+            for game in games
+            if all(
+                crc is not None and crc.lower() in crcs.get(game, set())
+                for crc in roms_in.get(path, [])
+            )
+        }
+        for path, games in by_path.items()
+    }
 
 
 @dataclass
