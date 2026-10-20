@@ -7,6 +7,7 @@ any parent/clone link the DAT carries.
 import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
+from functools import cache
 from pathlib import Path
 
 
@@ -232,3 +233,9 @@ def parse_dat_bytes(data: bytes) -> Dat:
 
 def parse_dat(path: Path) -> Dat:
     return parse_dat_bytes(path.read_bytes())
+
+
+@cache
+def parsed(path: Path, sha1: str) -> Dat:
+    """A stored DAT, parsed once per process (its SHA1 names its content)."""
+    return parse_dat(path)

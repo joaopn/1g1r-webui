@@ -5,12 +5,11 @@ Everything here is a proposal computed on request; nothing is moved.
 
 import sqlite3
 from dataclasses import dataclass, field
-from functools import cache
-from pathlib import Path, PurePosixPath
+from pathlib import PurePosixPath
 
 from g1r import journal, titles
 from g1r.config import PLAIN, RankingConfig, Settings
-from g1r.dats import Dat, DatHeader, parse_dat
+from g1r.dats import Dat, DatHeader, parsed
 from g1r.grouping import (
     NAME_METHODS,
     DatSet,
@@ -90,16 +89,11 @@ class Table:
     reclaim_bytes: int
 
 
-@cache
-def _dat(path: Path, sha1: str) -> Dat:
-    return parse_dat(path)
-
-
 def load_dat(settings: Settings, conn: sqlite3.Connection, sha1: str) -> Dat | None:
     row = conn.execute("SELECT file FROM dat_version WHERE sha1 = ?", (sha1,)).fetchone()
     if row is None:
         return None
-    return _dat(settings.paths.data_dir / row["file"], sha1)
+    return parsed(settings.paths.data_dir / row["file"], sha1)
 
 
 def discard_path(

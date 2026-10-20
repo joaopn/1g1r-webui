@@ -12,12 +12,11 @@ import urllib.request
 import zipfile
 from collections.abc import Callable
 from dataclasses import dataclass
-from functools import cache
-from pathlib import Path, PurePosixPath
+from pathlib import PurePosixPath
 
 from g1r import tosec
 from g1r.config import LOOKUP_ENTRIES, PlatformProfile, Settings
-from g1r.dats import Dat, DatError, parse_dat, parse_dat_bytes
+from g1r.dats import Dat, DatError, parse_dat_bytes, parsed
 from g1r.library import ActiveDat, Library, LibraryStore, PlatformDats
 
 Fetch = Callable[[str], bytes]
@@ -68,11 +67,6 @@ class Entry:
     @property
     def lookup(self) -> bool:
         return self.id in LOOKUP_ENTRIES
-
-
-@cache
-def _parsed(path: Path, sha1: str) -> Dat:
-    return parse_dat(path)
 
 
 def header_matches(profile: PlatformProfile, header_name: str) -> bool:
@@ -487,7 +481,7 @@ class DatRegistry:
         return versions[0] if versions else None
 
     def load(self, version: sqlite3.Row) -> Dat:
-        return _parsed(self.settings.paths.data_dir / version["file"], version["sha1"])
+        return parsed(self.settings.paths.data_dir / version["file"], version["sha1"])
 
     def load_active(self, conn, library: Library, platform: str) -> Dat | None:
         row = self.active_version(conn, library, platform)
