@@ -1,4 +1,5 @@
 import shutil
+import subprocess
 import zipfile
 import zlib
 from pathlib import Path
@@ -378,3 +379,26 @@ def test_each_dat_in_the_order_identifies_what_the_ones_before_it_missed(env, ro
     }
     message = scanner.latest_scan(conn, "nes")["message"]
     assert message == "3 of 3 ROM files identified; 1 by No-Intro (DAT-o-MATIC), 2 by Uploaded file"
+
+
+def test_igir_threads_set_its_readers_and_node_pool(make_settings, tmp_path, monkeypatch):
+    settings = make_settings()
+    seen = []
+
+    def run(command, **options):
+        seen.append((command, options["env"]))
+        report = Path(command[command.index("--report-output") + 1])
+        report.write_text("DAT Name,Game Name,Status,ROM Files\n")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(igir.subprocess, "run", run)
+    cache = tmp_path / "c.cache"
+    threads = settings.igir.max_threads
+    for chosen in (None, threads):
+        igir.run_report(
+            settings, tmp_path / "x.dat", tmp_path, cache=cache, timeout=1, threads=chosen
+        )
+    (own, own_env), (set_, set_env) = seen
+    assert "--reader-threads" not in own and own_env is None
+    assert set_[set_.index("--reader-threads") + 1] == str(threads)
+    assert set_env[igir.POOL_SIZE_ENV] == str(threads)

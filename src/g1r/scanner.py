@@ -419,6 +419,7 @@ class Scanner:
         run_igir = {
             "cache": igir_cache,
             "timeout": igir.time_limit(self.settings, sum(f.size for f in files)),
+            "threads": self.store.igir_threads(library),
         }
         found = Found(*self._members(root, files, progress, cache), cache=cache)
         found.byte_orders = read_byte_orders(

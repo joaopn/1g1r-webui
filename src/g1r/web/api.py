@@ -151,6 +151,11 @@ class ParallelScans(BaseModel):
     value: int | None = Field(default=None, gt=0)
 
 
+class IgirThreads(BaseModel):
+    # None: igir's own.
+    value: int | None = Field(default=None, gt=0)
+
+
 class ActiveVersion(BaseModel):
     version_id: int
 
@@ -1056,6 +1061,12 @@ def build_router(
                 "default": settings.jobs.scan_workers,
                 "max": settings.jobs.max_scan_workers,
             },
+            "igir_threads": {
+                "value": store.igir_threads(library),
+                "default_readers": settings.igir.default_reader_threads,
+                "default_pool": settings.igir.default_pool_threads,
+                "max": settings.igir.max_threads,
+            },
             "effective_yaml": yaml.safe_dump(settings.model_dump(mode="json"), sort_keys=False),
             "library_file": str(settings.paths.library_path),
         }
@@ -1086,6 +1097,13 @@ def build_router(
             raise bad_request(f"at most {settings.jobs.max_scan_workers} scans at a time")
         store.update(lambda lib: setattr(lib, "parallel_scans", body.value))
         request.app.state.jobs.limit_changed()
+        return get_settings()
+
+    @router.put("/settings/igir-threads")
+    def save_igir_threads(body: IgirThreads):
+        if body.value is not None and body.value > settings.igir.max_threads:
+            raise bad_request(f"at most {settings.igir.max_threads} igir threads")
+        store.update(lambda lib: setattr(lib, "igir_threads", body.value))
         return get_settings()
 
     @router.put("/settings/ignored")

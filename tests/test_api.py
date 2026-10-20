@@ -426,3 +426,19 @@ def test_parallel_scans_are_set_in_the_ui_within_the_configured_max(setup):
     assert too_many.status_code == HTTPStatus.BAD_REQUEST
     reset = client.put("/api/settings/parallel-scans", json={"value": None}).json()
     assert reset["parallel_scans"]["value"] == jobs.scan_workers
+
+
+def test_igir_threads_are_igir_s_own_until_set(setup):
+    client, store, settings = setup
+    assert client.get("/api/settings").json()["igir_threads"]["value"] is None
+    most = settings.igir.max_threads
+    assert (
+        client.put("/api/settings/igir-threads", json={"value": most}).json()["igir_threads"][
+            "value"
+        ]
+        == most
+    )
+    too_many = client.put("/api/settings/igir-threads", json={"value": most + 1})
+    assert too_many.status_code == HTTPStatus.BAD_REQUEST
+    client.put("/api/settings/igir-threads", json={"value": None})
+    assert store.load().igir_threads is None

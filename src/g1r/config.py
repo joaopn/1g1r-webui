@@ -287,6 +287,9 @@ class IgirConfig(_Strict):
     work_dir: str
     timeout_seconds: float = Field(gt=0)
     min_bytes_per_second: float = Field(gt=0)
+    default_reader_threads: int = Field(gt=0)
+    default_pool_threads: int = Field(gt=0)
+    max_threads: int = Field(gt=0)
 
 
 HASHEOUS_NAME_FROM = ("rom", "game")

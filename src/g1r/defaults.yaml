@@ -672,6 +672,12 @@ igir:
   # (igir decompresses each CHD to hash it; a large disc library takes hours the first time).
   timeout_seconds: 3600
   min_bytes_per_second: 2097152
+  # Threads per igir run when set in Settings -> Advanced: files read at once
+  # (--reader-threads) and Node's worker pool for reads and CHD decoding
+  # (UV_THREADPOOL_SIZE). Unset, igir uses its own: these two.
+  default_reader_threads: 6
+  default_pool_threads: 4
+  max_threads: 64
 
 # Online identification for files the local DAT misses. Off until switched on in
 # Settings -> Online lookups; only content hashes (CRC32, MD5, SHA1) are sent.

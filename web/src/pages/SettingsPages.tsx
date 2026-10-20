@@ -519,15 +519,36 @@ export function LookupsSettingsPage() {
   );
 }
 
-/** How many folder scans run at a time; applies always run one at a time. */
-function ParallelScans({ value, fallback, max }: { value: number; fallback: number; max: number }) {
+/** A whole number set in Advanced, saved to the library; null goes back to the default. */
+function NumberSetting({
+  title,
+  label,
+  path,
+  saved,
+  value,
+  current,
+  isDefault,
+  max,
+  children,
+}: {
+  title: string;
+  label: string;
+  path: string;
+  saved: string;
+  /** Shown in the field. */
+  value: number;
+  /** What is saved (null: the default); Save is off while the field equals it. */
+  current: number | null;
+  isDefault: boolean;
+  max: number;
+  children: ReactNode;
+}) {
   const [draft, setDraft] = useState(String(value));
   useEffect(() => setDraft(String(value)), [value]);
   const save = useMutation({
-    mutationFn: (chosen: number | null) =>
-      api("/settings/parallel-scans", json("PUT", { value: chosen })),
+    mutationFn: (chosen: number | null) => api(path, json("PUT", { value: chosen })),
     onSuccess: () => {
-      toast.success("Parallel scans saved");
+      toast.success(saved);
       queryClient.invalidateQueries({ queryKey: keys.settings });
     },
     onError: (err) => toast.error(errorText(err)),
@@ -536,16 +557,12 @@ function ParallelScans({ value, fallback, max }: { value: number; fallback: numb
   const valid = Number.isInteger(chosen) && chosen >= 1 && chosen <= max;
   return (
     <section className="max-w-3xl space-y-2 rounded-lg border border-border bg-card p-4 text-sm">
-      <h2 className="font-medium">Parallel scans</h2>
-      <p className="text-muted-foreground">
-        How many folders are scanned at a time; further scans wait in line. Applies (moves,
-        conversions, restores) run one at a time, apart from scans. Default {fallback}, at most{" "}
-        {max}.
-      </p>
+      <h2 className="font-medium">{title}</h2>
+      <p className="text-muted-foreground">{children}</p>
       <div className="flex flex-wrap items-center gap-2">
         <input
           type="number"
-          aria-label="Parallel scans"
+          aria-label={label}
           min={1}
           max={max}
           className="h-8 w-20 rounded-md border border-input bg-background px-2 text-sm"
@@ -554,12 +571,13 @@ function ParallelScans({ value, fallback, max }: { value: number; fallback: numb
         />
         <Button
           size="sm"
-          disabled={!valid || chosen === value || save.isPending}
+          aria-label={`Save ${label.toLowerCase()}`}
+          disabled={!valid || chosen === current || save.isPending}
           onClick={() => save.mutate(chosen)}
         >
           Save
         </Button>
-        {value !== fallback ? (
+        {isDefault ? null : (
           <Button
             size="sm"
             variant="outline"
@@ -568,7 +586,7 @@ function ParallelScans({ value, fallback, max }: { value: number; fallback: numb
           >
             Use the default
           </Button>
-        ) : null}
+        )}
       </div>
     </section>
   );
@@ -578,6 +596,7 @@ export function AdvancedSettingsPage() {
   const data = useSettingsData();
   if (!data.data) return <p className="text-muted-foreground">Loading…</p>;
   const parallel = data.data.parallel_scans;
+  const threads = data.data.igir_threads;
   return (
     <Page
       title="Advanced"
@@ -589,7 +608,36 @@ export function AdvancedSettingsPage() {
         </>
       }
     >
-      <ParallelScans value={parallel.value} fallback={parallel.default} max={parallel.max} />
+      <NumberSetting
+        title="Parallel scans"
+        label="Parallel scans"
+        path="/settings/parallel-scans"
+        saved="Parallel scans saved"
+        value={parallel.value}
+        current={parallel.value}
+        isDefault={parallel.value === parallel.default}
+        max={parallel.max}
+      >
+        How many folders are scanned at a time; further scans wait in line. Applies (moves,
+        conversions, restores) run one at a time, apart from scans. Default {parallel.default}, at
+        most {parallel.max}.
+      </NumberSetting>
+      <NumberSetting
+        title="igir threads per scan"
+        label="igir threads"
+        path="/settings/igir-threads"
+        saved="igir threads saved"
+        value={threads.value ?? threads.default_readers}
+        current={threads.value}
+        isDefault={threads.value === null}
+        max={threads.max}
+      >
+        How many files one igir run reads at once, and the size of its pool for reading and decoding
+        CHDs. Checksumming itself runs on one thread per run, so more threads mostly help with fast
+        disks; fewer keep a busy machine responsive. Default: igir&apos;s own (
+        {threads.default_readers} files at once, a pool of {threads.default_pool}), at most{" "}
+        {threads.max}. Applies from the next scan.
+      </NumberSetting>
       <pre className="overflow-x-auto rounded-lg border border-border bg-card p-4 text-xs">
         {data.data.effective_yaml}
       </pre>

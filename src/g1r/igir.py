@@ -5,12 +5,16 @@ DAT; we only read which input file it found as which DAT game.
 """
 
 import csv
+import os
 import subprocess
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
 from g1r.config import Settings
+
+# Node's worker pool (file reads, CHD decoding in igir's chdman library).
+POOL_SIZE_ENV = "UV_THREADPOOL_SIZE"
 
 
 class IgirError(RuntimeError):
@@ -63,9 +67,11 @@ def run_report(
     cache: Path,
     timeout: float,
     merge: str | None = None,
+    threads: int | None = None,
 ) -> list[ReportRow]:
     """`cache`: igir's cache file (`cache_path`). `merge`: igir's --merge-roms mode, for
-    arcade sets."""
+    arcade sets. `threads`: files read at once and Node's worker pool size (None: igir's
+    own)."""
     work = settings.paths.data_dir / settings.igir.work_dir
     work.mkdir(parents=True, exist_ok=True)
     cache.parent.mkdir(parents=True, exist_ok=True)
@@ -83,9 +89,13 @@ def run_report(
             "--report-output",
             str(report),
             *(["--merge-roms", merge] if merge else []),
+            *(["--reader-threads", str(threads)] if threads else []),
         ]
+        env = {**os.environ, POOL_SIZE_ENV: str(threads)} if threads else None
         try:
-            result = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
+            result = subprocess.run(
+                command, capture_output=True, text=True, timeout=timeout, env=env
+            )
         except (OSError, subprocess.TimeoutExpired) as exc:
             raise IgirError(f"could not run igir: {exc}") from exc
         if result.returncode != 0 or not report.is_file():

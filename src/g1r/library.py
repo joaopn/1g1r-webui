@@ -99,6 +99,8 @@ class Library(BaseModel):
     ignored_filenames: list[str] | None = None
     # How many folder scans run at a time (None: the configured default).
     parallel_scans: int | None = None
+    # Threads per igir run (None: igir's own).
+    igir_threads: int | None = None
     folders: list[FolderEntry] = Field(default_factory=list)
 
     def folder(self, label: str) -> FolderEntry | None:
@@ -174,6 +176,10 @@ class LibraryStore:
         return (
             chosen if chosen is not None and chosen <= jobs.max_scan_workers else jobs.scan_workers
         )
+
+    def igir_threads(self, library: Library) -> int | None:
+        chosen = library.igir_threads
+        return chosen if chosen is not None and chosen <= self.settings.igir.max_threads else None
 
     def ignored_filenames(self, library: Library) -> list[str]:
         if library.ignored_filenames is None:
