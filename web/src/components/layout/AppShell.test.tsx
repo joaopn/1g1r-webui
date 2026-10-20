@@ -17,7 +17,7 @@ const FOLDERS = [
     discarded_to: "/roms/discarded/nes/",
     scan: null,
     dat: null,
-    summary: { counts: {}, roms: 0, identified: 0, unmatched: 0, methods: {} },
+    summary: { counts: {}, roms: 0, bytes: 0, identified: 0, unmatched: 0, methods: {} },
     dat_download: null,
     needs_dat: false,
     counts: {},

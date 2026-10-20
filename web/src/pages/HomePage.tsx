@@ -171,6 +171,10 @@ export function HomePage() {
         <div className="grid grid-cols-[repeat(auto-fill,18rem)] items-start gap-4">
           {foldersByName(shown, meta.data.platforms).map((folder) => {
             const platform = meta.data.platforms[folder.platform];
+            const size: { label: string; value: string; attention?: boolean } = {
+              label: "folder size",
+              value: formatBytes(folder.summary.bytes, ui.byte_unit_base, ui.byte_units),
+            };
             const stats = extended
               ? [
                   {
@@ -202,6 +206,7 @@ export function HomePage() {
                     value: formatCount(folder.conversion.flagged),
                     attention: folder.conversion.flagged > 0,
                   },
+                  size,
                   {
                     label: "would free",
                     value: formatBytes(folder.reclaim_bytes, ui.byte_unit_base, ui.byte_units),
@@ -224,8 +229,23 @@ export function HomePage() {
                     value: formatCount(folder.progress.to_process),
                     attention: folder.progress.to_process > 0,
                   },
+                  size,
                 ];
             const progress = scanProgress(folder.scan);
+            // Simplified leaves out the last scan's date; a running or failed scan still shows.
+            const scanLine = folder.scan ? (
+              folder.scan.status === "done" ? (
+                extended ? (
+                  `Scanned ${formatWhen(folder.scan.finished_at)}`
+                ) : null
+              ) : progress ? (
+                <span data-testid={`scan-status-${folder.label}`}>{progress.text}</span>
+              ) : (
+                <span className="text-status-bad">Last scan failed</span>
+              )
+            ) : extended ? (
+              <span className="text-muted-foreground">Not scanned yet</span>
+            ) : null;
             return (
               <div
                 key={folder.label}
@@ -252,29 +272,21 @@ export function HomePage() {
                   <p className="mt-1 truncate text-muted-foreground text-xs">
                     {folder.location ?? `mount ${folder.mount} unavailable`}
                   </p>
-                  <p className="mt-2 text-xs">
-                    {extended ? (
-                      <>
-                        {folder.dat ? (
-                          `DAT ${folder.dat.header_name} · ${folder.dat.version ?? "?"}`
-                        ) : (
-                          <span className="text-status-warn">No DAT yet</span>
-                        )}
-                        <br />
-                      </>
-                    ) : null}
-                    {folder.scan ? (
-                      folder.scan.status === "done" ? (
-                        `Scanned ${formatWhen(folder.scan.finished_at)}`
-                      ) : progress ? (
-                        <span data-testid={`scan-status-${folder.label}`}>{progress.text}</span>
-                      ) : (
-                        <span className="text-status-bad">Last scan failed</span>
-                      )
-                    ) : (
-                      <span className="text-muted-foreground">Not scanned yet</span>
-                    )}
-                  </p>
+                  {extended || scanLine ? (
+                    <p className="mt-2 text-xs">
+                      {extended ? (
+                        <>
+                          {folder.dat ? (
+                            `DAT ${folder.dat.header_name} · ${folder.dat.version ?? "?"}`
+                          ) : (
+                            <span className="text-status-warn">No DAT yet</span>
+                          )}
+                          <br />
+                        </>
+                      ) : null}
+                      {scanLine}
+                    </p>
+                  ) : null}
                   {folder.warnings.length > 0 ? (
                     <ul className="mt-3 space-y-1 text-xs" data-testid={`warnings-${folder.label}`}>
                       {folder.warnings.map((w) =>

@@ -1006,6 +1006,11 @@ def folder_summary(conn: sqlite3.Connection, label: str, parts=frozenset()) -> d
         )
     }
     roms = counts.get("rom", 0) + counts.get("archive", 0)
+    size = conn.execute(
+        "SELECT COALESCE(SUM(size), 0) FROM folder_file "
+        "WHERE folder_label = ? AND place = 'folder'",
+        (label,),
+    ).fetchone()[0]
     waiting = 0
     unidentified_parts = 0
     if parts:
@@ -1021,6 +1026,8 @@ def folder_summary(conn: sqlite3.Connection, label: str, parts=frozenset()) -> d
     return {
         "counts": counts,
         "roms": roms,
+        # Every file in the folder, as last scanned (ROMs, frontend files, the rest).
+        "bytes": size,
         "identified": identified,
         "unmatched": roms - identified - unidentified_parts,
         # Cue sheets and tracks: they become versions once converted to one file.

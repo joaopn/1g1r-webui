@@ -102,7 +102,7 @@ def test_header_rules():
         HeaderRule(header_size=16)
 
 
-def test_scan_identifies_by_checksum_and_headerless(env):
+def test_scan_identifies_by_checksum_and_headerless(env, roms_root):
     _, _, _, conn, folder_scanner = env
     scan_id = folder_scanner.start(conn, "nes")
     folder_scanner.run(conn, scan_id, "nes")
@@ -117,6 +117,9 @@ def test_scan_identifies_by_checksum_and_headerless(env):
     }
     summary = scanner.folder_summary(conn, "nes")
     assert (summary["roms"], summary["identified"], summary["unmatched"]) == (3, 2, 1)
+    # Every file in the folder: ROMs, archives, frontend files and images alike.
+    on_disk = sum(p.stat().st_size for p in (roms_root / "nes").rglob("*") if p.is_file())
+    assert summary["bytes"] == on_disk
     assert [r["rel_path"] for r in scanner.unmatched_files(conn, "nes")] == [
         "sub/Loose (Europe).nes"
     ]

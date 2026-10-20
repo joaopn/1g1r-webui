@@ -100,6 +100,8 @@ export type GlobalDatOrder = {
 export type Summary = {
   counts: Record<string, number>;
   roms: number;
+  /** Every file in the folder, as last scanned. */
+  bytes: number;
   identified: number;
   unmatched: number;
   /** Cue sheets and track files: versions once converted to one file. */

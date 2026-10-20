@@ -31,7 +31,7 @@ const card = (label: string, platform: string, scan: Scan | null): FolderCard =>
   hidden: false,
   scan,
   dat: null,
-  summary: { counts: {}, roms: 0, identified: 0, unmatched: 0, methods: {} },
+  summary: { counts: {}, roms: 0, bytes: 0, identified: 0, unmatched: 0, methods: {} },
   dat_download: null,
   needs_dat: false,
   counts: {},
@@ -150,20 +150,39 @@ test("a hint links to where it is acted on, and the card still opens the set", a
   );
 });
 
-test("Simplified shows processed and to process, hides the DAT, and is remembered", async () => {
+test("Simplified shows processed, to process and size, hides the DAT and last scan, and is remembered", async () => {
   const folder: FolderCard = {
     ...card("gb", "gb", SCAN),
     dat: { header_name: "Nintendo - Game Boy", version: "2026.10.07" } as FolderCard["dat"],
-    summary: { counts: {}, roms: 10, identified: 9, unmatched: 1, methods: {} },
+    summary: {
+      counts: {},
+      roms: 10,
+      bytes: 3 * 1024 * 1024,
+      identified: 9,
+      unmatched: 1,
+      methods: {},
+    },
     progress: { processed: 7, to_process: 3 },
   };
   renderPage([folder]);
   expect(await screen.findByText(/DAT Nintendo - Game Boy/)).toBeInTheDocument();
   expect(screen.getByText("identified")).toBeInTheDocument();
+  expect(screen.getByText("folder size").nextSibling).toHaveTextContent("3.0 MiB");
+  expect(screen.getByText(/Scanned /)).toBeInTheDocument();
   await userEvent.click(screen.getByLabelText("Simplified"));
   expect(screen.queryByText(/DAT Nintendo - Game Boy/)).toBeNull();
   expect(screen.queryByText("identified")).toBeNull();
   expect(screen.getByText("processed").nextSibling).toHaveTextContent("7");
   expect(screen.getByText("to process").nextSibling).toHaveTextContent("3");
+  expect(screen.getByText("folder size").nextSibling).toHaveTextContent("3.0 MiB");
+  expect(screen.queryByText(/Scanned /)).toBeNull();
   expect(localStorage.getItem("g1r.home.detail.v1")).toBe(JSON.stringify("simplified"));
+});
+
+test("Simplified still shows a running scan", async () => {
+  localStorage.setItem("g1r.home.detail.v1", JSON.stringify("simplified"));
+  renderPage([
+    card("nes", "nes", { ...SCAN, status: "running", finished_at: null, stage: "Listing files" }),
+  ]);
+  expect(await screen.findByTestId("scan-status-nes")).toHaveTextContent("Listing files");
 });
