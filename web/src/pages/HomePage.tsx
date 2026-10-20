@@ -162,10 +162,11 @@ export function HomePage() {
   const hidden = folders.data.length - visible.length;
   const shown = hideCompleted ? visible.filter((f) => !isCompleted(f)) : visible;
   const completedOut = visible.length - shown.length;
+  // The header sits in the card grid, so it spans exactly the centred columns.
   return (
-    <div className="space-y-6">
-      <header className="flex items-start justify-between gap-4">
-        <div>
+    <div className="grid grid-cols-[repeat(auto-fill,18rem)] items-start justify-center gap-4">
+      <header className="col-span-full mb-2 flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-64 flex-1">
           <h1 className="font-semibold text-2xl tracking-tight">Home</h1>
           <p className="text-muted-foreground text-sm">
             Everything here is a proposal until you apply it, and what is applied can be undone.
@@ -198,14 +199,14 @@ export function HomePage() {
         </div>
       </header>
       {shown.length === 0 && completedOut > 0 ? (
-        <div className="max-w-xl rounded-lg border border-border bg-card p-6">
+        <div className="col-span-full max-w-xl rounded-lg border border-border bg-card p-6">
           <h2 className="font-medium">Every set is completed</h2>
           <p className="mt-1 text-muted-foreground text-sm">
             Untick <strong>Hide completed</strong> to see them.
           </p>
         </div>
       ) : shown.length === 0 ? (
-        <div className="max-w-xl rounded-lg border border-border bg-card p-6">
+        <div className="col-span-full max-w-xl rounded-lg border border-border bg-card p-6">
           <h2 className="font-medium">No sets yet</h2>
           <p className="mt-1 text-muted-foreground text-sm">
             Add a platform folder with <strong>Add set</strong> at the bottom of the sidebar, or a
@@ -214,229 +215,227 @@ export function HomePage() {
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-[repeat(auto-fill,18rem)] items-start gap-4">
-          {foldersByName(shown, meta.data.platforms).map((folder) => {
-            const platform = meta.data.platforms[folder.platform];
-            const size: Stat = {
-              label: "folder size",
-              value: formatBytes(folder.summary.bytes, ui.byte_unit_base, ui.byte_units),
-              hint: "Size of the ROM files in the folder",
-            };
-            const stats: Stat[] = extended
-              ? [
-                  {
-                    label: "identified",
-                    value: `${formatCount(folder.summary.identified)} / ${formatCount(folder.summary.roms)}`,
-                    hint: "ROM files identified by a DAT, Hasheous or by hand, out of all ROM files",
-                  },
-                  {
-                    label: "unmatched",
-                    value: formatCount(folder.summary.unmatched),
-                    attention: folder.summary.unmatched > 0,
-                    hint: "ROM files nothing identified yet",
-                  },
-                  {
-                    label: "games with several versions",
-                    value: formatCount(folder.counts.several ?? 0),
-                    hint: "Games with more than one version in the folder",
-                  },
-                  {
-                    label: "undecided",
-                    value: formatCount(folder.counts.undecided ?? 0),
-                    attention: (folder.counts.undecided ?? 0) > 0,
-                    hint: "Games where the ranking cannot pick the version to keep: choose one on the Matching page",
-                  },
-                  {
-                    label: "proposed moves",
-                    value: formatCount(folder.counts.proposals ?? 0),
-                    hint: "Games with versions proposed to move to discarded/ by Apply 1G1R",
-                  },
-                  {
-                    label: "to convert",
-                    value: formatCount(folder.conversion.to_convert),
-                    attention: folder.conversion.to_convert > 0,
-                    hint: "Conversions waiting to be applied on the Conversion page (a multi-file disc counts once)",
-                  },
-                  {
-                    label: "conversions flagged",
-                    value: formatCount(folder.conversion.flagged),
-                    attention: folder.conversion.flagged > 0,
-                    hint: "Conversions that need a look on the Conversion page before they can run",
-                  },
-                  size,
-                  {
-                    label: "would free",
-                    value: formatBytes(folder.reclaim_bytes, ui.byte_unit_base, ui.byte_units),
-                    hint: "Space the proposed moves would free in the folder",
-                  },
-                  {
-                    label:
-                      folder.discarded.files > 0
-                        ? `already discarded · ${formatFiles(folder.discarded.files)}`
-                        : "already discarded",
-                    value:
-                      folder.discarded.files > 0
-                        ? formatBytes(folder.discarded.bytes, ui.byte_unit_base, ui.byte_units)
-                        : "nothing",
-                    hint: "Files already moved to discarded/, and their size",
-                  },
-                ]
-              : [
-                  {
-                    label: "processed",
-                    value: `${formatCount(folder.progress.processed)} / ${formatCount(folder.summary.roms)}`,
-                    hint: "ROM files with nothing left to do, out of all ROM files",
-                  },
-                  size,
-                  {
-                    label: "to convert",
-                    value: formatCount(folder.progress.to_convert),
-                    attention: folder.progress.to_convert > 0,
-                    hint: "ROM files waiting for a conversion, or flagged for a look, on the Conversion page",
-                  },
-                  {
-                    label: "to match",
-                    value: formatCount(folder.progress.to_match),
-                    attention: folder.progress.to_match > 0,
-                    hint: "ROM files unmatched, or in a game undecided or with a move proposed, on the Matching page. A file can be both to match and to convert",
-                  },
-                ];
-            const progress = scanProgress(folder.scan);
-            // Simplified leaves out the last scan's date; a running or failed scan still shows.
-            const scanLine = folder.scan ? (
-              folder.scan.status === "done" ? (
-                extended ? (
-                  `Scanned ${formatWhen(folder.scan.finished_at)}`
-                ) : null
-              ) : progress ? (
-                <span data-testid={`scan-status-${folder.label}`}>{progress.text}</span>
-              ) : (
-                <span className="text-status-bad">Last scan failed</span>
-              )
-            ) : extended ? (
-              <span className="text-muted-foreground">Not scanned yet</span>
-            ) : null;
-            const done = isCompleted(folder);
-            // Pending conversions come first: the card opens where there is work to apply.
-            const page = folder.conversion.to_convert > 0 ? "conversion" : "matching";
-            const target = `/folders/${folder.label}/${page}`;
-            return (
-              <div
-                key={folder.label}
-                data-testid={`folder-card-${folder.label}`}
-                data-done={done || undefined}
-                className={cn(
-                  "group relative overflow-hidden rounded-lg border bg-card transition-colors hover:bg-accent/30",
-                  done
-                    ? "border-status-good ring-1 ring-status-good hover:border-status-good"
-                    : "border-border hover:border-primary/50",
-                )}
-              >
-                <ScanBackground scan={folder.scan} />
-                {/* The title's link covers the card (::after); links inside sit above it. */}
-                <div className="relative p-4">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <PlatformIcon platform={platform} />
-                    <h2
-                      className="min-w-0 truncate font-medium group-hover:text-primary"
-                      title={platform?.name ?? folder.platform}
-                    >
-                      <Link to={target} className="after:absolute after:inset-0 after:content-['']">
-                        {platform?.name ?? folder.platform}
-                      </Link>
-                    </h2>
-                    <span className="shrink-0 text-muted-foreground text-sm">{folder.label}</span>
-                  </div>
-                  <p className="mt-1 truncate text-muted-foreground text-xs">
-                    {folder.location ?? `mount ${folder.mount} unavailable`}
-                  </p>
-                  {extended || scanLine ? (
-                    <p className="mt-2 text-xs">
-                      {extended ? (
-                        <>
-                          {folder.dat ? (
-                            `DAT ${folder.dat.header_name} · ${folder.dat.version ?? "?"}`
-                          ) : (
-                            <span className="text-status-warn">No DAT yet</span>
-                          )}
-                          <br />
-                        </>
-                      ) : null}
-                      {scanLine}
-                    </p>
-                  ) : null}
-                  {folder.warnings.length > 0 ? (
-                    <ul className="mt-3 space-y-1 text-xs" data-testid={`warnings-${folder.label}`}>
-                      {folder.warnings.map((w) =>
-                        w.level === "info" ? (
-                          <li
-                            key={w.text}
-                            className="flex items-start gap-1.5 rounded-md border border-border bg-muted/50 px-2 py-1.5 text-muted-foreground"
-                          >
-                            <Info className="mt-px size-3.5 shrink-0" aria-hidden="true" />
-                            <span>
-                              {w.text}
-                              {w.link ? (
-                                <>
-                                  {" "}
-                                  <Link
-                                    to={w.link.to}
-                                    className="relative z-10 text-primary underline underline-offset-2"
-                                  >
-                                    {w.link.text}
-                                  </Link>
-                                </>
-                              ) : null}
-                            </span>
-                          </li>
-                        ) : (
-                          <li
-                            key={w.text}
-                            className={cn(
-                              "flex items-start gap-1.5",
-                              w.level === "bad" ? "text-status-bad" : "text-status-warn",
-                            )}
-                          >
-                            <TriangleAlert className="mt-px size-3.5 shrink-0" aria-hidden="true" />
-                            {w.text}
-                          </li>
-                        ),
-                      )}
-                    </ul>
-                  ) : null}
-                  {folder.summary.roms > 0 ? (
-                    <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2">
-                      {stats.map((s) => (
-                        <Tooltip key={s.label}>
-                          {/* Above the card's link so the hint shows; a click still opens the set. */}
-                          <TooltipTrigger asChild>
-                            {/* biome-ignore lint/a11y/noStaticElementInteractions lint/a11y/useKeyWithClickEvents: the card's title link is the keyboard path; this keeps a click on a figure opening the set. */}
-                            <div
-                              className="relative z-10 cursor-pointer"
-                              onClick={() => navigate(target)}
-                            >
-                              <dt className="text-muted-foreground text-xs">{s.label}</dt>
-                              <dd
-                                className={cn(
-                                  "font-semibold tabular-nums",
-                                  s.attention && "text-status-warn",
-                                )}
-                              >
-                                {s.value}
-                              </dd>
-                            </div>
-                          </TooltipTrigger>
-                          <TooltipContent className="max-w-64">{s.hint}</TooltipContent>
-                        </Tooltip>
-                      ))}
-                    </dl>
-                  ) : null}
+        foldersByName(shown, meta.data.platforms).map((folder) => {
+          const platform = meta.data.platforms[folder.platform];
+          const size: Stat = {
+            label: "folder size",
+            value: formatBytes(folder.summary.bytes, ui.byte_unit_base, ui.byte_units),
+            hint: "Size of the ROM files in the folder",
+          };
+          const stats: Stat[] = extended
+            ? [
+                {
+                  label: "identified",
+                  value: `${formatCount(folder.summary.identified)} / ${formatCount(folder.summary.roms)}`,
+                  hint: "ROM files identified by a DAT, Hasheous or by hand, out of all ROM files",
+                },
+                {
+                  label: "unmatched",
+                  value: formatCount(folder.summary.unmatched),
+                  attention: folder.summary.unmatched > 0,
+                  hint: "ROM files nothing identified yet",
+                },
+                {
+                  label: "games with several versions",
+                  value: formatCount(folder.counts.several ?? 0),
+                  hint: "Games with more than one version in the folder",
+                },
+                {
+                  label: "undecided",
+                  value: formatCount(folder.counts.undecided ?? 0),
+                  attention: (folder.counts.undecided ?? 0) > 0,
+                  hint: "Games where the ranking cannot pick the version to keep: choose one on the Matching page",
+                },
+                {
+                  label: "proposed moves",
+                  value: formatCount(folder.counts.proposals ?? 0),
+                  hint: "Games with versions proposed to move to discarded/ by Apply 1G1R",
+                },
+                {
+                  label: "to convert",
+                  value: formatCount(folder.conversion.to_convert),
+                  attention: folder.conversion.to_convert > 0,
+                  hint: "Conversions waiting to be applied on the Conversion page (a multi-file disc counts once)",
+                },
+                {
+                  label: "conversions flagged",
+                  value: formatCount(folder.conversion.flagged),
+                  attention: folder.conversion.flagged > 0,
+                  hint: "Conversions that need a look on the Conversion page before they can run",
+                },
+                size,
+                {
+                  label: "would free",
+                  value: formatBytes(folder.reclaim_bytes, ui.byte_unit_base, ui.byte_units),
+                  hint: "Space the proposed moves would free in the folder",
+                },
+                {
+                  label:
+                    folder.discarded.files > 0
+                      ? `already discarded · ${formatFiles(folder.discarded.files)}`
+                      : "already discarded",
+                  value:
+                    folder.discarded.files > 0
+                      ? formatBytes(folder.discarded.bytes, ui.byte_unit_base, ui.byte_units)
+                      : "nothing",
+                  hint: "Files already moved to discarded/, and their size",
+                },
+              ]
+            : [
+                {
+                  label: "processed",
+                  value: `${formatCount(folder.progress.processed)} / ${formatCount(folder.summary.roms)}`,
+                  hint: "ROM files with nothing left to do, out of all ROM files",
+                },
+                size,
+                {
+                  label: "to convert",
+                  value: formatCount(folder.progress.to_convert),
+                  attention: folder.progress.to_convert > 0,
+                  hint: "ROM files waiting for a conversion, or flagged for a look, on the Conversion page",
+                },
+                {
+                  label: "to match",
+                  value: formatCount(folder.progress.to_match),
+                  attention: folder.progress.to_match > 0,
+                  hint: "ROM files unmatched, or in a game undecided or with a move proposed, on the Matching page. A file can be both to match and to convert",
+                },
+              ];
+          const progress = scanProgress(folder.scan);
+          // Simplified leaves out the last scan's date; a running or failed scan still shows.
+          const scanLine = folder.scan ? (
+            folder.scan.status === "done" ? (
+              extended ? (
+                `Scanned ${formatWhen(folder.scan.finished_at)}`
+              ) : null
+            ) : progress ? (
+              <span data-testid={`scan-status-${folder.label}`}>{progress.text}</span>
+            ) : (
+              <span className="text-status-bad">Last scan failed</span>
+            )
+          ) : extended ? (
+            <span className="text-muted-foreground">Not scanned yet</span>
+          ) : null;
+          const done = isCompleted(folder);
+          // Pending conversions come first: the card opens where there is work to apply.
+          const page = folder.conversion.to_convert > 0 ? "conversion" : "matching";
+          const target = `/folders/${folder.label}/${page}`;
+          return (
+            <div
+              key={folder.label}
+              data-testid={`folder-card-${folder.label}`}
+              data-done={done || undefined}
+              className={cn(
+                "group relative overflow-hidden rounded-lg border bg-card transition-colors hover:bg-accent/30",
+                done
+                  ? "border-status-good ring-1 ring-status-good hover:border-status-good"
+                  : "border-border hover:border-primary/50",
+              )}
+            >
+              <ScanBackground scan={folder.scan} />
+              {/* The title's link covers the card (::after); links inside sit above it. */}
+              <div className="relative p-4">
+                <div className="flex min-w-0 items-center gap-2">
+                  <PlatformIcon platform={platform} />
+                  <h2
+                    className="min-w-0 truncate font-medium group-hover:text-primary"
+                    title={platform?.name ?? folder.platform}
+                  >
+                    <Link to={target} className="after:absolute after:inset-0 after:content-['']">
+                      {platform?.name ?? folder.platform}
+                    </Link>
+                  </h2>
+                  <span className="shrink-0 text-muted-foreground text-sm">{folder.label}</span>
                 </div>
-                <CardActions folder={folder} />
+                <p className="mt-1 truncate text-muted-foreground text-xs">
+                  {folder.location ?? `mount ${folder.mount} unavailable`}
+                </p>
+                {extended || scanLine ? (
+                  <p className="mt-2 text-xs">
+                    {extended ? (
+                      <>
+                        {folder.dat ? (
+                          `DAT ${folder.dat.header_name} · ${folder.dat.version ?? "?"}`
+                        ) : (
+                          <span className="text-status-warn">No DAT yet</span>
+                        )}
+                        <br />
+                      </>
+                    ) : null}
+                    {scanLine}
+                  </p>
+                ) : null}
+                {folder.warnings.length > 0 ? (
+                  <ul className="mt-3 space-y-1 text-xs" data-testid={`warnings-${folder.label}`}>
+                    {folder.warnings.map((w) =>
+                      w.level === "info" ? (
+                        <li
+                          key={w.text}
+                          className="flex items-start gap-1.5 rounded-md border border-border bg-muted/50 px-2 py-1.5 text-muted-foreground"
+                        >
+                          <Info className="mt-px size-3.5 shrink-0" aria-hidden="true" />
+                          <span>
+                            {w.text}
+                            {w.link ? (
+                              <>
+                                {" "}
+                                <Link
+                                  to={w.link.to}
+                                  className="relative z-10 text-primary underline underline-offset-2"
+                                >
+                                  {w.link.text}
+                                </Link>
+                              </>
+                            ) : null}
+                          </span>
+                        </li>
+                      ) : (
+                        <li
+                          key={w.text}
+                          className={cn(
+                            "flex items-start gap-1.5",
+                            w.level === "bad" ? "text-status-bad" : "text-status-warn",
+                          )}
+                        >
+                          <TriangleAlert className="mt-px size-3.5 shrink-0" aria-hidden="true" />
+                          {w.text}
+                        </li>
+                      ),
+                    )}
+                  </ul>
+                ) : null}
+                {folder.summary.roms > 0 ? (
+                  <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2">
+                    {stats.map((s) => (
+                      <Tooltip key={s.label}>
+                        {/* Above the card's link so the hint shows; a click still opens the set. */}
+                        <TooltipTrigger asChild>
+                          {/* biome-ignore lint/a11y/noStaticElementInteractions lint/a11y/useKeyWithClickEvents: the card's title link is the keyboard path; this keeps a click on a figure opening the set. */}
+                          <div
+                            className="relative z-10 cursor-pointer"
+                            onClick={() => navigate(target)}
+                          >
+                            <dt className="text-muted-foreground text-xs">{s.label}</dt>
+                            <dd
+                              className={cn(
+                                "font-semibold tabular-nums",
+                                s.attention && "text-status-warn",
+                              )}
+                            >
+                              {s.value}
+                            </dd>
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-64">{s.hint}</TooltipContent>
+                      </Tooltip>
+                    ))}
+                  </dl>
+                ) : null}
               </div>
-            );
-          })}
-        </div>
+              <CardActions folder={folder} />
+            </div>
+          );
+        })
       )}
     </div>
   );

@@ -19,14 +19,17 @@ const errorText = (err: unknown) => (err instanceof ApiError ? err.message : Str
 export function Page({
   title,
   intro,
+  className,
   children,
 }: {
   title: string;
   intro?: ReactNode;
+  /** Narrows the centred column, e.g. for a page of text boxes. */
+  className?: string;
   children: ReactNode;
 }) {
   return (
-    <div className="max-w-6xl space-y-6">
+    <div className={cn("mx-auto w-full max-w-6xl space-y-6", className)}>
       <header>
         <h1 className="font-semibold text-2xl tracking-tight">{title}</h1>
         {intro ? <p className="mt-1 text-muted-foreground text-sm">{intro}</p> : null}
@@ -449,9 +452,10 @@ export function LookupsSettingsPage() {
   return (
     <Page
       title="Online lookups"
+      className="max-w-3xl"
       intro="For files no DAT identifies. Off until you switch it on; it runs during a scan, at its place in the DAT order."
     >
-      <section className="max-w-3xl space-y-3 rounded-lg border border-border bg-card p-4 text-sm">
+      <section className="space-y-3 rounded-lg border border-border bg-card p-4 text-sm">
         <label className="flex items-start gap-2">
           <input
             type="checkbox"
@@ -496,7 +500,7 @@ export function LookupsSettingsPage() {
           </dd>
         </dl>
       </section>
-      <section className="max-w-3xl space-y-2 rounded-lg border border-border bg-card p-4 text-sm">
+      <section className="space-y-2 rounded-lg border border-border bg-card p-4 text-sm">
         <h2 className="font-medium">Name suggestions</h2>
         <p className="text-muted-foreground">
           Files still unmatched get up to {fuzzy.max_suggestions} DAT names that look like theirs,
@@ -556,7 +560,7 @@ function NumberSetting({
   const chosen = Number(draft);
   const valid = Number.isInteger(chosen) && chosen >= 1 && chosen <= max;
   return (
-    <section className="max-w-3xl space-y-2 rounded-lg border border-border bg-card p-4 text-sm">
+    <section className="space-y-2 rounded-lg border border-border bg-card p-4 text-sm">
       <h2 className="font-medium">{title}</h2>
       <p className="text-muted-foreground">{children}</p>
       <div className="flex flex-wrap items-center gap-2">
@@ -600,6 +604,7 @@ export function AdvancedSettingsPage() {
   return (
     <Page
       title="Advanced"
+      className="max-w-3xl"
       intro={
         <>
           The configuration in use, for reference. What you set in the UI is kept in{" "}

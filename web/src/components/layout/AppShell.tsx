@@ -319,7 +319,7 @@ export function AppShell() {
         <main className="w-full flex-1 px-4 py-6 md:px-8">
           <Outlet />
         </main>
-        <footer className="border-border border-t px-4 py-2 text-muted-foreground text-xs md:px-8">
+        <footer className="border-border border-t px-4 py-2 text-center text-muted-foreground text-xs md:px-8">
           {name} · AGPL-3.0-or-later ·{" "}
           {meta.data?.app.source_url ? (
             <a className="underline" href={meta.data.app.source_url}>
