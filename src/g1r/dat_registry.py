@@ -172,6 +172,27 @@ class DatRegistry:
         )
         return cursor.lastrowid
 
+    def remove_source(self, conn: sqlite3.Connection, source: str) -> tuple[int, list[str]]:
+        """Every stored DAT of this source, on every platform, leaves the library: its
+        active entries, its versions and their files. Sets keep their matches until their
+        next scan. Returns how many versions went and from which platforms."""
+        if source not in self.settings.dats.sources:
+            raise RegistryError(f"unknown DAT source {source!r}")
+        rows = conn.execute(
+            "SELECT id, platform, file FROM dat_version WHERE source = ?", (source,)
+        ).fetchall()
+
+        def change(library: Library) -> None:
+            for dats in library.dats.values():
+                dats.active.pop(source, None)
+
+        # The library first: an active entry whose version is gone is skipped, never used.
+        self.store.update(change)
+        conn.execute("DELETE FROM dat_version WHERE source = ?", (source,))
+        for row in rows:
+            (self.settings.paths.data_dir / row["file"]).unlink(missing_ok=True)
+        return len(rows), sorted({row["platform"] for row in rows})
+
     def recheck_names(self, conn: sqlite3.Connection) -> None:
         """At start-up: whether each stored DAT's name is its platform's follows the current
         rule, so a side set taken for the platform before (B7) shows "name differs"."""

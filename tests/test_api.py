@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from g1r import igir
+from g1r import db, igir
 from g1r.library import LibraryStore
 from g1r.web.api import suggest_label
 from g1r.web.app import create_app
@@ -460,3 +460,43 @@ def test_igir_threads_are_igir_s_own_until_set(setup):
     assert too_many.status_code == HTTPStatus.BAD_REQUEST
     client.put("/api/settings/igir-threads", json={"value": None})
     assert store.load().igir_threads is None
+
+
+def test_removing_a_source_removes_its_dats_on_every_platform(setup):
+    client, store, settings = setup
+    client.post("/api/dats/nes/download")
+    client.post("/api/dats/gb/download")
+    nointro_dat = (DATA / "nes-nointro.dat").read_bytes()
+    client.post("/api/dats/nes/upload", files={"file": ("nes.dat", nointro_dat)})
+    client.put("/api/dats/nes/pin", json={"pinned": True, "source": "libretro"})
+    files = [
+        settings.paths.data_dir / v["file"]
+        for r in client.get("/api/dats").json()
+        for v in r["versions"]
+    ]
+
+    gone = client.delete("/api/dats/sources/libretro")
+    assert gone.json() == {"versions": 2, "platforms": ["gb", "nes"]}
+    rows = {r["platform"]: r for r in client.get("/api/dats").json()}
+    assert [v["source"] for v in rows["nes"]["versions"]] == ["nointro"]
+    assert rows["gb"]["versions"] == [] and rows["gb"]["active"] is None
+    assert [e["id"] for e in rows["nes"]["order"]] == ["nointro", "hasheous"]
+    assert set(store.load().dats["nes"].active) == {"nointro"}
+    assert [f.exists() for f in files].count(True) == 1
+
+    assert client.delete("/api/dats/sources/nonsense").status_code == HTTPStatus.BAD_REQUEST
+
+
+def test_removing_a_source_waits_for_running_scans(setup):
+    client, _, settings = setup
+    client.post("/api/dats/nes/download")
+    conn = db.open_database(settings)
+    conn.execute(
+        "INSERT INTO scan (folder_label, status, started_at) VALUES ('x', 'running', 'now')"
+    )
+    conn.close()
+    assert client.delete("/api/dats/sources/libretro").status_code == HTTPStatus.CONFLICT
+    assert (
+        len(next(r for r in client.get("/api/dats").json() if r["platform"] == "nes")["versions"])
+        == 1
+    )

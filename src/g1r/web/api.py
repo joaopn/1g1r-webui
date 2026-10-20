@@ -1314,6 +1314,17 @@ def build_router(
         results = registry_call(lambda: registry.add_pack(conn, data))
         return [r.__dict__ for r in results]
 
+    @router.delete("/dats/sources/{source}")
+    def dat_remove_source(source: str, conn: Conn):
+        """Every DAT of one source, on every platform, is removed (files included)."""
+        if conn.execute("SELECT 1 FROM scan WHERE status = 'running'").fetchone():
+            raise HTTPException(
+                status_code=HTTPStatus.CONFLICT,
+                detail="a scan is running: remove DATs once it has finished",
+            )
+        removed, from_platforms = registry_call(lambda: registry.remove_source(conn, source))
+        return {"versions": removed, "platforms": from_platforms}
+
     @router.put("/dats/{platform}/active")
     def dat_activate(platform: str, body: ActiveVersion, conn: Conn):
         registry_call(lambda: registry.activate(conn, platform, body.version_id))

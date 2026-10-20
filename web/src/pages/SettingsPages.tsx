@@ -1,12 +1,21 @@
 import { useMutation } from "@tanstack/react-query";
-import { ChevronRight, Download, Pin, PinOff, Upload } from "lucide-react";
+import { ChevronRight, Download, Pin, PinOff, Trash2, Upload } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
+import { Box } from "@/components/Box";
 import { DatOrderEditor } from "@/components/DatOrderEditor";
 import { PlatformIcon } from "@/components/PlatformIcon";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { ApiError, api, json, upload } from "@/lib/api";
 import { formatCount, formatWhen } from "@/lib/format";
 import { platformsByName } from "@/lib/platforms";
@@ -431,7 +440,96 @@ export function DatsSettingsPage() {
             <DatRowView key={row.platform} row={row} meta={meta.data} />
           ))}
       </div>
+      <RemoveDatsBox rows={dats.data} meta={meta.data} />
     </Page>
+  );
+}
+
+const datCount = (count: number) => `${formatCount(count)} ${count === 1 ? "DAT" : "DATs"}`;
+const platformCount = (count: number) =>
+  `${formatCount(count)} ${count === 1 ? "platform" : "platforms"}`;
+
+/** One button per source with stored DATs: removes all of them, on every platform. */
+function RemoveDatsBox({ rows, meta }: { rows: DatRow[]; meta: Meta }) {
+  const [removing, setRemoving] = useState<string | null>(null);
+  const stored = Object.entries(meta.dat_sources)
+    .map(([id, source]) => {
+      const having = rows.filter((r) => r.versions.some((v) => v.source === id));
+      const count = rows.reduce(
+        (sum, r) => sum + r.versions.filter((v) => v.source === id).length,
+        0,
+      );
+      return { id, label: source.label, short: source.short_label, count, platforms: having };
+    })
+    .filter((s) => s.count > 0);
+  const chosen = stored.find((s) => s.id === removing);
+  const remove = useMutation({
+    mutationFn: (source: string) =>
+      api<{ versions: number; platforms: string[] }>(`/dats/sources/${source}`, {
+        method: "DELETE",
+      }),
+    onSuccess: (result, source) => {
+      toast.success(
+        `Removed ${datCount(result.versions)} (${meta.dat_sources[source]?.short_label})`,
+      );
+      setRemoving(null);
+      queryClient.invalidateQueries({ queryKey: keys.dats });
+      queryClient.invalidateQueries({ queryKey: keys.folders });
+    },
+    onError: (err) => toast.error(errorText(err)),
+  });
+  return (
+    <Box title="Remove DATs">
+      {stored.length === 0 ? (
+        <p className="text-muted-foreground">No DATs stored.</p>
+      ) : (
+        <>
+          <p className="text-muted-foreground">
+            Removes every DAT of a source, on every platform, versions and files included.
+          </p>
+          <div className="flex flex-wrap gap-2 pt-2">
+            {stored.map((s) => (
+              <Button key={s.id} variant="outline" size="sm" onClick={() => setRemoving(s.id)}>
+                <Trash2 className="size-3.5" aria-hidden="true" /> {s.short}
+                <span className="text-muted-foreground">· {datCount(s.count)}</span>
+              </Button>
+            ))}
+          </div>
+        </>
+      )}
+      <Dialog
+        open={chosen !== undefined}
+        onOpenChange={(open) => (open ? null : setRemoving(null))}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Remove every {chosen?.label} DAT?</DialogTitle>
+            <DialogDescription>
+              {chosen ? datCount(chosen.count) : null} on{" "}
+              {chosen ? platformCount(chosen.platforms.length) : null} (
+              {chosen?.platforms
+                .map((r) => meta.platforms[r.platform]?.name ?? r.platform)
+                .sort()
+                .join(", ")}
+              ) are deleted, files included. Sets keep their matches until their next scan; a
+              platform left without a DAT matches no checksums until you add one.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRemoving(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={remove.isPending}
+              onClick={() => chosen && remove.mutate(chosen.id)}
+            >
+              Remove {chosen ? datCount(chosen.count) : null}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </Box>
   );
 }
 
