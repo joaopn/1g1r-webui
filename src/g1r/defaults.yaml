@@ -92,6 +92,26 @@ ui:
     restore_to: {rem: 18, min: 8, max: 48}
     restore: {rem: 14, min: 8, max: 24}
   discarded_columns_default: [reason, file, size, modified, restore]
+  # The Statistics table: the set, its platform, identified files, and one column per DAT
+  # source (every source column takes `source`).
+  statistics_columns:
+    folder: {rem: 12, min: 6, max: 30}
+    platform: {rem: 6, min: 4, max: 14}
+    identified: {rem: 8, min: 6, max: 14}
+    source: {rem: 7, min: 5, max: 14}
+  statistics_columns_default: [folder, platform, identified]
+  # Its missing-games table.
+  missing_columns:
+    name: {rem: 18, min: 8, max: 48}
+    years: {rem: 6, min: 4, max: 14}
+    publishers: {rem: 10, min: 6, max: 30}
+    regions: {rem: 8, min: 5, max: 24}
+    languages: {rem: 7, min: 4, max: 24}
+    serials: {rem: 9, min: 5, max: 24}
+    versions: {rem: 4.5, min: 4, max: 8}
+  missing_columns_default: [name, years, publishers, regions, languages, versions]
+  # Decimals shown in a coverage percentage.
+  percent_digits: 1
 
 folders:
   # Folder labels name the folder in the UI and its discarded/<label>/ directory.
@@ -913,6 +933,23 @@ names:
     dump_flag_rank: {"!": 0, a: 2, cr: 3, f: 3, t: 4, h: 4, m: 4, p: 4, tr: 4, b: 5, o: 5,
                      u: 5, v: 5}
     clean_rank: 1
+
+# Statistics (the Statistics page): how much of each local DAT a folder covers. Only games
+# count; a DAT entry is left out when any of these says it is no game.
+statistics:
+  # DAT categories (Redump, No-Intro DAT-o-MATIC) that are games; an entry in another
+  # category (Demos, Applications, Coverdiscs...) is left out. Entries without one count.
+  categories: [Games]
+  # A tag of the entry's name, description or ROM names starting with one of these words
+  # leaves it out ("Beta 2", "Proto, Unl"). Unl is not here: unlicensed releases are games.
+  excluded_tags: [Demo, Beta, Proto, Sample, Kiosk, Preview, Pre-production, Aftermarket,
+                  Pirate, Program, BIOS, Hack, Bootleg]
+  # TOSEC names: these dump flags (cracked, fixed, hacked, modified, pirated, trained,
+  # translated, bad, over- and underdumped, virus) leave an entry out, as does a
+  # pre-release (names.tosec.prerelease).
+  tosec_excluded_flags: [cr, f, h, m, p, t, tr, b, o, u, v]
+  # The first tag of a TOSEC name is its year when it matches this ("1987", "19xx").
+  tosec_year_pattern: "^[0-9x]{4}"
 
 grouping:
   # When a DAT has no parent/clone data and Retool has no entry, versions are grouped by

@@ -94,6 +94,11 @@ class UiConfig(_Strict):
     conversion_columns_default: list[str] = Field(min_length=1)
     discarded_columns: dict[str, ColumnSize]
     discarded_columns_default: list[str] = Field(min_length=1)
+    statistics_columns: dict[str, ColumnSize]
+    statistics_columns_default: list[str] = Field(min_length=1)
+    missing_columns: dict[str, ColumnSize]
+    missing_columns_default: list[str] = Field(min_length=1)
+    percent_digits: int = Field(ge=0)
 
     @model_validator(mode="after")
     def _known_defaults(self) -> "UiConfig":
@@ -524,6 +529,13 @@ class NamesConfig(_Strict):
     tosec: TosecConfig
 
 
+class StatisticsConfig(_Strict):
+    categories: list[str]
+    excluded_tags: list[str]
+    tosec_excluded_flags: list[str]
+    tosec_year_pattern: str
+
+
 class GroupingConfig(_Strict):
     infer_from_dat_names: bool
     retool_clonelists_dir: Path
@@ -583,6 +595,7 @@ class Settings(_Strict):
     decryption: DecryptionConfig
     title_ids: TitleIdConfig | None = None
     names: NamesConfig
+    statistics: StatisticsConfig
     grouping: GroupingConfig
     ranking: RankingConfig
 

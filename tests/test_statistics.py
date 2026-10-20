@@ -1,0 +1,101 @@
+from pathlib import Path
+
+from g1r import statistics
+from g1r.dats import Dat, DatGame, DatHeader, DatRom
+from g1r.grouping import NOINTRO_STYLE, TOSEC_STYLE
+
+from .test_api import scanned, setup  # noqa: F401  (the fixture)
+
+DATA = Path(__file__).parent / "data"
+
+
+def game(name, crc, category=None, rom_name=None, **extra):
+    rom = DatRom(rom_name or f"{name}.nes", 16, crc, None, None)
+    return DatGame(name, category=category, roms=[rom], **extra)
+
+
+def dat(*games):
+    return Dat(DatHeader("Nintendo - Nintendo Entertainment System"), list(games), "logiqx")
+
+
+def settings_of(make_settings):
+    return make_settings({"grouping": {"retool_clonelists_dir": str(DATA / "none")}})
+
+
+def test_only_games_count(make_settings):
+    s = settings_of(make_settings)
+    assert statistics.is_game(s, [game("Contra (USA)", "01")], NOINTRO_STYLE)
+    # Unlicensed releases are games.
+    assert statistics.is_game(s, [game("Tetris (USA) (Unl)", "02")], NOINTRO_STYLE)
+    for name in ["Contra (USA) (Beta 2)", "Contra (USA) (Proto, Unl)", "Contra (Pirate)"]:
+        assert not statistics.is_game(s, [game(name, "03")], NOINTRO_STYLE), name
+    assert not statistics.is_game(s, [game("Contra (USA)", "04", "Demos")], NOINTRO_STYLE)
+    assert statistics.is_game(s, [game("Contra (USA)", "05", "Games")], NOINTRO_STYLE)
+    # The libretro mirror tags some entries on the ROM name only.
+    tagged = game("!Clik! (World)", "06", rom_name="!Clik! (World) (Aftermarket) (Unl).nes")
+    assert not statistics.is_game(s, [tagged], NOINTRO_STYLE)
+    assert not statistics.is_game(s, [game("[BIOS] Famicom (Japan)", "07")], NOINTRO_STYLE)
+    assert not statistics.is_game(s, [game("Sys", "08", bios=True)], NOINTRO_STYLE)
+    # TOSEC: modified dumps and pre-releases are left out, not a publisher with a tag word.
+    tosec = [
+        ("Elite (1985)(Firebird)", True),
+        ("Elite (1985)(Program Systems)", True),
+        ("Elite (1985)(Firebird)[h Fairlight]", False),
+        ("Elite (1985)(Firebird)[cr]", False),
+        ("Elite (1985)(Firebird)(beta)", False),
+    ]
+    for name, kept in tosec:
+        assert statistics.is_game(s, [game(name, "09")], TOSEC_STYLE) is kept, name
+
+
+def test_coverage_counts_games_one_version_is_enough(make_settings):
+    s = settings_of(make_settings)
+    local = dat(
+        game("Contra (USA)", "01"),
+        game("Contra (Japan)", "02"),
+        game("Gradius (USA)", "03"),
+        game("Gradius (USA) (Proto)", "04"),
+        game("Unreleased (USA) (Proto)", "05"),
+        game("Solo (Japan)", "06", year="1987", manufacturer="Konami"),
+        game("Solo (USA)", "07", year="1988", manufacturer="Konami"),
+    )
+    games = statistics.dat_games(s, "local", local, NOINTRO_STYLE, "name")
+    # Contra, Gradius and Solo; the prototype-only game is not counted.
+    assert sorted(games.labels.values()) == ["Contra", "Gradius", "Solo"]
+
+    # The Japanese Contra; only the prototype of Gradius (it covers nothing).
+    have = statistics.Identified({"Contra (Japan)", "Gradius (USA) (Proto)"})
+    covered, total, missing = statistics.coverage(games, have)
+    assert (covered, total) == (1, 3)
+    rows = statistics.missing_rows(games, missing)
+    assert [r["name"] for r in rows] == ["Gradius", "Solo"]
+    solo = rows[1]
+    assert solo["years"] == "1987, 1988" and solo["publishers"] == "Konami"
+    assert solo["regions"] == "Japan, USA" and solo["versions"] == 2
+
+
+def test_a_file_from_another_dat_covers_by_checksums(make_settings):
+    s = settings_of(make_settings)
+    games = statistics.dat_games(
+        s, "other", dat(game("Contra (USA) (Other Name)", "0a")), NOINTRO_STYLE, "name"
+    )
+    have = statistics.Identified({"Contra (USA)"}, {("crc", "0a", 16)})
+    assert statistics.coverage(games, have)[:2] == (1, 1)
+    assert statistics.coverage(games, statistics.Identified({"Contra (USA)"}))[:2] == (0, 1)
+
+
+def test_statistics_api(setup):  # noqa: F811
+    client, _, _ = setup
+    scanned(client)
+    body = client.get("/api/statistics").json()
+    folder = body["folders"][0]
+    assert folder["label"] == "nes" and folder["identified"] == 5
+    cells = list(folder["coverage"].values())
+    assert cells and all(c["covered"] == c["total"] for c in cells)
+    source = next(iter(folder["coverage"]))
+    assert {s["id"] for s in body["sources"]} >= {source}
+    info = next(i for i in body["dat_info"] if i["id"] == source)
+    assert info["dats"] == 1 and info["checksums"] == ["CRC32"]
+    missing = client.get(f"/api/statistics/nes/{source}/missing").json()
+    assert missing["rows"] == []
+    assert client.get("/api/statistics/nes/nope/missing").status_code == 404

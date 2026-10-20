@@ -24,6 +24,7 @@ from g1r import (
     matching,
     mounts,
     scanner,
+    statistics,
     unmatched,
 )
 from g1r.config import RANKING_CRITERIA, RankingConfig, Settings
@@ -435,6 +436,94 @@ def build_router(
                 }
             )
         return result
+
+    def statistics_dats(conn, library: Library, folder: FolderEntry) -> dict:
+        """The folder's platform's local DATs by source (switched-off ones too), with their
+        counted games."""
+        profile = platforms[folder.platform]
+        found = {}
+        for entry in registry.entries(conn, library, folder.platform):
+            if entry.version is None:
+                continue
+            version = entry.version
+            dat = registry.load(version)
+            games = statistics.dat_games(
+                settings, version["sha1"], dat, name_style(version), profile.names_from
+            )
+            found[entry.id] = (version, games)
+        return found
+
+    @router.get("/statistics")
+    def get_statistics(conn: Conn):
+        library = store.load()
+        folders = []
+        local: dict[str, dict[str, sqlite3.Row]] = {}
+        for folder in library.folders:
+            if folder.hidden or folder.platform not in platforms:
+                continue
+            have = statistics.identified(settings, conn, folder.label)
+            summary = scanner.folder_summary(conn, folder.label, parts_of(folder))
+            cells = {}
+            for source, (version, games) in statistics_dats(conn, library, folder).items():
+                local.setdefault(source, {})[version["sha1"]] = version
+                covered, total, _ = statistics.coverage(games, have)
+                cells[source] = {"covered": covered, "total": total, "dat": row_dict(version)}
+            folders.append(
+                {
+                    "label": folder.label,
+                    "platform": folder.platform,
+                    "platform_short": platforms[folder.platform].short,
+                    "roms": summary["roms"],
+                    "identified": summary["identified"],
+                    "coverage": cells,
+                }
+            )
+        sources = [
+            {"id": sid, "label": source.label, "short_label": source.short_label}
+            for sid, source in settings.dats.sources.items()
+        ]
+        dat_info = []
+        for sid, source in settings.dats.sources.items():
+            versions = list(local.get(sid, {}).values())
+            features = [statistics.dat_features(registry.load(v)) for v in versions]
+            dat_info.append(
+                {
+                    "id": sid,
+                    "label": source.label,
+                    "dats": len(versions),
+                    "identification_only": source.identification_only,
+                    "checksums": sorted({c for f in features for c in f["checksums"]}),
+                    "categories": sorted({c for f in features for c in f["categories"]}),
+                    "parent_clone": any(f["parent_clone"] for f in features),
+                    "bios": any(f["bios"] for f in features),
+                    "serials": any(f["serials"] for f in features),
+                    "years": any(f["years"] for f in features),
+                    "publishers": any(f["publishers"] for f in features),
+                }
+            )
+        return {
+            "sources": sources,
+            "folders": folders,
+            "dat_info": dat_info,
+            "rules": settings.statistics.model_dump(),
+        }
+
+    @router.get("/statistics/{label}/{source}/missing")
+    def get_missing(label: str, source: str, conn: Conn):
+        folder = folder_or_404(label)
+        library = store.load()
+        found = statistics_dats(conn, library, folder)
+        if source not in found:
+            raise not_found(f"{label!r} has no {source!r} DAT")
+        version, games = found[source]
+        have = statistics.identified(settings, conn, folder.label)
+        covered, total, missing = statistics.coverage(games, have)
+        return {
+            "dat": row_dict(version),
+            "covered": covered,
+            "total": total,
+            "rows": statistics.missing_rows(games, missing),
+        }
 
     @router.post("/folders", status_code=HTTPStatus.CREATED)
     def add_folder(body: NewFolder):

@@ -29,6 +29,8 @@ def is_disc_image(settings: Settings, rel_path: str) -> bool:
     """A disc format holding a whole disc (`platforms.disc_formats`: CHD, RVZ)."""
     suffix = PurePosixPath(rel_path).suffix.lower().lstrip(".")
     return suffix in settings.platforms.disc_formats
+
+
 TOSEC_STYLE = "tosec"
 NOINTRO_STYLE = "nointro"
 

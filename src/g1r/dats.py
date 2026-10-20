@@ -36,6 +36,9 @@ class DatGame:
     bios: bool = False
     # The product code printed on the game (Redump, libretro): "SLUS-20246", "CTR-P-AWAE".
     serial: str | None = None
+    # Release year and publisher, where the DAT has them (FBNeo, some Logiqx DATs).
+    year: str | None = None
+    manufacturer: str | None = None
 
 
 @dataclass
@@ -97,6 +100,8 @@ def _parse_xml(data: bytes) -> Dat:
             description=game_el.findtext("description"),
             bios=game_el.get("isbios") == "yes",
             serial=game_el.findtext("serial"),
+            year=game_el.findtext("year"),
+            manufacturer=game_el.findtext("manufacturer"),
         )
         for rom in game_el.iter("rom"):
             game.roms.append(
@@ -195,6 +200,8 @@ def _parse_clrmamepro(data: bytes) -> Dat:
             category=_get(items, "category"),
             description=_get(items, "description"),
             serial=_get(items, "serial"),
+            year=_get(items, "year"),
+            manufacturer=_get(items, "manufacturer"),
         )
         for key, rom in items:
             if key == "rom" and not isinstance(rom, str):

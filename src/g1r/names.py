@@ -51,6 +51,16 @@ def revision_key(revision: str | None) -> tuple:
     return tuple((int(p), "") if p.isdigit() else (-1, p) for p in re.split(r"[.]", value))
 
 
+def tags(name: str) -> list[tuple[str, str]]:
+    """The name's tags in order: ("paren", text) for "(text)", ("bracket", text) for "[text]"."""
+    return [
+        ("paren", m["paren"].strip())
+        if m["paren"] is not None
+        else ("bracket", m["bracket"].strip())
+        for m in _TAG.finditer(name)
+    ]
+
+
 def parse_name(name: str, config: NamesConfig) -> ParsedName:
     regions_vocab = {r.lower(): r for r in config.regions}
     pre = [t.lower() for t in config.prerelease_tags]
