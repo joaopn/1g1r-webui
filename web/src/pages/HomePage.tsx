@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { PlatformIcon } from "@/components/PlatformIcon";
+import { QuickViewBar } from "@/components/QuickViewBar";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ApiError, api } from "@/lib/api";
@@ -25,15 +26,27 @@ const DETAILS = [
 ] as const;
 type Detail = (typeof DETAILS)[number]["id"];
 
-const HIDE_COMPLETED_KEY = "g1r.home.hide-completed.v1";
-
-function isBoolean(value: unknown): value is boolean {
-  return typeof value === "boolean";
-}
-
 /** Nothing left to do: every file processed (a folder not scanned yet has no files). */
 function isCompleted(folder: FolderCard): boolean {
   return folder.summary.roms > 0 && folder.progress.to_process === 0;
+}
+
+const SHOW_KEY = "g1r.home.show.v1";
+/** The badges above the cards: which sets to show, one at a time. */
+const SHOWS = [
+  { id: "all", label: "All", test: () => true },
+  { id: "done", label: "Done", test: isCompleted },
+  {
+    id: "conversion",
+    label: "Needing conversion",
+    test: (f: FolderCard) => f.progress.to_convert > 0,
+  },
+  { id: "matching", label: "Needing matching", test: (f: FolderCard) => f.progress.to_match > 0 },
+] as const;
+type Show = (typeof SHOWS)[number]["id"];
+
+function isShow(value: unknown): value is Show {
+  return SHOWS.some((s) => s.id === value);
 }
 
 function isDetail(value: unknown): value is Detail {
@@ -149,19 +162,23 @@ export function HomePage() {
     writeJson(DETAIL_KEY, d);
   };
   const extended = detail === "extended";
-  const [hideCompleted, setHideCompleted] = useState(() =>
-    readJson(HIDE_COMPLETED_KEY, false, isBoolean),
-  );
-  const changeHideCompleted = (hide: boolean) => {
-    setHideCompleted(hide);
-    writeJson(HIDE_COMPLETED_KEY, hide);
+  const [show, setShow] = useState<Show>(() => readJson(SHOW_KEY, "all", isShow));
+  const changeShow = (id: string) => {
+    if (!isShow(id)) return;
+    setShow(id);
+    writeJson(SHOW_KEY, id);
   };
   if (!meta.data || !folders.data) return <p className="text-muted-foreground">Loading…</p>;
   const ui = meta.data.ui;
   const visible = folders.data.filter((f) => !f.hidden);
   const hidden = folders.data.length - visible.length;
-  const shown = hideCompleted ? visible.filter((f) => !isCompleted(f)) : visible;
-  const completedOut = visible.length - shown.length;
+  const views = SHOWS.map((s) => ({
+    id: s.id,
+    label: s.label,
+    count: visible.filter(s.test).length,
+  }));
+  const filter = SHOWS.find((s) => s.id === show) ?? SHOWS[0];
+  const shown = visible.filter(filter.test);
   // The header sits in the card grid, so it spans exactly the centred columns.
   return (
     <div className="grid grid-cols-[repeat(auto-fill,18rem)] items-start justify-center gap-4">
@@ -180,29 +197,20 @@ export function HomePage() {
                 ).
               </>
             ) : null}
-            {completedOut > 0
-              ? ` ${formatCount(completedOut)} completed ${completedOut === 1 ? "set is" : "sets are"} hidden.`
-              : null}
           </p>
         </div>
-        <div className="flex shrink-0 items-center gap-4">
-          <label className="flex cursor-pointer items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              className="size-4 accent-primary"
-              checked={hideCompleted}
-              onChange={(e) => changeHideCompleted(e.target.checked)}
-            />
-            Hide completed
-          </label>
-          <DetailSwitch value={detail} onChange={changeDetail} />
-        </div>
+        <DetailSwitch value={detail} onChange={changeDetail} />
+        {visible.length > 0 ? (
+          <div className="basis-full">
+            <QuickViewBar name="home-show" views={views} value={show} onChange={changeShow} />
+          </div>
+        ) : null}
       </header>
-      {shown.length === 0 && completedOut > 0 ? (
+      {shown.length === 0 && visible.length > 0 ? (
         <div className="col-span-full max-w-xl rounded-lg border border-border bg-card p-6">
-          <h2 className="font-medium">Every set is completed</h2>
+          <h2 className="font-medium">No set here</h2>
           <p className="mt-1 text-muted-foreground text-sm">
-            Untick <strong>Hide completed</strong> to see them.
+            No set is {filter.label.toLowerCase()} right now. <strong>All</strong> shows every set.
           </p>
         </div>
       ) : shown.length === 0 ? (
