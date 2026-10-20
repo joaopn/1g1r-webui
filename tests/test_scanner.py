@@ -326,6 +326,15 @@ def test_igir_may_take_longer_on_a_larger_folder(env, roms_root):
     assert large - small >= settings.igir.timeout_seconds
 
 
+def test_igir_limit_stays_within_what_subprocess_can_wait(env):
+    """B6: a 5 TB Wii folder made the limit too large for poll(): "timeout is too large"."""
+    settings = env[0]
+    huge = int(settings.igir.min_bytes_per_second * settings.igir.max_timeout_seconds) * 2
+    limit = igir.time_limit(settings, huge)
+    assert limit == settings.igir.max_timeout_seconds
+    subprocess.run(["true"], capture_output=True, timeout=limit)
+
+
 def test_cache_steps_change_with_the_settings_they_depend_on():
     nes = HeaderRule(magic_hex="4e45531a", magic_offset=0, header_size=16)
     other = HeaderRule(magic_hex="4e45531a", magic_offset=0, header_size=512)

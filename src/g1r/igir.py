@@ -54,9 +54,11 @@ def cache_path(settings: Settings, label: str) -> Path:
 
 
 def time_limit(settings: Settings, size_bytes: int) -> float:
-    """How long one igir run over a folder of this size may take."""
+    """How long one igir run over a folder of this size may take, at most
+    `max_timeout_seconds` (subprocess cannot wait longer than about 24.8 days)."""
     config = settings.igir
-    return config.timeout_seconds + size_bytes / config.min_bytes_per_second
+    limit = config.timeout_seconds + size_bytes / config.min_bytes_per_second
+    return min(limit, config.max_timeout_seconds)
 
 
 def run_report(

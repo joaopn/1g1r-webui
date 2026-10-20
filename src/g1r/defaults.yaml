@@ -702,6 +702,10 @@ igir:
   # (igir decompresses each CHD to hash it; a large disc library takes hours the first time).
   timeout_seconds: 3600
   min_bytes_per_second: 2097152
+  # Ceiling on that limit (20 days). Python waits on igir with poll(), which takes the
+  # limit in milliseconds as a 32-bit int (about 24.8 days); above it a scan of a folder
+  # over about 4.5 TB failed with "timeout is too large".
+  max_timeout_seconds: 1728000
   # Threads per igir run when set in Settings -> Advanced: files read at once
   # (--reader-threads) and Node's worker pool for reads and CHD decoding
   # (UV_THREADPOOL_SIZE). Unset, igir uses its own: these two.
