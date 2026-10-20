@@ -44,6 +44,8 @@ export type Meta = {
     discarded_columns_default: string[];
     statistics_columns: Record<string, ColumnSize>;
     statistics_columns_default: string[];
+    statistics_source_rem: number;
+    statistics_source_gap_rem: number;
     missing_columns: Record<string, ColumnSize>;
     missing_columns_default: string[];
     percent_digits: number;

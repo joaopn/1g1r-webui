@@ -96,6 +96,8 @@ class UiConfig(_Strict):
     discarded_columns_default: list[str] = Field(min_length=1)
     statistics_columns: dict[str, ColumnSize]
     statistics_columns_default: list[str] = Field(min_length=1)
+    statistics_source_rem: float = Field(gt=0)
+    statistics_source_gap_rem: float = Field(ge=0)
     missing_columns: dict[str, ColumnSize]
     missing_columns_default: list[str] = Field(min_length=1)
     percent_digits: int = Field(ge=0)

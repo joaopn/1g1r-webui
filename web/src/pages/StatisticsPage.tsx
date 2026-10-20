@@ -16,7 +16,14 @@ import {
 import { ApiError, api } from "@/lib/api";
 import { formatCount, formatWhen } from "@/lib/format";
 import { keys, queryClient, useMeta, useMissing, useStatistics } from "@/lib/queries";
-import type { DatInfo, Meta, MissingGame, Statistics, StatisticsFolder } from "@/lib/types";
+import type {
+  Coverage,
+  DatInfo,
+  Meta,
+  MissingGame,
+  Statistics,
+  StatisticsFolder,
+} from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 // The missing-games table's URL parameters, apart from the page table's.
@@ -139,7 +146,8 @@ function CoverageTable({
   stats: Statistics;
   onOpen: (target: { label: string; source: string }) => void;
 }) {
-  const digits = meta.ui.percent_digits;
+  const { ui } = meta;
+  const digits = ui.percent_digits;
   // Only sources some folder has a DAT of get a column.
   const sources = stats.sources.filter((s) => stats.folders.some((f) => s.id in f.coverage));
   const columns = useMemo<DataColumn<StatisticsFolder>[]>(
@@ -178,62 +186,45 @@ function CoverageTable({
         sortValue: (f) => f.platform_short,
         title: (f) => meta.platforms[f.platform]?.name,
       },
-      ...sources.map(
-        (s): DataColumn<StatisticsFolder> => ({
-          id: s.id,
-          label: s.short_label,
-          className: "text-right",
-          headerClassName: CENTRED,
-          render: (f) => {
-            const cell = f.coverage[s.id];
-            if (!cell) return null;
-            const complete = cell.covered === cell.total;
-            const value = share(cell.covered, cell.total);
-            return (
-              <button
-                type="button"
-                className={cn(
-                  "flex w-full flex-col items-end gap-1 rounded px-1 tabular-nums underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-ring",
-                  complete && "font-medium text-status-good",
-                )}
-                onClick={() => onOpen({ label: f.label, source: s.id })}
-                data-testid={`coverage-${f.label}-${s.id}`}
-              >
-                <span
-                  className="block h-1 w-full overflow-hidden rounded-full bg-muted"
-                  aria-hidden="true"
-                >
-                  <span
-                    className={cn(
-                      "block h-full origin-left rounded-full",
-                      complete ? "bg-status-good" : "bg-primary",
-                    )}
-                    style={{ transform: `scaleX(${value})` }}
-                    data-testid={`coverage-bar-${f.label}-${s.id}`}
-                  />
-                </span>
-                {percent(value, digits)}
-              </button>
-            );
-          },
-          sortValue: (f) => {
-            const cell = f.coverage[s.id];
-            return cell ? share(cell.covered, cell.total) : Number.NEGATIVE_INFINITY;
-          },
-          title: (f) => {
-            const cell = f.coverage[s.id];
-            return cell
-              ? `${formatCount(cell.covered)} of ${formatCount(cell.total)} games · ${cell.dat.header_name}${cell.dat.version ? ` ${cell.dat.version}` : ""}`
-              : `No ${s.label} DAT for this platform`;
-          },
-        }),
-      ),
+      {
+        id: "dats",
+        label: "DATs",
+        headerClassName: CENTRED,
+        render: (f) => (
+          <div className="flex" style={{ gap: `${ui.statistics_source_gap_rem}rem` }}>
+            {sources
+              .filter((s) => s.id in f.coverage)
+              .map((s) => (
+                <SourceBar
+                  key={s.id}
+                  label={f.label}
+                  source={s}
+                  cell={f.coverage[s.id]}
+                  digits={digits}
+                  widthRem={ui.statistics_source_rem}
+                  onOpen={onOpen}
+                />
+              ))}
+          </div>
+        ),
+        // The set's best-covered DAT.
+        sortValue: (f) =>
+          Math.max(
+            Number.NEGATIVE_INFINITY,
+            ...Object.values(f.coverage).map((c) => share(c.covered, c.total)),
+          ),
+      },
     ],
-    [meta, sources, digits, onOpen],
+    [meta, ui, sources, digits, onOpen],
   );
+  // The DATs column starts as wide as the most sources one set has.
+  const most = Math.max(0, ...stats.folders.map((f) => Object.keys(f.coverage).length));
+  const dats = ui.statistics_columns.dats;
+  const wanted =
+    most * ui.statistics_source_rem + Math.max(0, most - 1) * ui.statistics_source_gap_rem;
   const sizes = {
-    ...meta.ui.statistics_columns,
-    ...Object.fromEntries(sources.map((s) => [s.id, meta.ui.statistics_columns.source])),
+    ...ui.statistics_columns,
+    dats: { ...dats, rem: Math.min(dats.max, Math.max(dats.min, wanted)) },
   };
   return (
     <DataTable
@@ -246,7 +237,7 @@ function CoverageTable({
       rowTestId={(f) => `statistics-${f.label}`}
       columns={columns}
       sizes={sizes}
-      defaultColumns={[...meta.ui.statistics_columns_default, ...sources.map((s) => s.id)]}
+      defaultColumns={ui.statistics_columns_default}
       defaultSort={{ id: "folder", order: "asc" }}
       search={(f, needle) =>
         f.label.toLocaleLowerCase().includes(needle) ||
@@ -256,6 +247,56 @@ function CoverageTable({
       searchPlaceholder="Search sets or platforms"
       meta={meta}
     />
+  );
+}
+
+/** One DAT source of a set: its bar, then its name and percentage; opens the missing games. */
+function SourceBar({
+  label,
+  source,
+  cell,
+  digits,
+  widthRem,
+  onOpen,
+}: {
+  label: string;
+  source: Statistics["sources"][number];
+  cell: Coverage;
+  digits: number;
+  widthRem: number;
+  onOpen: (target: { label: string; source: string }) => void;
+}) {
+  const complete = cell.covered === cell.total;
+  const value = share(cell.covered, cell.total);
+  return (
+    <button
+      type="button"
+      style={{ width: `${widthRem}rem` }}
+      className="flex shrink-0 flex-col gap-1 rounded px-1 text-left tabular-nums underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-ring"
+      onClick={() => onOpen({ label, source: source.id })}
+      title={`${source.label}: ${formatCount(cell.covered)} of ${formatCount(cell.total)} games · ${cell.dat.header_name}${cell.dat.version ? ` ${cell.dat.version}` : ""}`}
+      data-testid={`coverage-${label}-${source.id}`}
+    >
+      <span className="block h-1 w-full overflow-hidden rounded-full bg-muted" aria-hidden="true">
+        <span
+          className={cn(
+            "block h-full origin-left rounded-full",
+            complete ? "bg-status-good" : "bg-primary",
+          )}
+          style={{ transform: `scaleX(${value})` }}
+          data-testid={`coverage-bar-${label}-${source.id}`}
+        />
+      </span>
+      <span className="flex w-full items-baseline justify-between gap-1 text-xs">
+        <span className="truncate text-muted-foreground">{source.short_label}</span>
+        <span
+          className={cn("shrink-0", complete && "font-medium text-status-good")}
+          data-testid={`coverage-value-${label}-${source.id}`}
+        >
+          {percent(value, digits)}
+        </span>
+      </span>
+    </button>
   );
 }
 
@@ -409,8 +450,8 @@ function DatInfoSection({ stats }: { stats: Statistics }) {
           </p>
           <p>
             A file identified by another DAT counts when its ROM checksums cover every ROM of the
-            game, or when the DAT lists the same name. An empty cell: the platform has no DAT from
-            that source.
+            game, or when the DAT lists the same name. A source missing from a set: the platform has
+            no DAT from it.
           </p>
         </div>
         <div className="overflow-x-auto rounded-md border border-border">

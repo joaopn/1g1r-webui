@@ -153,14 +153,16 @@ test("coverage per DAT source, empty cells, DAT info and the missing games", asy
   expect(screen.queryByTestId("header-identified")).toBeNull();
   expect(screen.queryByTestId("quick-views")).toBeNull();
   expect(screen.queryByTestId("filters-button")).toBeNull();
-  expect(within(nes).getByTestId("coverage-nes-nointro")).toHaveTextContent("33.3%");
-  expect(within(nes).getByTestId("coverage-nes-nointro")).not.toHaveClass("text-status-good");
-  // A bar under each percentage; complete ones in green.
+  // One DATs column: per source a bar, then its name and percentage.
+  expect(within(nes).getByTestId("coverage-nes-nointro")).toHaveTextContent("No-Intro33.3%");
+  expect(screen.getByTestId("coverage-value-nes-nointro")).not.toHaveClass("text-status-good");
+  expect(screen.queryByTestId("header-nointro")).toBeNull();
+  // Complete ones in green.
   expect(screen.getByTestId("coverage-bar-nes-nointro").style.transform).toBe(`scaleX(${1 / 3})`);
   expect(screen.getByTestId("coverage-bar-psx-redump")).toHaveClass("bg-status-good");
   // The Set cell's faint background is the identified share; column labels are centred.
   expect(screen.getByTestId("identified-bar-nes").style.transform).toBe("scaleX(0.8)");
-  expect(screen.getByTestId("header-nointro")).toHaveClass("text-center");
+  expect(screen.getByTestId("header-dats")).toHaveClass("text-center");
   expect(screen.getByTestId("header-platform")).toHaveClass("text-center");
   expect(within(nes).getByTitle("Nintendo Entertainment System")).toHaveClass("text-center");
   // Kept figures: the oldest computation, and the sets that changed since.
@@ -171,11 +173,11 @@ test("coverage per DAT source, empty cells, DAT info and the missing games", asy
   // Two folders of one platform: a line each. Rounded down, so 999 of 1000 is not 100%.
   const nes2 = screen.getByTestId("coverage-nes-2-nointro");
   expect(nes2).toHaveTextContent("99.9%");
-  expect(nes2).not.toHaveClass("text-status-good");
-  // No Redump DAT for NES: an empty cell. TOSEC has no DAT anywhere: no column.
+  expect(screen.getByTestId("coverage-value-nes-2-nointro")).not.toHaveClass("text-status-good");
+  // No Redump DAT for NES: no bar. TOSEC has no DAT anywhere: shown nowhere.
   expect(within(nes).queryByTestId("coverage-nes-redump")).toBeNull();
-  expect(screen.getByTestId("coverage-psx-redump")).toHaveTextContent("100.0%");
-  expect(screen.getByTestId("coverage-psx-redump")).toHaveClass("text-status-good");
+  expect(screen.getByTestId("coverage-psx-redump")).toHaveTextContent("Redump100.0%");
+  expect(screen.getByTestId("coverage-value-psx-redump")).toHaveClass("text-status-good");
   expect(screen.queryByText("TOSEC")).toBeNull();
 
   const info = screen.getByTestId("dat-info");

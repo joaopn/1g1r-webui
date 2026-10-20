@@ -63,9 +63,11 @@ export const META: Meta = {
     ),
     discarded_columns_default: ["reason", "file", "size", "modified", "restore"],
     statistics_columns: Object.fromEntries(
-      ["folder", "platform", "identified", "source"].map((id) => [id, size(8)]),
+      ["folder", "platform", "dats"].map((id) => [id, size(8)]),
     ),
-    statistics_columns_default: ["folder", "platform", "identified"],
+    statistics_columns_default: ["folder", "platform", "dats"],
+    statistics_source_rem: 7,
+    statistics_source_gap_rem: 0.75,
     missing_columns: Object.fromEntries(
       ["name", "years", "publishers", "regions", "languages", "serials", "notes", "versions"].map(
         (id) => [id, size(8)],

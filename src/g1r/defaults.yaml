@@ -92,13 +92,17 @@ ui:
     restore_to: {rem: 18, min: 8, max: 48}
     restore: {rem: 14, min: 8, max: 24}
   discarded_columns_default: [reason, file, size, modified, restore]
-  # The Statistics table: the set, its platform, identified files, and one column per DAT
-  # source (every source column takes `source`).
+  # The Statistics table: the set, its platform, and one DATs column holding a bar per DAT
+  # source side by side. The DATs column starts as wide as the most sources a set has
+  # (each `statistics_source_rem` wide, `statistics_source_gap_rem` apart), within its
+  # min and max.
   statistics_columns:
     folder: {rem: 12, min: 6, max: 30}
     platform: {rem: 6, min: 4, max: 14}
-    source: {rem: 7, min: 5, max: 14}
-  statistics_columns_default: [folder, platform]
+    dats: {rem: 8, min: 8, max: 60}
+  statistics_columns_default: [folder, platform, dats]
+  statistics_source_rem: 7
+  statistics_source_gap_rem: 0.75
   # Its missing-games table.
   missing_columns:
     name: {rem: 18, min: 8, max: 48}
