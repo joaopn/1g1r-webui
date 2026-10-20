@@ -1,7 +1,7 @@
 import { formatCount } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-export type ChipTone = "good" | "convert" | "match";
+export type ChipTone = "good" | "convert" | "match" | "unscanned";
 export type QuickViewChip = { id: string; label: string; count: number; tone?: ChipTone };
 
 // Literal class names, so Tailwind generates them.
@@ -20,6 +20,11 @@ const TONES: Record<ChipTone, { idle: string; dot: string; active: string }> = {
     idle: "border-status-match/60",
     dot: "bg-status-match",
     active: "border-status-match bg-status-match",
+  },
+  unscanned: {
+    idle: "border-status-unscanned/60",
+    dot: "bg-status-unscanned",
+    active: "border-status-unscanned bg-status-unscanned",
   },
 };
 

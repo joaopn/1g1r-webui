@@ -33,9 +33,13 @@ function isCompleted(folder: FolderCard): boolean {
 
 const needsConversion = (f: FolderCard) => f.progress.to_convert > 0;
 const needsMatching = (f: FolderCard) => f.progress.to_match > 0;
+/** No scan started yet (a running or failed first scan has left this state). */
+const neverScanned = (f: FolderCard) => f.scan === null;
 
-/** The card's border: done, else needing conversion (it opens there), else matching. */
+/** The card's border: never scanned, done, else needing conversion (it opens there), else
+ * matching. */
 function cardTone(folder: FolderCard): ChipTone | null {
+  if (neverScanned(folder)) return "unscanned";
   if (isCompleted(folder)) return "good";
   if (needsConversion(folder)) return "convert";
   if (needsMatching(folder)) return "match";
@@ -46,6 +50,7 @@ const CARD_BORDERS: Record<ChipTone, string> = {
   good: "border-status-good ring-1 ring-status-good hover:border-status-good",
   convert: "border-status-convert ring-1 ring-status-convert hover:border-status-convert",
   match: "border-status-match ring-1 ring-status-match hover:border-status-match",
+  unscanned: "border-status-unscanned ring-1 ring-status-unscanned hover:border-status-unscanned",
 };
 
 const SHOW_KEY = "g1r.home.show.v1";
@@ -55,6 +60,7 @@ const SHOWS = [
   { id: "done", label: "Done", test: isCompleted, tone: "good" },
   { id: "conversion", label: "Needing conversion", test: needsConversion, tone: "convert" },
   { id: "matching", label: "Needing matching", test: needsMatching, tone: "match" },
+  { id: "unscanned", label: "Never scanned", test: neverScanned, tone: "unscanned" },
 ] as const satisfies readonly {
   id: string;
   label: string;

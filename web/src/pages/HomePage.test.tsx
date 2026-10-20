@@ -276,7 +276,7 @@ test("the badges filter the sets by state, with counts, and are remembered", asy
       .sort();
   expect(await screen.findByTestId("folder-card-done")).toBeInTheDocument();
   expect(screen.getByTestId("quick-views")).toHaveTextContent(
-    "All5Done1Needing conversion2Needing matching2",
+    "All5Done1Needing conversion2Needing matching2Never scanned1",
   );
   expect(cards()).toEqual(["both", "convert", "done", "empty", "match"]);
   // Borders and badges share the colour of the state; a set needing both shows conversion.
@@ -286,19 +286,21 @@ test("the badges filter the sets by state, with counts, and are remembered", asy
     "convert",
     "match",
     "convert",
-    undefined,
+    "unscanned",
   ]);
   expect(screen.getByTestId("folder-card-match")).toHaveClass("border-status-match");
   expect(
     [...screen.getByTestId("quick-views").querySelectorAll("label")].map((l) => l.dataset.tone),
-  ).toEqual([undefined, "good", "convert", "match"]);
+  ).toEqual([undefined, "good", "convert", "match", "unscanned"]);
   await userEvent.click(screen.getByLabelText(/^Done/));
   expect(cards()).toEqual(["done"]);
   await userEvent.click(screen.getByLabelText(/^Needing conversion/));
   expect(cards()).toEqual(["both", "convert"]);
   await userEvent.click(screen.getByLabelText(/^Needing matching/));
   expect(cards()).toEqual(["both", "match"]);
-  expect(localStorage.getItem("g1r.home.show.v1")).toBe('"matching"');
+  await userEvent.click(screen.getByLabelText(/^Never scanned/));
+  expect(cards()).toEqual(["empty"]);
+  expect(localStorage.getItem("g1r.home.show.v1")).toBe('"unscanned"');
 });
 
 test("a badge with no set says so", async () => {
