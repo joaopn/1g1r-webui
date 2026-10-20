@@ -351,6 +351,7 @@ class Scanner:
         seven_zip: archives.SevenZipRunner = archives.run_seven_zip,
         lookup_post: hasheous.Post = hasheous.http_post,
         read_chd: hashing.ChdReader = hashing.chd_track_hashes,
+        read_rvz: hashing.RvzReader = hashing.rvz_disc_hash,
     ):
         self.settings = settings
         self.store = store
@@ -359,6 +360,7 @@ class Scanner:
         self.seven_zip = seven_zip
         self.lookup_post = lookup_post
         self.read_chd = read_chd
+        self.read_rvz = read_rvz
 
     def start(self, conn: sqlite3.Connection, label: str) -> int:
         reason = journal.busy(conn, label)
@@ -591,6 +593,7 @@ class Scanner:
             self.settings.byte_orders.get(platform),
             self.settings.lookups.max_hash_bytes,
             self.settings.lookups.chd,
+            self.settings.dolphin,
         )
         for f in progress.each(stage, [f for f in files if f.rel_path not in found.hashes]):
             found.hashes[f.rel_path] = [
@@ -601,16 +604,27 @@ class Scanner:
                     lambda f=f: [
                         asdict(h)
                         for h in content_hashes(
-                            self.settings, platform, root / f.rel_path, self.read_chd
+                            self.settings,
+                            platform,
+                            root / f.rel_path,
+                            self.read_chd,
+                            self.read_rvz,
                         )
                     ],
                 )
             ]
 
-    def _why_no_hashes(self, f: InventoryFile) -> str:
+    def _why_no_hashes(self, f: InventoryFile, found: "Found") -> str:
         """Why an unmatched file has nothing to look up."""
         if f.rel_path.lower().endswith(CHD_SUFFIX):
             return "the disc's tracks could not be read"
+        if f.rel_path.lower().endswith(RVZ_SUFFIX):
+            return "the disc could not be read"
+        if any(
+            rel == f.rel_path and member.name.lower().endswith(RVZ_SUFFIX)
+            for rel, member in found.members
+        ):
+            return "an RVZ inside an archive: convert it first"
         if f.size > self.settings.lookups.max_hash_bytes:
             return "too large to hash for a lookup"
         return "no ROM data to look up"
@@ -629,7 +643,7 @@ class Scanner:
             hashes = found.hashes[f.rel_path]
             skipped = None
             if not hashes:
-                skipped = self._why_no_hashes(f)
+                skipped = self._why_no_hashes(f, found)
             elif payload_count(hashes) > 1:
                 # One answer would name one game and hide the others in the archive.
                 skipped = "several ROM files in one archive"

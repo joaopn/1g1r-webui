@@ -106,7 +106,8 @@ def _ask(settings: Settings, conn, h: ContentHash, post: Post, refresh: bool) ->
         and not (refresh and not cached["found"])
     ):
         return json.loads(cached["body"]) if cached["found"] else None
-    body = json.dumps({"crc": h.crc32, "md5": h.md5, "sha1": h.sha1}).encode()
+    sent = {"crc": h.crc32, "md5": h.md5, "sha1": h.sha1}
+    body = json.dumps({key: value for key, value in sent.items() if value}).encode()
     headers = {"Content-Type": "application/json", "User-Agent": config.user_agent}
     status, answer = post(config.url, body, headers, config.timeout_seconds)
     if status == HTTPStatus.NOT_FOUND:

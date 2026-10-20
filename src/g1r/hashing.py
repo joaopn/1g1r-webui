@@ -3,7 +3,8 @@
 The data is the bare file, or each ROM member of a zip; on platforms with copier headers
 the header-stripped data is hashed too, since databases list either form. On platforms whose
 dumps come in several byte orders (N64), a swapped file is hashed in the native order too.
-A CHD stands for its largest data track (decoded by `chd_track_hashes`), never for itself.
+A CHD stands for its largest data track (decoded by `chd_track_hashes`), never for itself;
+an RVZ for its disc (decoded by `rvz_disc_hash`).
 """
 
 import hashlib
@@ -16,6 +17,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
+from g1r import discs
 from g1r.config import ByteOrderConfig, HeaderRule, Settings
 
 FULL = "full"
@@ -89,6 +91,7 @@ class ContentHash:
     variant: str
     size: int
     crc32: str
+    # Empty when not computed (an RVZ's disc: Hasheous answers to CRC32 and SHA1).
     md5: str
     sha1: str
 
@@ -136,9 +139,7 @@ RVZ_HEADERS = ">4sIII20sQQ20sIIII6sBB"
 RVZ_SUFFIX = ".rvz"
 
 
-def rvz_identity(path: Path) -> str | None:
-    """Which disc an RVZ holds, cheaply (no hashing): its size, game ID, disc and revision.
-    Equal identities are only candidates; `payload_sha1` decides."""
+def _rvz_header(path: Path) -> tuple | None:
     size = struct.calcsize(RVZ_HEADERS)
     try:
         with path.open("rb") as handle:
@@ -147,11 +148,17 @@ def rvz_identity(path: Path) -> str | None:
         return None
     if len(header) < size:
         return None
-    tag, *_, disc_size, _, _, _, _, _, _, game_id, disc, revision = struct.unpack(
-        RVZ_HEADERS, header
-    )
-    if tag != RVZ_TAG:
+    fields = struct.unpack(RVZ_HEADERS, header)
+    return fields if fields[0] == RVZ_TAG else None
+
+
+def rvz_identity(path: Path) -> str | None:
+    """Which disc an RVZ holds, cheaply (no hashing): its size, game ID, disc and revision.
+    Equal identities are only candidates; `payload_sha1` decides."""
+    header = _rvz_header(path)
+    if header is None:
         return None
+    _, *_, disc_size, _, _, _, _, _, _, game_id, disc, revision = header
     return f"{disc_size}:{game_id.hex()}:{disc}:{revision}"
 
 
@@ -203,6 +210,24 @@ def chd_track_hashes(settings: Settings, path: Path) -> dict | None:
         return None
 
 
+# Reads the disc an RVZ holds: its hashes, or None when the disc cannot be read.
+RvzReader = Callable[[Settings, Path], ContentHash | None]
+
+
+def rvz_disc_hash(settings: Settings, path: Path) -> ContentHash | None:
+    """The disc's CRC32 and SHA1, decoded by dolphin-tool (no size cap, nothing on disk)."""
+    header = _rvz_header(path)
+    if header is None:
+        return None
+    dolphin = settings.dolphin
+    try:
+        found = discs.rvz_digests(dolphin, settings.paths.data_dir / dolphin.user_dir, path)
+    except discs.DiscError:
+        return None
+    _, *_, disc_size, _, _, _, _, _, _, _, _, _ = header
+    return ContentHash(FULL, disc_size, found[discs.CRC32], "", found[discs.SHA1])
+
+
 def disc_track(settings: Settings, read: dict | None) -> ContentHash | None:
     """The track a disc is looked up by: its largest data track."""
     tracks = [
@@ -222,13 +247,21 @@ def payload_count(hashes: list[ContentHash]) -> int:
 
 
 def content_hashes(
-    settings: Settings, platform: str, path: Path, read_chd: ChdReader = chd_track_hashes
+    settings: Settings,
+    platform: str,
+    path: Path,
+    read_chd: ChdReader = chd_track_hashes,
+    read_rvz: RvzReader = rvz_disc_hash,
 ) -> list[ContentHash]:
     if path.suffix.lower() == CHD_SUFFIX:
         track = disc_track(settings, read_chd(settings, path))
         return [track] if track is not None else []
+    if path.suffix.lower() == RVZ_SUFFIX:
+        disc = read_rvz(settings, path)
+        return [disc] if disc is not None else []
     profile = settings.platforms.profiles[platform]
-    extensions = {e.lower() for e in profile.rom_extensions}
+    # An RVZ inside an archive cannot be decoded where it is; its bytes are a container's.
+    extensions = {e.lower() for e in profile.rom_extensions} - {RVZ_SUFFIX.lstrip(".")}
     rules = settings.headers.get(platform, [])
     byte_order = settings.byte_orders.get(platform)
     found: list[ContentHash] = []

@@ -29,6 +29,10 @@ CREATEDVD = "createdvd"
 RVZ = "rvz"
 
 _SHA1_LINE = re.compile(r"^[0-9a-f]{40}$")
+# `dolphin-tool verify` without -a prints "CRC32: <hex>" and "SHA1: <hex>" (and no MD5).
+_DIGEST_LINE = re.compile(r"^(CRC32|SHA1): ([0-9a-f]+)$")
+CRC32 = "CRC32"
+SHA1 = "SHA1"
 # The extracted copy's names inside a work directory; %t is chdman's track number.
 EXTRACTED_CUE = "disc.cue"
 EXTRACTED_TRACKS = "track%t.bin"
@@ -158,3 +162,12 @@ def rvz_sha1(config: DolphinConfig, user_dir: Path, rvz: Path) -> str:
     if not found:
         raise DiscError("dolphin-tool verify gave no SHA1")
     return found[-1]
+
+
+def rvz_digests(config: DolphinConfig, user_dir: Path, rvz: Path) -> dict[str, str]:
+    """The CRC32 and SHA1 of the disc an RVZ holds, from one decode; MD5 would take another."""
+    out = _run(config, ["verify", "-u", str(user_dir), "-i", str(rvz)])
+    found = dict(m.groups() for line in out.splitlines() if (m := _DIGEST_LINE.match(line.strip())))
+    if CRC32 not in found or SHA1 not in found:
+        raise DiscError("dolphin-tool verify gave no CRC32 and SHA1")
+    return found
