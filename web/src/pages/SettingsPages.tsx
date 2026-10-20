@@ -600,6 +600,7 @@ export function AdvancedSettingsPage() {
   const data = useSettingsData();
   if (!data.data) return <p className="text-muted-foreground">Loading…</p>;
   const parallel = data.data.parallel_scans;
+  const conversions = data.data.parallel_conversions;
   const threads = data.data.igir_threads;
   return (
     <Page
@@ -626,6 +627,20 @@ export function AdvancedSettingsPage() {
         How many folders are scanned at a time; further scans wait in line. Applies (moves,
         conversions, restores) run one at a time, apart from scans. Default {parallel.default}, at
         most {parallel.max}.
+      </NumberSetting>
+      <NumberSetting
+        title="Parallel conversions"
+        label="Parallel conversions"
+        path="/settings/parallel-conversions"
+        saved="Parallel conversions saved"
+        value={conversions.value}
+        current={conversions.value}
+        isDefault={conversions.value === conversions.default}
+        max={conversions.max}
+      >
+        How many files a conversion run converts at a time, each from unpacking to moving its
+        original. Unpacked copies are deleted as soon as the output is written. Default{" "}
+        {conversions.default}, at most {conversions.max}. Applies from the next run.
       </NumberSetting>
       <NumberSetting
         title="igir threads per scan"

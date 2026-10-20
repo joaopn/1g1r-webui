@@ -1,3 +1,4 @@
+import threading
 import zipfile
 import zlib
 from http import HTTPStatus
@@ -290,3 +291,86 @@ def test_the_unpacked_disc_is_deleted_once_the_chd_is_written(make_settings, tmp
     )
     assert output.read_bytes() == image and not work.exists()
 
+
+# Parallel conversion runs --------------------------------------------------------------
+
+
+def _conversion_plan(folder: Path, names: list[str]) -> list[journal.Move]:
+    plan = []
+    for name in names:
+        rom = folder / f"{name}.nes"
+        rom.write_bytes(name.encode())
+        plan.append(step(rom, folder / f"{name}.zip", paired_rel=f"{name}.zip"))
+        stat = rom.stat()
+        common = (rom.name, "", "originals", rom, None, stat.st_size, stat.st_mtime_ns)
+        plan.append(journal.Move(*common, action=journal.DELETE, follows=True))
+    return plan
+
+
+def _conversion_run(tmp_path, plan):
+    conn = db.connect(tmp_path / "state.db", 1000)
+    db.migrate(conn)
+    return conn, journal.start_run(conn, "f", journal.APPLY, journal.CONVERT, len(plan))
+
+
+def test_a_conversion_run_converts_several_files_at_a_time(make_settings, tmp_path):
+    """Each conversion waits until the other has started too: one at a time, both fail."""
+    folder = tmp_path / "folder"
+    folder.mkdir()
+    names = ["a", "b"]
+    plan = _conversion_plan(folder, names)
+    conn, run_id = _conversion_run(tmp_path, plan)
+    both = threading.Barrier(len(names), timeout=1)
+    wrap = Converter(make_settings())
+
+    def convert(m):
+        both.wait()
+        return wrap(m)
+
+    journal.run(CONFIG, conn, run_id, "f", plan, convert, workers=len(names))
+    run = journal.progress(conn, run_id)
+    assert (run["status"], run["message"]) == ("done", "2 files converted")
+    for name in names:
+        assert (folder / f"{name}.zip").exists() and not (folder / f"{name}.nes").exists()
+    # Each delete finishes the conversion of its own file.
+    steps = conn.execute("SELECT id, rel_path, action, step_of FROM operation").fetchall()
+    converts = {s["rel_path"]: s["id"] for s in steps if s["action"] == journal.CONVERT}
+    for s in steps:
+        if s["action"] == journal.DELETE:
+            assert s["step_of"] == converts[s["rel_path"]]
+
+
+def test_a_failed_conversion_starts_no_other_and_keeps_its_original(
+    make_settings, tmp_path, monkeypatch
+):
+    """b fails while a is converting: a still finishes, c and d never start."""
+    folder = tmp_path / "folder"
+    folder.mkdir()
+    plan = _conversion_plan(folder, ["a", "b", "c", "d"])
+    conn, run_id = _conversion_run(tmp_path, plan)
+    wrap = Converter(make_settings())
+    failed = threading.Event()
+    set_state = journal._set_state
+
+    def recording(conn_, op_id, state, error="", moved=None):
+        set_state(conn_, op_id, state, error, moved)
+        if state == journal.FAILED:
+            failed.set()
+
+    monkeypatch.setattr(journal, "_set_state", recording)
+    started = []
+
+    def convert(m):
+        started.append(m.rel_path)
+        if m.rel_path == "b.nes":
+            raise moves.MoveError("chdman exited with 1")
+        assert failed.wait(timeout=1)
+        return wrap(m)
+
+    journal.run(CONFIG, conn, run_id, "f", plan, convert, workers=1 + 1)
+    run = journal.progress(conn, run_id)
+    assert run["status"] == "failed" and "chdman exited with 1" in run["message"]
+    assert sorted(started) == ["a.nes", "b.nes"]
+    assert (folder / "a.zip").exists() and not (folder / "a.nes").exists()
+    assert (folder / "b.nes").exists() and not (folder / "b.zip").exists()
+    assert (folder / "c.nes").exists() and (folder / "d.nes").exists()

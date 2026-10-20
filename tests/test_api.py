@@ -429,6 +429,23 @@ def test_parallel_scans_are_set_in_the_ui_within_the_configured_max(setup):
     assert reset["parallel_scans"]["value"] == jobs.scan_workers
 
 
+def test_parallel_conversions_are_set_in_the_ui_within_the_configured_max(setup):
+    client, store, settings = setup
+    jobs = settings.jobs
+    assert client.get("/api/settings").json()["parallel_conversions"] == {
+        "value": jobs.conversion_workers,
+        "default": jobs.conversion_workers,
+        "max": jobs.max_conversion_workers,
+    }
+    chosen = jobs.max_conversion_workers
+    saved = client.put("/api/settings/parallel-conversions", json={"value": chosen}).json()
+    assert saved["parallel_conversions"]["value"] == chosen == store.load().parallel_conversions
+    too_many = client.put("/api/settings/parallel-conversions", json={"value": chosen + 1})
+    assert too_many.status_code == HTTPStatus.BAD_REQUEST
+    reset = client.put("/api/settings/parallel-conversions", json={"value": None}).json()
+    assert reset["parallel_conversions"]["value"] == jobs.conversion_workers
+
+
 def test_igir_threads_are_igir_s_own_until_set(setup):
     client, store, settings = setup
     assert client.get("/api/settings").json()["igir_threads"]["value"] is None

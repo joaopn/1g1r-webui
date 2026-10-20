@@ -336,6 +336,8 @@ export type SettingsData = {
   fuzzy: { min_score: number; max_suggestions: number; auto_match_threshold: number | null };
   /** How many folder scans run at a time: the value in use, the default and the most. */
   parallel_scans: { value: number; default: number; max: number };
+  /** How many files one conversion run converts at a time. */
+  parallel_conversions: { value: number; default: number; max: number };
   /** Threads per igir run; null: igir's own (its default readers and pool). */
   igir_threads: {
     value: number | null;

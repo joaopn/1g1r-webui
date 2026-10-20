@@ -2,9 +2,10 @@
 
 Scans of different folders run side by side, as many as the library's limit allows (read
 again whenever a scan waits, so a new limit applies at once); queued scans start in order.
-Applies run apart from them, so an apply never waits behind a long scan. Each job opens its
-own connection. Starting a job goes through one lock, so a scan and an apply can never both
-start on a folder.
+Applies run apart from them, so an apply never waits behind a long scan; a conversion run
+converts several files at a time, as many as the library's limit allows when it starts. Each
+job opens its own connection. Starting a job goes through one lock, so a scan and an apply can
+never both start on a folder.
 """
 
 import threading
@@ -80,14 +81,16 @@ class Jobs:
             if reason:
                 raise journal.PlanError(reason)
             plan = check()
+            store = self.scanner.store
+            workers = store.parallel_conversions(store.load())
             run_id = journal.start_run(conn, label, kind, scope, len(plan))
-        self.applies.submit(self._run_apply, run_id, label, plan, after)
+        self.applies.submit(self._run_apply, run_id, label, plan, workers, after)
         return run_id
 
-    def _run_apply(self, run_id: int, label: str, plan, after=None) -> None:
+    def _run_apply(self, run_id: int, label: str, plan, workers: int, after=None) -> None:
         conn = self._connect()
         try:
-            journal.run(self.settings.apply, conn, run_id, label, plan, self.converter)
+            journal.run(self.settings.apply, conn, run_id, label, plan, self.converter, workers)
         finally:
             conn.close()
             if after is not None:

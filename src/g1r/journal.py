@@ -11,8 +11,10 @@ import hashlib
 import os
 import shutil
 import sqlite3
+import threading
 import zipfile
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
@@ -678,50 +680,105 @@ def run(
     label: str,
     plan: list[Move],
     convert: Convert | None = None,
+    workers: int = 1,
 ) -> None:
-    """Carry out a planned run; stops at the first failure, leaving that file in place."""
+    """Carry out a planned run; stops at the first failure, leaving that file in place.
+    A conversion run carries out `workers` conversions at a time, each with the steps that
+    finish it; once one fails, no further conversion starts, and those under way finish."""
     try:
-        _run(config, conn, run_id, label, plan, convert)
+        _run(config, conn, run_id, label, plan, convert, workers)
     except Exception as exc:  # a background run must never stay 'running'
         _finish_run(conn, run_id, FAILED, f"unexpected error: {exc!r}")
         raise
 
 
-def _run(config, conn, run_id: int, label: str, plan: list[Move], convert) -> None:
-    kind = conn.execute("SELECT kind FROM apply_run WHERE id = ?", (run_id,)).fetchone()[0]
-    done = 0
-    converting = None  # the convert step the following steps finish
+def _units(plan: list[Move]) -> list[list[Move]]:
+    """The plan in pieces that run in order: a step and the steps that follow it."""
+    units: list[list[Move]] = []
     for m in plan:
-        op_id = conn.execute(
-            "INSERT INTO operation (run_id, folder_label, rel_path, group_key, reason, source, "
-            "destination, size, mtime_ns, state, action, step_of) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                run_id,
-                label,
-                m.rel_path,
-                m.group_key,
-                m.reason,
-                str(m.source),
-                str(m.destination) if m.destination else "",
-                m.size,
-                m.mtime_ns,
-                STARTED,
-                m.action,
-                converting if m.follows else m.step_of,
-            ),
-        ).lastrowid
+        if m.follows and units:
+            units[-1].append(m)
+        else:
+            units.append([m])
+    return units
+
+
+def _run(config, conn, run_id: int, label: str, plan: list[Move], convert, workers) -> None:
+    kind = conn.execute("SELECT kind FROM apply_run WHERE id = ?", (run_id,)).fetchone()[0]
+    # The connection is shared by the workers; the files are worked on outside the lock.
+    lock = threading.Lock()
+    done = 0
+    failure: list[str] = []
+
+    def carry_unit(unit: list[Move]) -> None:
         try:
-            moved = _carry_out(config, convert, m)
-        except (moves.MoveError, OSError) as exc:
-            _set_state(conn, op_id, FAILED, str(exc))
-            _finish_run(conn, run_id, FAILED, f"stopped after {done} of {len(plan)} steps: {exc}")
-            return
-        _settle(conn, kind, label, op_id, m, moved)
-        if m.action == CONVERT:
-            converting = op_id
-        done += 1
-    _finish_run(conn, run_id, DONE, _summary(kind, plan, done))
+            carry_steps(unit)
+        except Exception as exc:  # stops the other workers too; run() records it
+            with lock:
+                failure.append(repr(exc))
+            raise
+
+    def carry_steps(unit: list[Move]) -> None:
+        nonlocal done
+        converting = None  # the convert step the following steps finish
+        with lock:
+            if failure:
+                return  # nothing new starts; a started unit is finished below
+        for m in unit:
+            with lock:
+                op_id = _start_step(conn, run_id, label, m, converting)
+            try:
+                moved = _carry_out(config, convert, m)
+            except (moves.MoveError, OSError) as exc:
+                with lock:
+                    _set_state(conn, op_id, FAILED, str(exc))
+                    failure.append(str(exc))
+                return
+            with lock:
+                _settle(conn, kind, label, op_id, m, moved)
+                done += 1
+            if m.action == CONVERT:
+                converting = op_id
+
+    units = _units(plan)
+    if workers > 1 and any(m.action == CONVERT for m in plan):
+        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="g1r-convert") as pool:
+            for future in [pool.submit(carry_unit, unit) for unit in units]:
+                future.result()
+    else:
+        for unit in units:
+            carry_unit(unit)
+            if failure:
+                break
+    if failure:
+        _finish_run(
+            conn, run_id, FAILED, f"stopped after {done} of {len(plan)} steps: {failure[0]}"
+        )
+    else:
+        _finish_run(conn, run_id, DONE, _summary(kind, plan, done))
+
+
+def _start_step(conn, run_id: int, label: str, m: Move, converting: int | None) -> int:
+    """Journal the step as started, before its file is touched."""
+    return conn.execute(
+        "INSERT INTO operation (run_id, folder_label, rel_path, group_key, reason, source, "
+        "destination, size, mtime_ns, state, action, step_of) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            run_id,
+            label,
+            m.rel_path,
+            m.group_key,
+            m.reason,
+            str(m.source),
+            str(m.destination) if m.destination else "",
+            m.size,
+            m.mtime_ns,
+            STARTED,
+            m.action,
+            converting if m.follows else m.step_of,
+        ),
+    ).lastrowid
 
 
 def progress(conn: sqlite3.Connection, run_id: int) -> dict | None:

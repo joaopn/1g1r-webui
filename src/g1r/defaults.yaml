@@ -789,6 +789,11 @@ jobs:
   # apply never waits behind a long scan; one at a time keeps each run's free-space check
   # true while it runs.
   apply_workers: 1
+  # Inside a conversion run, this many files convert at a time, each through its whole
+  # pipeline (unpack, convert, verify, move or delete the original), unless set in
+  # Settings -> Advanced, up to max_conversion_workers.
+  conversion_workers: 2
+  max_conversion_workers: 8
   # A running scan writes how far it is at most this often.
   progress_interval_seconds: 0.5
 

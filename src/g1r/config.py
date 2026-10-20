@@ -374,11 +374,15 @@ class JobsConfig(_Strict):
     scan_workers: int = Field(gt=0)
     max_scan_workers: int = Field(gt=0)
     apply_workers: int = Field(gt=0)
+    conversion_workers: int = Field(gt=0)
+    max_conversion_workers: int = Field(gt=0)
 
     @model_validator(mode="after")
     def _default_within_max(self):
         if self.scan_workers > self.max_scan_workers:
             raise ValueError("jobs.scan_workers is above jobs.max_scan_workers")
+        if self.conversion_workers > self.max_conversion_workers:
+            raise ValueError("jobs.conversion_workers is above jobs.max_conversion_workers")
         return self
 
     progress_interval_seconds: float = Field(ge=0)

@@ -147,7 +147,7 @@ class Ignored(BaseModel):
     patterns: list[str]
 
 
-class ParallelScans(BaseModel):
+class JobLimit(BaseModel):
     # None: back to the configured default.
     value: int | None = Field(default=None, gt=0)
 
@@ -1151,6 +1151,11 @@ def build_router(
                 "default": settings.jobs.scan_workers,
                 "max": settings.jobs.max_scan_workers,
             },
+            "parallel_conversions": {
+                "value": store.parallel_conversions(library),
+                "default": settings.jobs.conversion_workers,
+                "max": settings.jobs.max_conversion_workers,
+            },
             "igir_threads": {
                 "value": store.igir_threads(library),
                 "default_readers": settings.igir.default_reader_threads,
@@ -1182,11 +1187,20 @@ def build_router(
         return get_settings()
 
     @router.put("/settings/parallel-scans")
-    def save_parallel_scans(body: ParallelScans, request: Request):
+    def save_parallel_scans(body: JobLimit, request: Request):
         if body.value is not None and body.value > settings.jobs.max_scan_workers:
             raise bad_request(f"at most {settings.jobs.max_scan_workers} scans at a time")
         store.update(lambda lib: setattr(lib, "parallel_scans", body.value))
         request.app.state.jobs.limit_changed()
+        return get_settings()
+
+    @router.put("/settings/parallel-conversions")
+    def save_parallel_conversions(body: JobLimit):
+        if body.value is not None and body.value > settings.jobs.max_conversion_workers:
+            raise bad_request(
+                f"at most {settings.jobs.max_conversion_workers} conversions at a time"
+            )
+        store.update(lambda lib: setattr(lib, "parallel_conversions", body.value))
         return get_settings()
 
     @router.put("/settings/igir-threads")

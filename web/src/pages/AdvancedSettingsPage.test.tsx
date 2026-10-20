@@ -12,6 +12,7 @@ test("parallel scans sit above the configuration and save within the most allowe
     return new Response(
       JSON.stringify({
         parallel_scans: { value: 4, default: 4, max: 16 },
+        parallel_conversions: { value: 2, default: 2, max: 8 },
         igir_threads: { value: null, default_readers: 6, default_pool: 4, max: 64 },
         effective_yaml: "jobs:\n  scan_workers: 4\n",
         library_file: "/data/library.yaml",
@@ -49,6 +50,7 @@ test("igir threads start at igir's own and save a chosen number", async () => {
     return new Response(
       JSON.stringify({
         parallel_scans: { value: 4, default: 4, max: 16 },
+        parallel_conversions: { value: 2, default: 2, max: 8 },
         igir_threads: { value: null, default_readers: 6, default_pool: 4, max: 64 },
         effective_yaml: "",
         library_file: "/data/library.yaml",
@@ -70,4 +72,40 @@ test("igir threads start at igir's own and save a chosen number", async () => {
   await userEvent.type(input, "2");
   await userEvent.click(screen.getByRole("button", { name: "Save igir threads" }));
   await vi.waitFor(() => expect(sent).toEqual([["/api/settings/igir-threads", { value: 2 }]]));
+});
+
+test("parallel conversions save to their own setting", async () => {
+  const sent: unknown[] = [];
+  vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+    if (init?.method === "PUT") sent.push([url, JSON.parse(String(init.body))]);
+    return new Response(
+      JSON.stringify({
+        parallel_scans: { value: 4, default: 4, max: 16 },
+        parallel_conversions: { value: 2, default: 2, max: 8 },
+        igir_threads: { value: null, default_readers: 6, default_pool: 4, max: 64 },
+        effective_yaml: "",
+        library_file: "/data/library.yaml",
+      }),
+    );
+  });
+  queryClient.clear();
+  render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>
+        <AdvancedSettingsPage />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+  const input = await screen.findByLabelText("Parallel conversions");
+  expect(input).toHaveValue(2);
+  const save = screen.getByRole("button", { name: "Save parallel conversions" });
+  await userEvent.clear(input);
+  await userEvent.type(input, "9");
+  expect(save).toBeDisabled();
+  await userEvent.clear(input);
+  await userEvent.type(input, "3");
+  await userEvent.click(save);
+  await vi.waitFor(() =>
+    expect(sent).toEqual([["/api/settings/parallel-conversions", { value: 3 }]]),
+  );
 });
