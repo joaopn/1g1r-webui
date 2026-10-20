@@ -33,6 +33,8 @@ class GameInfo:
     regions: tuple[str, ...]
     languages: tuple[str, ...]
     serial: str | None
+    # The name's other tags ("Unl", "Virtual Console"), its ROM names' included.
+    notes: tuple[str, ...] = ()
 
 
 @dataclass
@@ -106,9 +108,20 @@ def _info(settings: Settings, game: DatGame, style: str, names_from: str) -> Gam
             year = year or parens[0]
             if len(parens) > 1:
                 publisher = publisher or parens[1]
+        notes = [t for t in parsed.other_tags if t not in (year, publisher)]
     else:
         parsed = parse_name(shown, settings.names)
-    return GameInfo(shown, year, publisher, parsed.regions, parsed.languages, game.serial)
+        notes = list(parsed.other_tags)
+        # The libretro mirror tags some entries on the ROM name only.
+        for rom in game.roms:
+            notes += parse_name(rom.name, settings.names).other_tags
+    labels = settings.statistics.note_labels
+    # Spelled-out notes first, so sorting by them keeps those games together.
+    notes = [labels[n] for n in notes if n in labels] + [n for n in notes if n not in labels]
+    notes = list(dict.fromkeys(notes))
+    return GameInfo(
+        shown, year, publisher, parsed.regions, parsed.languages, game.serial, tuple(notes)
+    )
 
 
 _cache: dict[tuple, DatGames] = {}
@@ -211,11 +224,15 @@ def _joined(values) -> str | None:
     return ", ".join(seen) or None
 
 
-def missing_rows(games: DatGames, keys: list[str]) -> list[dict]:
-    """One row per missing game: the distinct values of its versions, joined."""
+def missing_rows(settings: Settings, games: DatGames, keys: list[str]) -> list[dict]:
+    """One row per missing game: the distinct values of its versions, joined. `marked`: a
+    note is a spelled-out one (statistics.note_labels: Unlicensed)."""
+    labelled = set(settings.statistics.note_labels.values())
     rows = []
     for key in keys:
         infos = [games.info[n] for n in games.members[key]]
+        notes = [n for i in infos for n in i.notes]
+        notes = [n for n in notes if n in labelled] + [n for n in notes if n not in labelled]
         rows.append(
             {
                 "key": key,
@@ -226,6 +243,8 @@ def missing_rows(games: DatGames, keys: list[str]) -> list[dict]:
                 "regions": _joined(r for i in infos for r in i.regions),
                 "languages": _joined(lang for i in infos for lang in i.languages),
                 "serials": _joined(i.serial for i in infos),
+                "notes": _joined(notes),
+                "marked": any(n in labelled for n in notes),
                 "entries": [i.name for i in infos],
             }
         )

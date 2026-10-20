@@ -522,7 +522,7 @@ def build_router(
             "dat": row_dict(version),
             "covered": covered,
             "total": total,
-            "rows": statistics.missing_rows(games, missing),
+            "rows": statistics.missing_rows(settings, games, missing),
         }
 
     @router.post("/folders", status_code=HTTPStatus.CREATED)

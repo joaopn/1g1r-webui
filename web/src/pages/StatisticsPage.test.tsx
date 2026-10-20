@@ -94,7 +94,22 @@ const MISSING: Missing = {
       regions: "Japan, USA",
       languages: null,
       serials: null,
+      notes: "Zzz Collection",
+      marked: false,
       entries: ["Solo (Japan)", "Solo (USA)"],
+    },
+    {
+      key: "name:Tetris",
+      name: "Tetris",
+      versions: 1,
+      years: null,
+      publishers: null,
+      regions: "USA",
+      languages: null,
+      serials: null,
+      notes: "Unlicensed",
+      marked: true,
+      entries: ["Tetris (USA) (Unl)"],
     },
   ],
 };
@@ -142,4 +157,23 @@ test("coverage per DAT source, empty cells, DAT info and the missing games", asy
   expect(solo).toHaveTextContent("Japan, USA");
   // No version has a language: the column starts hidden.
   expect(within(dialog).queryByText("Languages")).toBeNull();
+  expect(within(dialog).getByTestId("missing-name:Tetris")).toHaveTextContent("Unlicensed");
+
+  // Sorting by Obs: unlicensed games first in ascending order, last in descending (even
+  // before a note that sorts later in the alphabet).
+  const order = () =>
+    within(dialog)
+      .getAllByTestId(/^missing-name:/)
+      .map((row) => row.dataset.testid);
+  expect(order()).toEqual(["missing-name:Solo", "missing-name:Tetris"]);
+  const obs = within(dialog).getByRole("button", { name: /Obs/ });
+  await userEvent.click(obs);
+  expect(order()).toEqual(["missing-name:Tetris", "missing-name:Solo"]);
+  await userEvent.click(obs);
+  expect(order()).toEqual(["missing-name:Solo", "missing-name:Tetris"]);
+  // The page's own table keeps its order.
+  expect(screen.getAllByTestId(/^statistics-/).map((r) => r.dataset.testid)).toEqual([
+    "statistics-nes",
+    "statistics-psx",
+  ]);
 });

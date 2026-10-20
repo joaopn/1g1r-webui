@@ -234,6 +234,14 @@ function MissingDialog({
       title: (g) => g.serials ?? undefined,
     },
     {
+      id: "notes",
+      label: "Obs",
+      render: (g) => text(g.notes),
+      // Unlicensed games first (ascending) or last (descending), as one block.
+      sortValue: (g) => `${g.marked ? "0" : "1"} ${text(g.notes)}`,
+      title: (g) => g.notes ?? undefined,
+    },
+    {
       id: "versions",
       label: "Versions",
       className: "text-right tabular-nums",
@@ -281,7 +289,7 @@ function MissingDialog({
           searchPlaceholder="Search games"
           meta={meta}
           paramPrefix={MISSING_PREFIX}
-          note="values of different versions are joined with commas"
+          note="values of different versions are joined with commas; click a header to sort"
         />
       ) : null}
     </DialogContent>
@@ -289,7 +297,7 @@ function MissingDialog({
 }
 
 // The missing games' columns a DAT may have no data for (No-Intro and Redump give no years).
-const OPTIONAL = ["years", "publishers", "regions", "languages", "serials"] as const;
+const OPTIONAL = ["years", "publishers", "regions", "languages", "serials", "notes"] as const;
 type Optional = (typeof OPTIONAL)[number];
 const isOptional = (id: string): id is Optional => (OPTIONAL as readonly string[]).includes(id);
 

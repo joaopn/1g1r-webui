@@ -58,17 +58,21 @@ def test_coverage_counts_games_one_version_is_enough(make_settings):
         game("Unreleased (USA) (Proto)", "05"),
         game("Solo (Japan)", "06", year="1987", manufacturer="Konami"),
         game("Solo (USA)", "07", year="1988", manufacturer="Konami"),
+        game("Tetris (USA) (Tengen)", "08", rom_name="Tetris (USA) (Tengen) (Unl).nes"),
     )
     games = statistics.dat_games(s, "local", local, NOINTRO_STYLE, "name")
     # Contra, Gradius and Solo; the prototype-only game is not counted.
-    assert sorted(games.labels.values()) == ["Contra", "Gradius", "Solo"]
+    assert sorted(games.labels.values()) == ["Contra", "Gradius", "Solo", "Tetris (Tengen)"]
 
     # The Japanese Contra; only the prototype of Gradius (it covers nothing).
     have = statistics.Identified({"Contra (Japan)", "Gradius (USA) (Proto)"})
     covered, total, missing = statistics.coverage(games, have)
-    assert (covered, total) == (1, 3)
-    rows = statistics.missing_rows(games, missing)
-    assert [r["name"] for r in rows] == ["Gradius", "Solo"]
+    assert (covered, total) == (1, 4)
+    rows = statistics.missing_rows(s, games, missing)
+    assert [r["name"] for r in rows] == ["Gradius", "Solo", "Tetris (Tengen)"]
+    # Obs: the other tags, the spelled-out ones first, from the ROM names too.
+    assert rows[2]["notes"] == "Unlicensed, Tengen" and rows[2]["marked"]
+    assert rows[1]["notes"] is None and not rows[1]["marked"]
     solo = rows[1]
     assert solo["years"] == "1987, 1988" and solo["publishers"] == "Konami"
     assert solo["regions"] == "Japan, USA" and solo["versions"] == 2

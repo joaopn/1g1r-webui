@@ -534,6 +534,7 @@ class StatisticsConfig(_Strict):
     excluded_tags: list[str]
     tosec_excluded_flags: list[str]
     tosec_year_pattern: str
+    note_labels: dict[str, str] = Field(default_factory=dict)
 
 
 class GroupingConfig(_Strict):

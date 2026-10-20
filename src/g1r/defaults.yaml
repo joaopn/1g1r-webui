@@ -108,8 +108,9 @@ ui:
     regions: {rem: 8, min: 5, max: 24}
     languages: {rem: 7, min: 4, max: 24}
     serials: {rem: 9, min: 5, max: 24}
+    notes: {rem: 12, min: 5, max: 40}
     versions: {rem: 4.5, min: 4, max: 8}
-  missing_columns_default: [name, years, publishers, regions, languages, versions]
+  missing_columns_default: [name, years, publishers, regions, languages, notes, versions]
   # Decimals shown in a coverage percentage.
   percent_digits: 1
 
@@ -950,6 +951,9 @@ statistics:
   tosec_excluded_flags: [cr, f, h, m, p, t, tr, b, o, u, v]
   # The first tag of a TOSEC name is its year when it matches this ("1987", "19xx").
   tosec_year_pattern: "^[0-9x]{4}"
+  # The missing games' Obs column lists the versions' other name tags; these read better
+  # spelled out.
+  note_labels: {Unl: Unlicensed}
 
 grouping:
   # When a DAT has no parent/clone data and Retool has no entry, versions are grouped by

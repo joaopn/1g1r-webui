@@ -472,6 +472,10 @@ export type MissingGame = {
   regions: string | null;
   languages: string | null;
   serials: string | null;
+  /** Obs: the versions' other name tags ("Unlicensed", "Virtual Console"). */
+  notes: string | null;
+  /** A note is a spelled-out one (Unlicensed): sorting by Obs keeps these together. */
+  marked: boolean;
   entries: string[];
 };
 
