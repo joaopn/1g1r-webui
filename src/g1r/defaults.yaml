@@ -353,7 +353,8 @@ platforms:
       kind: handheld
       aliases: ["atarilynx", "atari lynx"]
       dat_name: Atari - Lynx
-      rom_extensions: [lnx, lyx]
+      # No-Intro lists aftermarket games as BLL executables, .bll.
+      rom_extensions: [lnx, lyx, bll]
       targets: [zip, plain]
       default_target: zip
     n64:

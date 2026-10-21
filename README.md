@@ -44,7 +44,7 @@ Files are read bare or inside `.zip`/`.7z`. Files in other formats are listed an
 | Atari 5200 | `a52`, `bin` | zip | No-Intro |
 | Atari 7800 | `a78`, `bin` | zip | No-Intro |
 | Atari Jaguar | `j64`, `jag`, `rom`, `abs`, `cof` | zip | No-Intro |
-| Atari Lynx | `lnx`, `lyx` | zip | No-Intro |
+| Atari Lynx | `lnx`, `lyx`, `bll` (aftermarket executables) | zip | No-Intro |
 | ColecoVision | `col`, `rom`, `bin` | zip | No-Intro |
 | Commodore 64 | `crt`, `d64`; with TOSEC also `d71`, `d81`, `g64`, `nib`, `t64`, `tap`, `prg`, `p00`, `lnx` | zip | No-Intro or TOSEC |
 | Dreamcast | `chd`, `cue`/`bin`, `gdi`; `cdi` kept as it is (chdman cannot read it) | chd | Redump, TOSEC |

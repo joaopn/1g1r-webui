@@ -45,3 +45,16 @@ def test_game_gear_carts_in_master_system_mode_are_game_gear_roms(folder_of):
     assert client.get("/api/folders/gamegear").json()["unsupported"] == []
     assert rows[f"{name}.zip"]["status"] == "done"
     assert rows["Chase H.Q. (USA).sms"]["output"] == "Chase H.Q. (USA).zip"
+
+
+def test_lynx_homebrew_executables_are_lynx_roms(folder_of):
+    # No-Intro's Lynx DAT lists 78 aftermarket games as BLL executables, .bll (B14).
+    client, folder = folder_of("lynx")
+    with zipfile.ZipFile(folder / "2048 (World) (Aftermarket) (Unl).zip", "w") as z:
+        z.writestr("2048 (World) (Aftermarket) (Unl).bll", b"\x80\x08")
+    (folder / "Angry Motes (World) (Aftermarket) (Unl).bll").write_bytes(b"\x80\x08")
+    rows = proposals(client, "lynx")
+    assert client.get("/api/folders/lynx").json()["unsupported"] == []
+    assert rows["2048 (World) (Aftermarket) (Unl).zip"]["status"] == "done"
+    bare = rows["Angry Motes (World) (Aftermarket) (Unl).bll"]
+    assert bare["output"] == "Angry Motes (World) (Aftermarket) (Unl).zip"
