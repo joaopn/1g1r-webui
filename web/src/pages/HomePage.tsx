@@ -243,6 +243,35 @@ function Warnings({
   );
 }
 
+/** Why a set cannot be scanned yet: it needs a DAT. */
+function datGuard(folder: FolderCard): string | undefined {
+  if (!folder.needs_dat) return undefined;
+  return folder.dat_download
+    ? "Please download the DAT first"
+    : "Please upload a DAT in Settings → DATs first";
+}
+
+/** What a set without ROM files yet is waiting for: a DAT or a scan. */
+function emptyNote(folder: FolderCard): string {
+  const guard = datGuard(folder);
+  if (guard) return guard;
+  if (folder.needs_scan) return "Please scan";
+  return "No ROM files found";
+}
+
+/** Stands in for the figures while a set has none: a darker box over the free space above
+ * the buttons, its note centred. */
+function EmptyBox({ folder, children }: { folder: FolderCard; children: ReactNode }) {
+  return (
+    <div
+      className="mt-3 flex flex-1 items-center justify-center rounded-md bg-muted p-4 text-center text-muted-foreground text-sm dark:bg-background"
+      data-testid={`empty-${folder.label}`}
+    >
+      {children}
+    </div>
+  );
+}
+
 function CardActions({ folder }: { folder: FolderCard }) {
   const scan = useStartScan(folder.label);
   const stop = useStopConversion(folder.label);
@@ -258,13 +287,9 @@ function CardActions({ folder }: { folder: FolderCard }) {
     onError: (err) => toast.error(err instanceof ApiError ? err.message : String(err)),
   });
   const running = folder.scan?.status === "running";
-  const guard = folder.needs_dat
-    ? folder.dat_download
-      ? "Download the DAT first"
-      : "Upload a DAT in Settings → DATs first"
-    : undefined;
+  const guard = datGuard(folder);
   return (
-    <div className="relative mt-auto flex flex-wrap items-center gap-2 px-4 pb-4">
+    <div className="relative flex flex-wrap items-center gap-2 px-4 pb-4">
       {folder.dat_download ? (
         <Button
           size="sm"
@@ -297,7 +322,6 @@ function CardActions({ folder }: { folder: FolderCard }) {
           onStop={() => stop.mutate()}
         />
       ) : null}
-      {guard ? <span className="text-muted-foreground text-xs">{guard}</span> : null}
     </div>
   );
 }
@@ -464,21 +488,27 @@ export function HomePage() {
           const converting = conversionProgress(folder);
           // Simplified leaves out the last scan's date; a running conversion, or a running or
           // failed scan, still shows.
-          const scanLine = converting ? (
+          const empty = folder.summary.roms === 0;
+          // A running conversion or scan; on a set without figures it shows in the empty box.
+          const activity = converting ? (
             <span data-testid={`conversion-status-${folder.label}`}>{converting.text}</span>
-          ) : folder.scan ? (
-            folder.scan.status === "done" ? (
-              extended ? (
-                `Scanned ${formatWhen(folder.scan.finished_at)}`
-              ) : null
-            ) : progress ? (
-              <span data-testid={`scan-status-${folder.label}`}>{progress.text}</span>
-            ) : (
-              <span className="text-status-bad">Last scan failed</span>
-            )
-          ) : extended ? (
-            <span className="text-muted-foreground">Not scanned yet</span>
+          ) : folder.scan?.status !== "done" && progress ? (
+            <span data-testid={`scan-status-${folder.label}`}>{progress.text}</span>
           ) : null;
+          const scanLine =
+            activity && !empty ? (
+              activity
+            ) : folder.scan ? (
+              folder.scan.status === "done" ? (
+                extended ? (
+                  `Scanned ${formatWhen(folder.scan.finished_at)}`
+                ) : null
+              ) : progress || empty ? null : (
+                <span className="text-status-bad">Last scan failed</span>
+              )
+            ) : extended && !empty ? (
+              <span className="text-muted-foreground">Not scanned yet</span>
+            ) : null;
           const done = isCompleted(folder);
           const tone = cardTone(folder);
           const target = sectionPath(folder.label, openingSection(folder));
@@ -495,7 +525,7 @@ export function HomePage() {
             >
               <CardProgress folder={folder} />
               {/* The title's link covers the card (::after); links inside sit above it. */}
-              <div className="relative p-4">
+              <div className="relative flex flex-1 flex-col p-4">
                 <div className="flex min-w-0 items-center gap-2">
                   <PlatformIcon platform={platform} />
                   <h2
@@ -529,15 +559,20 @@ export function HomePage() {
                         <span className="text-status-warn">No DAT yet</span>
                       )}
                     </span>
-                    <span className="block min-h-4 truncate">{scanLine}</span>
+                    {empty && !scanLine ? null : (
+                      <span className="block min-h-4 truncate">{scanLine}</span>
+                    )}
                   </p>
                 ) : null}
-                <Warnings
-                  folder={folder}
-                  status={extended ? null : scanLine}
-                  onOpen={() => navigate(target)}
-                />
-                {folder.summary.roms > 0 ? (
+                {/* A set without figures keeps no empty slot: its box says what it waits for. */}
+                {!empty || folder.warnings.length > 0 ? (
+                  <Warnings
+                    folder={folder}
+                    status={extended ? null : scanLine}
+                    onOpen={() => navigate(target)}
+                  />
+                ) : null}
+                {!empty ? (
                   <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2">
                     {stats.map((s) => (
                       <Tooltip key={s.label}>
@@ -563,7 +598,9 @@ export function HomePage() {
                       </Tooltip>
                     ))}
                   </dl>
-                ) : null}
+                ) : (
+                  <EmptyBox folder={folder}>{activity ?? emptyNote(folder)}</EmptyBox>
+                )}
               </div>
               <CardActions folder={folder} />
             </div>

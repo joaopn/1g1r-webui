@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -45,6 +45,9 @@ const card = (label: string, platform: string, scan: Scan | null): FolderCard =>
   warnings: [],
 });
 
+/** A set with figures: its warnings slot and scan line show, not the empty box. */
+const filled = (c: FolderCard): FolderCard => ({ ...c, summary: { ...c.summary, roms: 1 } });
+
 beforeEach(() => localStorage.clear());
 
 function renderPage(folders: FolderCard[]) {
@@ -87,7 +90,9 @@ test("a running scan fills the card by file count and its button waits", async (
 
 test("Simplified has no scan line: a running scan leads the warnings block", async () => {
   localStorage.setItem("g1r.home.detail.v1", JSON.stringify("simplified"));
-  renderPage([card("nes", "nes", { ...SCAN, status: "running", stage: "Reading archives" })]);
+  renderPage([
+    filled(card("nes", "nes", { ...SCAN, status: "running", stage: "Reading archives" })),
+  ]);
   expect(await screen.findByTestId("warnings-nes")).toContainElement(
     screen.getByTestId("scan-status-nes"),
   );
@@ -127,7 +132,10 @@ test("Stop on the card stops the set's conversion; a stopping one says so", asyn
 test("Simplified: a running conversion leads the warnings block", async () => {
   localStorage.setItem("g1r.home.detail.v1", JSON.stringify("simplified"));
   renderPage([
-    { ...card("psx", "psx", SCAN), converting: { done: 0, total: 4, failed: 0, stopping: false } },
+    {
+      ...filled(card("psx", "psx", SCAN)),
+      converting: { done: 0, total: 4, failed: 0, stopping: false },
+    },
   ]);
   expect(await screen.findByTestId("warnings-psx")).toContainElement(
     screen.getByTestId("conversion-status-psx"),
@@ -167,13 +175,38 @@ test("without a DAT the card offers the default one and holds the scan back", as
     },
   ]);
   expect(await screen.findByRole("button", { name: "Scan nes" })).toBeDisabled();
-  expect(screen.getByText("Download the DAT first")).toBeInTheDocument();
+  expect(screen.getByTestId("empty-nes")).toHaveTextContent("Please download the DAT first");
   await userEvent.click(screen.getByRole("button", { name: "Download DAT" }));
   expect(
     calls.some(
       (c) => c.url.endsWith("/dats/nes/download?source=libretro") && c.init?.method === "POST",
     ),
   ).toBe(true);
+});
+
+test("a set without figures shows a box saying what it waits for, in both views", async () => {
+  const folders = [
+    { ...card("nodat", "nes", null), needs_dat: true },
+    card("new", "gb", null),
+    card("empty", "gb", SCAN),
+    {
+      ...card("full", "gb", SCAN),
+      summary: { counts: {}, roms: 1, bytes: 1, identified: 1, unmatched: 0, methods: {} },
+    },
+  ];
+  for (const detail of ["extended", "simplified"]) {
+    localStorage.setItem("g1r.home.detail.v1", JSON.stringify(detail));
+    renderPage(folders);
+    expect(await screen.findByTestId("empty-nodat")).toHaveTextContent(
+      "Please upload a DAT in Settings → DATs first",
+    );
+    expect(screen.getByTestId("empty-new")).toHaveTextContent("Please scan");
+    expect(screen.getByTestId("empty-empty")).toHaveTextContent("No ROM files found");
+    expect(screen.queryByTestId("empty-full")).toBeNull();
+    // The box says it once: no "Not scanned yet" line beside it.
+    expect(screen.queryByText("Not scanned yet")).toBeNull();
+    cleanup();
+  }
 });
 
 test("with a DAT there is no download button", async () => {
@@ -185,7 +218,7 @@ test("with a DAT there is no download button", async () => {
 test("a hint links to where it is acted on, and the card still opens the set", async () => {
   renderPage([
     {
-      ...card("nes", "nes", SCAN),
+      ...filled(card("nes", "nes", SCAN)),
       warnings: [
         {
           level: "info",
@@ -280,6 +313,8 @@ test("Simplified still shows a running scan", async () => {
     card("nes", "nes", { ...SCAN, status: "running", finished_at: null, stage: "Listing files" }),
   ]);
   expect(await screen.findByTestId("scan-status-nes")).toHaveTextContent("Listing files");
+  // A first scan has no figures yet: it shows in the empty box.
+  expect(screen.getByTestId("empty-nes")).toContainElement(screen.getByTestId("scan-status-nes"));
 });
 
 test("a set with nothing left to process gets a green border in both views", async () => {
@@ -417,13 +452,13 @@ test("warnings sit in a two-line slot, most severe first, in full on hover", asy
   );
   renderPage([
     {
-      ...card("nes", "nes", SCAN),
+      ...filled(card("nes", "nes", SCAN)),
       warnings: [
         { level: "warn", text: "Not NES ROMs or archives: 2 files.", link: null },
         { level: "bad", text: "The last scan failed: a long reason.", link: null },
       ],
     },
-    card("gb", "gb", SCAN),
+    filled(card("gb", "gb", SCAN)),
   ]);
   const slot = await screen.findByTestId("warnings-nes");
   expect(slot).toHaveClass("line-clamp-2", "h-8");
