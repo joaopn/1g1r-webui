@@ -1,5 +1,5 @@
 import { Bell, CircleAlert, CircleCheck, LoaderCircle, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -18,7 +18,8 @@ import { isStringArray, readJson, writeJson } from "@/lib/storage";
 import type { Notification } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-/** The finished items this browser has seen in the panel; the others count as unread. */
+/** The finished items this browser has seen in the panel; the others count as unread. On a
+ * first visit everything already listed counts as seen. */
 const SEEN_KEY = "g1r.notifications.seen.v1";
 
 /** Which folder page an item opens. */
@@ -149,10 +150,14 @@ export function Notifications() {
   const feed = useNotifications();
   const folders = useFolders();
   const [open, setOpen] = useState(false);
-  const [seen, setSeen] = useState(() => new Set(readJson(SEEN_KEY, [], isStringArray)));
+  const [seen, setSeen] = useState<Set<string> | null>(() => {
+    const stored = readJson<string[] | null>(SEEN_KEY, null, isStringArray);
+    return stored ? new Set(stored) : null;
+  });
   const items = feed.data ?? [];
   const finished = items.filter((i) => i.status !== "running");
-  const unread = finished.filter((i) => !seen.has(i.id));
+  const isNew = (i: Notification) => i.status !== "running" && seen !== null && !seen.has(i.id);
+  const unread = items.filter(isNew);
   const running = items.length - finished.length;
   const known = new Set((folders.data ?? []).map((f) => f.label));
 
@@ -163,6 +168,10 @@ export function Notifications() {
     writeJson(SEEN_KEY, ids);
     setSeen(new Set(ids));
   };
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs once, on the first answer.
+  useEffect(() => {
+    if (seen === null && feed.data) markSeen();
+  }, [feed.data]);
   const onOpenChange = (next: boolean) => {
     if (!next) markSeen();
     setOpen(next);
@@ -187,11 +196,13 @@ export function Notifications() {
           data-testid="notifications"
           className="relative"
         >
-          {running ? (
-            <LoaderCircle className="size-4 animate-spin motion-reduce:animate-none" />
-          ) : (
-            <Bell className="size-4" />
-          )}
+          <Bell className="size-4" />
+          {running && !unread.length ? (
+            <span
+              data-testid="notifications-running"
+              className="absolute top-1 right-1 size-2 animate-pulse rounded-full bg-status-info motion-reduce:animate-none"
+            />
+          ) : null}
           {unread.length ? (
             <span
               data-testid="notifications-unread"
@@ -221,7 +232,7 @@ export function Notifications() {
                 <Item
                   key={item.id}
                   item={item}
-                  unread={item.status !== "running" && !seen.has(item.id)}
+                  unread={isNew(item)}
                   known={known.has(item.folder_label)}
                   onOpen={() => onOpenChange(false)}
                 />

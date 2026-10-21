@@ -74,7 +74,8 @@ function setup(feed = FEED) {
   return deletes;
 }
 
-beforeEach(() => localStorage.clear());
+// Items seen before the tests' own feed: none.
+beforeEach(() => localStorage.setItem("g1r.notifications.seen.v1", "[]"));
 
 test("the bell counts unread items, the panel lists them and Clear keeps running ones", async () => {
   const deletes = setup();
@@ -117,6 +118,19 @@ test("closing the panel marks what it showed as read", async () => {
   await user.keyboard("{Escape}");
   await waitFor(() => expect(screen.queryByTestId("notifications-unread")).toBeNull());
   expect(JSON.parse(localStorage.getItem("g1r.notifications.seen.v1") ?? "[]")).toEqual(["run-1"]);
+});
+
+test("a first visit counts what is already listed as read", async () => {
+  localStorage.clear();
+  setup();
+  await waitFor(() =>
+    expect(JSON.parse(localStorage.getItem("g1r.notifications.seen.v1") ?? "null")).toEqual([
+      "run-3",
+      "run-2",
+    ]),
+  );
+  expect(screen.queryByTestId("notifications-unread")).toBeNull();
+  expect(screen.getByTestId("notifications-running")).toBeInTheDocument();
 });
 
 test("nothing to show", async () => {
