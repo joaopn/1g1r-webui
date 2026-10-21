@@ -76,6 +76,11 @@ class SidebarConfig(_Strict):
     max_rem: float = Field(gt=0)
 
 
+class NotificationsConfig(_Strict):
+    limit: int = Field(gt=0)
+    idle_poll_ms: int = Field(gt=0)
+
+
 class UiConfig(_Strict):
     page_size: int = Field(gt=0)
     dat_search_limit: int = Field(gt=0)
@@ -101,6 +106,7 @@ class UiConfig(_Strict):
     missing_columns: dict[str, ColumnSize]
     missing_columns_default: list[str] = Field(min_length=1)
     percent_digits: int = Field(ge=0)
+    notifications: NotificationsConfig
 
     @model_validator(mode="after")
     def _known_defaults(self) -> "UiConfig":

@@ -83,6 +83,7 @@ export const META: Meta = {
       "versions",
     ],
     percent_digits: 1,
+    notifications: { limit: 50, idle_poll_ms: 5000 },
   },
   platforms: {
     nes: {

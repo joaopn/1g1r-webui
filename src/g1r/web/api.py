@@ -23,6 +23,7 @@ from g1r import (
     journal,
     matching,
     mounts,
+    notifications,
     scanner,
     statistics,
     unmatched,
@@ -1138,6 +1139,22 @@ def build_router(
     def scan_status(label: str, conn: Conn):
         folder_or_404(label)
         return row_dict(scanner.latest_scan(conn, label))
+
+    # Notifications -----------------------------------------------------------------
+
+    @router.get("/notifications")
+    def list_notifications(conn: Conn):
+        return notifications.feed(conn, settings.ui.notifications.limit)
+
+    @router.delete("/notifications", status_code=HTTPStatus.NO_CONTENT)
+    def clear_notifications(conn: Conn):
+        notifications.clear(conn)
+
+    @router.delete("/notifications/{item_id}", status_code=HTTPStatus.NO_CONTENT)
+    def dismiss_notification(item_id: str, conn: Conn):
+        if notifications.parse_id(item_id) is None:
+            raise not_found("no such notification")
+        notifications.clear(conn, item_id)
 
     # Mounts ------------------------------------------------------------------------
 

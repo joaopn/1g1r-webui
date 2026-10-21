@@ -11,6 +11,7 @@ import type {
   KeyStatus,
   Meta,
   Missing,
+  Notification,
   Run,
   SettingsData,
   Statistics,
@@ -36,6 +37,7 @@ export const keys = {
   dats: ["dats"] as const,
   datOrder: ["dat-order"] as const,
   consoleKeys: ["console-keys"] as const,
+  notifications: ["notifications"] as const,
 };
 
 export const useMeta = () =>
@@ -77,6 +79,21 @@ export const useDiscarded = (label: string) =>
     queryFn: () => api<Discarded>(`/folders/${label}/discarded`),
   });
 
+/** The latest scans and runs: polled often while one runs, now and then otherwise (a run
+ * may start in another tab). */
+export const useNotifications = () =>
+  useQuery({
+    queryKey: keys.notifications,
+    queryFn: () => api<Notification[]>("/notifications"),
+    refetchInterval: (query) => {
+      const ui = queryClient.getQueryData<Meta>(keys.meta)?.ui;
+      if (!ui) return false;
+      return query.state.data?.some((n) => n.status === "running")
+        ? ui.poll_interval_ms
+        : ui.notifications.idle_poll_ms;
+    },
+  });
+
 /** The folder's latest apply or restore; polled while it runs. */
 export function useRun(label: string, pollMs: number | false) {
   return useQuery({
@@ -104,6 +121,7 @@ export function invalidateFolder(label: string) {
     queryClient.invalidateQueries({ queryKey: keys.discarded(label) }),
     queryClient.invalidateQueries({ queryKey: keys.run(label) }),
     queryClient.invalidateQueries({ queryKey: keys.folders }),
+    queryClient.invalidateQueries({ queryKey: keys.notifications }),
   ]);
 }
 

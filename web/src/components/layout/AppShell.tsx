@@ -15,6 +15,7 @@ import { type ReactNode, useEffect, useId, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { AddPlatformDialog } from "@/components/AddPlatformDialog";
 import { AddSetsDialog } from "@/components/AddSetsDialog";
+import { Notifications } from "@/components/layout/Notifications";
 import { PlatformIcon } from "@/components/PlatformIcon";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
@@ -294,9 +295,9 @@ export function AppShell() {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-20 flex items-center gap-2 border-border border-b bg-background/95 px-4 py-2.5 backdrop-blur md:hidden">
+        <header className="sticky top-0 z-20 flex items-center gap-2 border-border border-b bg-background/95 px-4 py-2.5 backdrop-blur md:px-8 md:py-1.5">
           <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-            <SheetTrigger asChild>
+            <SheetTrigger asChild className="md:hidden">
               <Button variant="ghost" size="icon" aria-label="Open navigation">
                 <Menu className="size-4" />
               </Button>
@@ -314,7 +315,10 @@ export function AppShell() {
               />
             </SheetContent>
           </Sheet>
-          <span className="font-medium text-sm">{name}</span>
+          <span className="font-medium text-sm md:hidden">{name}</span>
+          <div className="ml-auto">
+            <Notifications />
+          </div>
         </header>
         <main className="w-full flex-1 px-4 py-6 md:px-8">
           <Outlet />

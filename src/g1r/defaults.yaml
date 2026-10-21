@@ -116,6 +116,11 @@ ui:
   missing_columns_default: [name, years, publishers, regions, languages, notes, versions]
   # Decimals shown in a coverage percentage.
   percent_digits: 1
+  # The notifications panel (bell, top right): the latest scans and runs it lists, and how
+  # often it looks for new ones while nothing runs (while one runs, every poll_interval_ms).
+  notifications:
+    limit: 50
+    idle_poll_ms: 5000
 
 folders:
   # Folder labels name the folder in the UI and its discarded/<label>/ directory.

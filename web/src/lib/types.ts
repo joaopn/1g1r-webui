@@ -49,6 +49,7 @@ export type Meta = {
     missing_columns: Record<string, ColumnSize>;
     missing_columns_default: string[];
     percent_digits: number;
+    notifications: { limit: number; idle_poll_ms: number };
   };
   platforms: Record<string, Platform>;
   archive_extensions: string[];
@@ -60,6 +61,24 @@ export type Meta = {
   ranking: { criteria: string[]; labels: Record<string, string>; default: Ranking };
   label_pattern: string;
   discarded_root: string;
+};
+
+/** A scan or run in the notifications panel (`GET /api/notifications`). */
+export type Notification = {
+  /** "scan-<id>" or "run-<id>". */
+  id: string;
+  kind: "scan" | "conversion" | "1g1r" | "unmatched" | "empty" | "restore";
+  title: string;
+  folder_label: string;
+  status: "running" | "done" | "failed";
+  started_at: string;
+  finished_at: string | null;
+  message: string;
+  /** A running scan's step. */
+  stage: string | null;
+  done: number | null;
+  total: number | null;
+  failed: number;
 };
 
 export type Scan = {
