@@ -28,7 +28,8 @@ const TONES: Record<ChipTone, { idle: string; dot: string; active: string }> = {
   },
 };
 
-/** The horizontal bar of quick views above a table: one at a time, each with its count. */
+/** The horizontal bar of quick views above a table, each with its count: one at a time, or
+ * several when `value` is a list (`onChange` then gets the view clicked, to toggle). */
 export function QuickViewBar({
   name,
   views,
@@ -37,14 +38,15 @@ export function QuickViewBar({
 }: {
   name: string;
   views: QuickViewChip[];
-  value: string;
+  value: string | readonly string[];
   onChange: (view: string) => void;
 }) {
+  const multiple = typeof value !== "string";
   return (
     <fieldset className="flex flex-wrap gap-1.5" data-testid="quick-views">
       <legend className="sr-only">Show</legend>
       {views.map((view) => {
-        const active = view.id === value;
+        const active = multiple ? value.includes(view.id) : view.id === value;
         const tone = view.tone ? TONES[view.tone] : null;
         return (
           <label
@@ -64,7 +66,7 @@ export function QuickViewBar({
             data-tone={view.tone}
           >
             <input
-              type="radio"
+              type={multiple ? "checkbox" : "radio"}
               name={name}
               className="sr-only"
               value={view.id}

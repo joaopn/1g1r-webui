@@ -411,6 +411,7 @@ def build_router(
                     "summary": summary,
                     "dat_download": default_download(folder.platform) if dat is None else None,
                     "needs_dat": dat is None and not title_ids(folder.platform),
+                    "needs_scan": dashboard.needs_scan(scan, dat),
                     "counts": table.counts,
                     "reclaim_bytes": table.reclaim_bytes,
                     "conversion": conversion.counts(converting),

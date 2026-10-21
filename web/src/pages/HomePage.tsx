@@ -35,13 +35,13 @@ function isCompleted(folder: FolderCard): boolean {
 
 const needsConversion = (f: FolderCard) => f.progress.to_convert > 0;
 const needsMatching = (f: FolderCard) => f.progress.to_match > 0;
-/** No scan started yet (a running or failed first scan has left this state). */
-const neverScanned = (f: FolderCard) => f.scan === null;
+/** Waiting for a scan: never scanned, the last scan failed, or the DAT changed since. */
+const needsScan = (f: FolderCard) => f.needs_scan;
 
-/** The card's border: never scanned, done, else needing conversion (it opens there), else
+/** The card's border: needing a scan, done, else needing conversion (it opens there), else
  * matching. */
 function cardTone(folder: FolderCard): ChipTone | null {
-  if (neverScanned(folder)) return "unscanned";
+  if (needsScan(folder)) return "unscanned";
   if (isCompleted(folder)) return "good";
   if (needsConversion(folder)) return "convert";
   if (needsMatching(folder)) return "match";
@@ -55,14 +55,16 @@ const CARD_BORDERS: Record<ChipTone, string> = {
   unscanned: "border-status-unscanned ring-1 ring-status-unscanned hover:border-status-unscanned",
 };
 
-const SHOW_KEY = "g1r.home.show.v1";
-/** The badges above the cards: which sets to show, one at a time. */
+// v1 held one badge; v2 holds the list of badges chosen.
+const SHOW_KEY = "g1r.home.show.v2";
+/** The badges above the cards: which sets to show. Several can be on (a set shows when it is
+ * in any of them); All turns the others off. */
 const SHOWS = [
   { id: "all", label: "All", test: () => true },
   { id: "done", label: "Done", test: isCompleted, tone: "good" },
   { id: "conversion", label: "Needing conversion", test: needsConversion, tone: "convert" },
   { id: "matching", label: "Needing matching", test: needsMatching, tone: "match" },
-  { id: "unscanned", label: "Never scanned", test: neverScanned, tone: "unscanned" },
+  { id: "unscanned", label: "Needing scanning", test: needsScan, tone: "unscanned" },
 ] as const satisfies readonly {
   id: string;
   label: string;
@@ -71,8 +73,22 @@ const SHOWS = [
 }[];
 type Show = (typeof SHOWS)[number]["id"];
 
+const ALL: Show[] = ["all"];
+
 function isShow(value: unknown): value is Show {
   return SHOWS.some((s) => s.id === value);
+}
+
+function isShows(value: unknown): value is Show[] {
+  return Array.isArray(value) && value.length > 0 && value.every(isShow);
+}
+
+/** Clicking a badge: All alone, or the others toggled (none left is All again). */
+function toggleShow(current: Show[], id: Show): Show[] {
+  if (id === "all") return ALL;
+  const others = current.filter((s) => s !== "all");
+  const next = others.includes(id) ? others.filter((s) => s !== id) : [...others, id];
+  return next.length > 0 ? next : ALL;
 }
 
 function isDetail(value: unknown): value is Detail {
@@ -296,11 +312,12 @@ export function HomePage() {
     writeJson(DETAIL_KEY, d);
   };
   const extended = detail === "extended";
-  const [show, setShow] = useState<Show>(() => readJson(SHOW_KEY, "all", isShow));
+  const [show, setShow] = useState<Show[]>(() => readJson(SHOW_KEY, ALL, isShows));
   const changeShow = (id: string) => {
     if (!isShow(id)) return;
-    setShow(id);
-    writeJson(SHOW_KEY, id);
+    const next = toggleShow(show, id);
+    setShow(next);
+    writeJson(SHOW_KEY, next);
   };
   if (!meta.data || !folders.data) return <p className="text-muted-foreground">Loading…</p>;
   const ui = meta.data.ui;
@@ -312,8 +329,8 @@ export function HomePage() {
     count: visible.filter(s.test).length,
     tone: "tone" in s ? s.tone : undefined,
   }));
-  const filter = SHOWS.find((s) => s.id === show) ?? SHOWS[0];
-  const shown = visible.filter(filter.test);
+  const filters = SHOWS.filter((s) => show.includes(s.id));
+  const shown = visible.filter((f) => filters.some((s) => s.test(f)));
   // The header sits in the card grid, so it spans exactly the centred columns.
   return (
     // Every card row is as tall as the tallest card (auto-rows-fr), so all cards of a view
@@ -343,7 +360,8 @@ export function HomePage() {
         <div className="col-span-full max-w-xl rounded-lg border border-border bg-card p-6">
           <h2 className="font-medium">No set here</h2>
           <p className="mt-1 text-muted-foreground text-sm">
-            No set is {filter.label.toLowerCase()} right now. <strong>All</strong> shows every set.
+            No set is {filters.map((s) => s.label.toLowerCase()).join(" or ")} right now.{" "}
+            <strong>All</strong> shows every set.
           </p>
         </div>
       ) : shown.length === 0 ? (

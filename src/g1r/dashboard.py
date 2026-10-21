@@ -13,6 +13,23 @@ INFO = "info"
 LOOKUPS_PAGE = "/settings/lookups"
 
 
+def _dat_changed(scan: sqlite3.Row | None, dat: sqlite3.Row | None) -> bool:
+    """The last scan finished with another DAT than the active one."""
+    return (
+        scan is not None
+        and scan["status"] == "done"
+        and dat is not None
+        and bool(scan["dat_sha1"])
+        and scan["dat_sha1"] != dat["sha1"]
+    )
+
+
+def needs_scan(scan: sqlite3.Row | None, dat: sqlite3.Row | None) -> bool:
+    """The set waits for a scan: never scanned, the last scan failed (a first one included),
+    or the active DAT changed since. A running scan is already on it."""
+    return scan is None or scan["status"] == "failed" or _dat_changed(scan, dat)
+
+
 def warnings(
     conn: sqlite3.Connection,
     label: str,
@@ -34,9 +51,8 @@ def warnings(
         add(BAD, f"The folder {location} no longer exists.")
     if scan is not None and scan["status"] == "failed":
         add(BAD, f"The last scan failed: {scan['message']}")
-    if scan is not None and scan["status"] == "done" and dat is not None and scan["dat_sha1"]:
-        if scan["dat_sha1"] != dat["sha1"]:
-            add(WARN, "The active DAT changed since the last scan. Rescan to use it.")
+    if _dat_changed(scan, dat):
+        add(WARN, "The active DAT changed since the last scan. Rescan to use it.")
 
     foreign = conn.execute(
         "SELECT COUNT(*) FROM folder_file WHERE folder_label = ? AND kind = 'other' "

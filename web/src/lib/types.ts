@@ -157,6 +157,8 @@ export type FolderCard = FolderInfo & {
   dat_download: { source: string; label: string } | null;
   /** No active DAT, and the platform needs one to identify anything. */
   needs_dat: boolean;
+  /** Never scanned, the last scan failed, or the active DAT changed since it. */
+  needs_scan: boolean;
   counts: Record<string, number>;
   reclaim_bytes: number;
   conversion: ConversionCounts;

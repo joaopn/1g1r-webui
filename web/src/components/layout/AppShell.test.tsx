@@ -20,6 +20,7 @@ const FOLDERS = [
     summary: { counts: {}, roms: 0, bytes: 0, identified: 0, unmatched: 0, methods: {} },
     dat_download: null,
     needs_dat: false,
+    needs_scan: false,
     counts: {},
     reclaim_bytes: 0,
     progress: { processed: 0, to_process: 0, to_match: 0, to_convert: 0 },

@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from g1r import db, igir
+from g1r import dashboard, db, igir
 from g1r.library import LibraryStore
 from g1r.web.api import suggest_label
 from g1r.web.app import create_app
@@ -346,6 +346,7 @@ def test_discarded_listing_and_home_warnings(setup, roms_root):
 
     folder = client.get("/api/folders").json()[0]
     assert folder["discarded"] == {"files": 4, "bytes": 8}
+    assert folder["needs_scan"] is False
     assert folder["warnings"] == [HASHEOUS_HINT]
     (roms_root / "NES Set" / "game.sfc").write_bytes(b"x")
     client.post("/api/folders/nes/scan")
@@ -359,8 +360,23 @@ def test_discarded_listing_and_home_warnings(setup, roms_root):
         "/api/dats/nes/upload", files={"file": ("nes.dat", dat_bytes([*NAMES, "New"]))}
     )
     client.put("/api/dats/nes/active", json={"version_id": new.json()["version_id"]})
-    texts = [w["text"] for w in client.get("/api/folders").json()[0]["warnings"]]
-    assert "The active DAT changed since the last scan. Rescan to use it." in texts
+    card = client.get("/api/folders").json()[0]
+    assert "The active DAT changed since the last scan. Rescan to use it." in [
+        w["text"] for w in card["warnings"]
+    ]
+    assert card["needs_scan"] is True
+
+
+def test_a_set_needs_a_scan_until_one_succeeds_with_the_active_dat():
+    dat = {"sha1": "new"}
+    assert dashboard.needs_scan(None, dat)
+    assert dashboard.needs_scan({"status": "failed", "dat_sha1": None}, dat)  # a first scan
+    assert not dashboard.needs_scan({"status": "running", "dat_sha1": None}, dat)
+    assert not dashboard.needs_scan({"status": "done", "dat_sha1": "new"}, dat)
+    assert dashboard.needs_scan({"status": "done", "dat_sha1": "old"}, dat)
+    # Scanned without a DAT (title IDs), or no DAT active: nothing to rescan for.
+    assert not dashboard.needs_scan({"status": "done", "dat_sha1": None}, dat)
+    assert not dashboard.needs_scan({"status": "done", "dat_sha1": "old"}, None)
 
 
 def test_folder_card_offers_the_default_dat_until_one_is_active(setup):

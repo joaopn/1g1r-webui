@@ -35,6 +35,7 @@ const card = (label: string, platform: string, scan: Scan | null): FolderCard =>
   summary: { counts: {}, roms: 0, bytes: 0, identified: 0, unmatched: 0, methods: {} },
   dat_download: null,
   needs_dat: false,
+  needs_scan: scan === null || scan.status === "failed",
   counts: {},
   reclaim_bytes: 0,
   conversion: { to_convert: 0, flagged: 0 } as FolderCard["conversion"],
@@ -327,7 +328,7 @@ test("the badges filter the sets by state, with counts, and are remembered", asy
       .sort();
   expect(await screen.findByTestId("folder-card-done")).toBeInTheDocument();
   expect(screen.getByTestId("quick-views")).toHaveTextContent(
-    "All5Done1Needing conversion2Needing matching2Never scanned1",
+    "All5Done1Needing conversion2Needing matching2Needing scanning1",
   );
   expect(cards()).toEqual(["both", "convert", "done", "empty", "match"]);
   // Borders and badges share the colour of the state; a set needing both shows conversion.
@@ -343,19 +344,55 @@ test("the badges filter the sets by state, with counts, and are remembered", asy
   expect(
     [...screen.getByTestId("quick-views").querySelectorAll("label")].map((l) => l.dataset.tone),
   ).toEqual([undefined, "good", "convert", "match", "unscanned"]);
-  await userEvent.click(screen.getByLabelText(/^Done/));
+  const badge = (label: RegExp) => screen.getByLabelText(label);
+  await userEvent.click(badge(/^Done/));
   expect(cards()).toEqual(["done"]);
-  await userEvent.click(screen.getByLabelText(/^Needing conversion/));
-  expect(cards()).toEqual(["both", "convert"]);
-  await userEvent.click(screen.getByLabelText(/^Needing matching/));
-  expect(cards()).toEqual(["both", "match"]);
-  await userEvent.click(screen.getByLabelText(/^Never scanned/));
-  expect(cards()).toEqual(["empty"]);
-  expect(localStorage.getItem("g1r.home.show.v1")).toBe('"unscanned"');
+  expect(badge(/^All/)).not.toBeChecked();
+  // Badges add up: a set shows when it is in any badge chosen.
+  await userEvent.click(badge(/^Needing conversion/));
+  expect(cards()).toEqual(["both", "convert", "done"]);
+  await userEvent.click(badge(/^Needing scanning/));
+  expect(cards()).toEqual(["both", "convert", "done", "empty"]);
+  expect(localStorage.getItem("g1r.home.show.v2")).toBe('["done","conversion","unscanned"]');
+  // Clicking a chosen badge drops it; dropping the last one is All again.
+  await userEvent.click(badge(/^Done/));
+  expect(cards()).toEqual(["both", "convert", "empty"]);
+  await userEvent.click(badge(/^Needing conversion/));
+  await userEvent.click(badge(/^Needing scanning/));
+  expect(badge(/^All/)).toBeChecked();
+  expect(cards()).toEqual(["both", "convert", "done", "empty", "match"]);
+  // All turns the others off.
+  await userEvent.click(badge(/^Needing matching/));
+  await userEvent.click(badge(/^Done/));
+  expect(cards()).toEqual(["both", "done", "match"]);
+  await userEvent.click(badge(/^All/));
+  expect(cards()).toEqual(["both", "convert", "done", "empty", "match"]);
+  expect(
+    [badge(/^Done/), badge(/^Needing matching/)].some((b) => (b as HTMLInputElement).checked),
+  ).toBe(false);
+  expect(localStorage.getItem("g1r.home.show.v2")).toBe('["all"]');
+});
+
+test("Needing scanning holds sets never scanned, whose last scan failed, or with a new DAT", async () => {
+  renderPage([
+    card("never", "gb", null),
+    card("failed", "gb", { ...SCAN, status: "failed" }),
+    { ...card("newdat", "gb", SCAN), needs_scan: true },
+    card("fine", "gb", SCAN),
+    card("busy", "gb", { ...SCAN, status: "running" }),
+  ]);
+  await userEvent.click(await screen.findByLabelText(/^Needing scanning/));
+  expect(
+    screen
+      .queryAllByTestId(/^folder-card-/)
+      .map((c) => c.dataset.testid?.replace("folder-card-", ""))
+      .sort(),
+  ).toEqual(["failed", "never", "newdat"]);
+  expect(screen.getByTestId("folder-card-failed")).toHaveAttribute("data-tone", "unscanned");
 });
 
 test("a badge with no set says so", async () => {
-  localStorage.setItem("g1r.home.show.v1", '"done"');
+  localStorage.setItem("g1r.home.show.v2", '["done"]');
   renderPage([
     {
       ...card("busy", "gb", SCAN),
@@ -364,6 +401,7 @@ test("a badge with no set says so", async () => {
     },
   ]);
   expect(await screen.findByText("No set here")).toBeInTheDocument();
+  expect(screen.getByText(/No set is done right now/)).toBeInTheDocument();
   expect(screen.queryByTestId("folder-card-busy")).toBeNull();
   expect(screen.queryByText("No sets yet")).toBeNull();
 });
