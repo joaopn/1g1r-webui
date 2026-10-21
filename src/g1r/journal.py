@@ -50,7 +50,8 @@ REMOVE = "remove"
 # Run scopes besides 1G1R (a group key or '' for the folder).
 SCOPE_UNMATCHED = "unmatched"
 SCOPE_EMPTY = "empty"
-# Unmatched files the user moved out go to this discarded/ subfolder.
+SCOPE_SET_ASIDE = "set-aside"
+# Files the user moved out (unmatched, flagged, unsupported) go to this discarded/ subfolder.
 REASON_MANUAL = "manual"
 
 # Steps that write a new name for the file and must find that name free.
@@ -325,6 +326,45 @@ def plan_unmatched(
                     f["mtime_ns"],
                 )
             )
+    return plan
+
+
+def plan_set_aside(
+    conn: sqlite3.Connection,
+    label: str,
+    root: Path,
+    discarded_root: Path,
+    rel_paths: list[str],
+    eligible: set[str],
+) -> list[Move]:
+    """Move flagged or unsupported files (`eligible`) to discarded/<label>/manual/."""
+    scanned = {
+        r["rel_path"]: r
+        for r in conn.execute(
+            "SELECT rel_path, size, mtime_ns FROM folder_file WHERE folder_label = ? AND place = ?",
+            (label, PLACE_FOLDER),
+        )
+    }
+    missing = [rel for rel in rel_paths if rel not in eligible or rel not in scanned]
+    if missing:
+        raise PlanError(
+            "these files are not flagged or unsupported (rescan?)",
+            [(m, "not flagged or unsupported") for m in missing],
+        )
+    plan = []
+    for rel in sorted(set(rel_paths)):
+        f = scanned[rel]
+        plan.append(
+            Move(
+                rel,
+                "",
+                REASON_MANUAL,
+                root / rel,
+                discarded_root / REASON_MANUAL / rel,
+                f["size"],
+                f["mtime_ns"],
+            )
+        )
     return plan
 
 

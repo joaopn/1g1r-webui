@@ -211,3 +211,15 @@ def test_parts_are_not_hashed_or_looked_up(psx):
     # content_hash rows are what an online lookup would send.
     conn = db.open_database(client.app.state.settings)
     assert conn.execute("SELECT COUNT(*) FROM content_hash").fetchone()[0] == 0
+
+
+def test_a_flagged_cue_sheet_and_its_tracks_can_be_set_aside(psx):
+    client, folder = psx
+    tracks = audio_cue(folder, "A (USA)", 2)
+    (folder / "A (USA).chd").write_bytes(b"MComprHD")
+    scan(client)
+    rows = {r["rel_path"]: r for r in client.get("/api/folders/psx/conversion").json()["rows"]}
+    flagged = [rel for rel, r in rows.items() if r["status"] == "flagged"]
+    assert sorted(flagged) == sorted(["A (USA).cue", *(t.name for t in tracks)])
+    plan = client.post("/api/folders/psx/set-aside/preview", json={"rel_paths": flagged}).json()
+    assert [f["rel_path"] for f in plan["files"]] == sorted(flagged)

@@ -75,9 +75,9 @@ def test_without_hard_links_it_renames(tmp_path, monkeypatch):
 # Apply and restore through the API --------------------------------------------------
 
 
-def wait_run(client):
+def wait_run(client, label="nes"):
     for _ in range(500):
-        run = client.get("/api/folders/nes/run").json()
+        run = client.get(f"/api/folders/{label}/run").json()
         if run and run["status"] != journal.RUNNING:
             return run
     raise AssertionError("run did not finish")

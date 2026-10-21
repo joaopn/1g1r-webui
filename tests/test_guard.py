@@ -1,9 +1,11 @@
+import zipfile
 from http import HTTPStatus
 from pathlib import Path
 
 from g1r import db, journal
 
 from .test_api import scanned, setup  # noqa: F401  (fixture)
+from .test_dvds import proposals
 from .test_journal import CONFIG, versions, wait_run
 
 MANUAL = Path("discarded") / "nes" / "manual"
@@ -159,3 +161,55 @@ def test_recovery_settles_a_cut_off_empty(tmp_path):
     assert state[deleted] == "done" and state[kept] == "failed" and (gone / "b.bin").exists()
     assert conn.execute("SELECT COUNT(*) FROM folder_file").fetchone()[0] == 0
     assert journal.active_discards(conn, "f") == []
+
+
+# Flagged and unsupported files --------------------------------------------------------
+
+
+def amiga_with_leftovers(folder_of):
+    client, folder = folder_of("amiga")
+    with zipfile.ZipFile(folder / "C (Europe).zip", "w") as z:
+        z.writestr("C (Europe).scp", b"SCP")
+    (folder / "B (Europe).scp").write_bytes(b"SCP")
+    (folder / "D (Europe).adf").write_bytes(b"ADF")
+    rows = proposals(client, "amiga")
+    assert rows["C (Europe).zip"]["status"] == "flagged"
+    assert {f["rel_path"] for f in client.get("/api/folders/amiga").json()["unsupported"]} == {
+        "B (Europe).scp",
+        "C (Europe).zip",
+    }
+    return client, folder
+
+
+def test_set_aside_moves_flagged_and_unsupported_files_and_restores_them(folder_of, roms_root):
+    client, folder = amiga_with_leftovers(folder_of)
+    wanted = ["B (Europe).scp", "C (Europe).zip"]
+    plan = client.post("/api/folders/amiga/set-aside/preview", json={"rel_paths": wanted}).json()
+    assert plan["irreversible"] == 0 and plan["problems"] == []
+    manual = roms_root / "discarded" / "amiga" / "manual"
+    assert [f["destination"] for f in plan["files"]] == [str(manual / rel) for rel in wanted]
+
+    body = {"rel_paths": wanted, "token": plan["token"]}
+    started = client.post("/api/folders/amiga/set-aside", json=body)
+    assert started.status_code == HTTPStatus.ACCEPTED
+    assert wait_run(client, "amiga")["message"] == "2 files moved to discarded/"
+    assert all((manual / rel).exists() and not (folder / rel).exists() for rel in wanted)
+    assert client.get("/api/folders/amiga").json()["unsupported"] == []
+    feed = client.get("/api/notifications").json()
+    assert "Flagged and unsupported files" in {i["title"] for i in feed}
+
+    listing = client.get("/api/folders/amiga/discarded").json()
+    ids = [f["operation_id"] for f in listing["reasons"][0]["files"]]
+    client.post("/api/folders/amiga/restore", json={"operation_ids": ids})
+    assert wait_run(client, "amiga")["message"] == "2 files restored"
+    assert all((folder / rel).exists() for rel in wanted)
+
+
+def test_set_aside_refuses_files_that_are_neither_flagged_nor_unsupported(folder_of):
+    client, folder = amiga_with_leftovers(folder_of)
+    refused = client.post(
+        "/api/folders/amiga/set-aside/preview", json={"rel_paths": ["D (Europe).adf"]}
+    )
+    assert refused.status_code == HTTPStatus.CONFLICT
+    assert refused.json()["detail"]["problems"][0]["rel_path"] == "D (Europe).adf"
+    assert (folder / "D (Europe).adf").exists()

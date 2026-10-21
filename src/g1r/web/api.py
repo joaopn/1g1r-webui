@@ -107,6 +107,13 @@ class UnmatchedScope(BaseModel):
     confirm: str | None = None
 
 
+class SetAsideScope(BaseModel):
+    # Flagged or unsupported files to move to discarded/<label>/manual/.
+    rel_paths: list[str]
+    token: str | None = None
+    confirm: str | None = None
+
+
 class Guarded(BaseModel):
     token: str | None = None
     confirm: str | None = None
@@ -962,6 +969,41 @@ def build_router(
             body,
             lambda: unmatched_plan(conn, label, body),
             "there is nothing to move or delete",
+        )
+
+    def set_aside_plan(conn, label: str, body: SetAsideScope):
+        folder = folder_or_404(label)
+        root, gone = folder_root(folder), discarded.folder_root(settings, label)
+        profile = platforms[folder.platform]
+        eligible = {
+            r.rel_path
+            for r in conversion_rows(store.load(), folder, conn)
+            if r.status == conversion.FLAGGED
+        }
+        eligible |= {
+            f["rel_path"]
+            for f in scanner.unsupported_files(conn, label, profile.rom_extensions, profile.romsets)
+        }
+        try:
+            plan = journal.plan_set_aside(conn, label, root, gone, body.rel_paths, eligible)
+        except journal.PlanError as exc:
+            raise conflict(str(exc), exc.problems) from exc
+        return plan, journal.preflight(plan, root, gone)
+
+    @router.post("/folders/{label}/set-aside/preview")
+    def set_aside_preview(label: str, body: SetAsideScope, conn: Conn):
+        return guarded_preview(conn, label, *set_aside_plan(conn, label, body))
+
+    @router.post("/folders/{label}/set-aside", status_code=HTTPStatus.ACCEPTED)
+    def set_aside_apply(label: str, body: SetAsideScope, request: Request, conn: Conn):
+        return start_guarded(
+            request,
+            conn,
+            label,
+            journal.SCOPE_SET_ASIDE,
+            body,
+            lambda: set_aside_plan(conn, label, body),
+            "there is nothing to move",
         )
 
     def empty_plan(conn, label: str):

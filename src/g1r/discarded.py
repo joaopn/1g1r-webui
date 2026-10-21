@@ -24,7 +24,7 @@ REASONS = {
     REASON_DUPLICATES: ("Duplicates", "copies of a file the folder still holds"),
     REASON_UPDATES: ("Updates", "game updates 1G1R did not keep (game + DLC)"),
     REASON_ORIGINALS: ("Originals", "files a conversion replaced"),
-    REASON_MANUAL: ("Moved by you", "unmatched files you moved out"),
+    REASON_MANUAL: ("Moved by you", "unmatched, flagged or unsupported files you moved out"),
 }
 
 
