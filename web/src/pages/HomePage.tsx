@@ -173,7 +173,7 @@ function CardProgress({ folder }: { folder: FolderCard }) {
 // Most severe first.
 const SEVERITY = ["bad", "warn", "info"] as const;
 
-/** The card's warnings in a two-line slot (empty when there are none), most severe first;
+/** The card's warnings in a two-line slot (left out when there are none), most severe first;
  * the full text shows on hover. */
 // `status` (Simplified: a running or failed scan) leads the block, so no line is kept empty for it.
 function Warnings({
@@ -509,6 +509,8 @@ export function HomePage() {
             ) : extended && !empty ? (
               <span className="text-muted-foreground">Not scanned yet</span>
             ) : null;
+          // Simplified's running or failed scan leads the warnings block, so it counts too.
+          const message = folder.warnings.length > 0 || (!extended && Boolean(scanLine));
           const done = isCompleted(folder);
           const tone = cardTone(folder);
           const target = sectionPath(folder.label, openingSection(folder));
@@ -564,8 +566,9 @@ export function HomePage() {
                     )}
                   </p>
                 ) : null}
-                {/* A set without figures keeps no empty slot: its box says what it waits for. */}
-                {!empty || folder.warnings.length > 0 ? (
+                {/* No empty slot: without a message, the figures (or the empty box) take the
+                    space down to the buttons, centred. */}
+                {message ? (
                   <Warnings
                     folder={folder}
                     status={extended ? null : scanLine}
@@ -573,7 +576,13 @@ export function HomePage() {
                   />
                 ) : null}
                 {!empty ? (
-                  <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2">
+                  <dl
+                    className={cn(
+                      "grid grid-cols-2 gap-x-4 gap-y-2",
+                      message ? "mt-3" : "mt-3 flex-1 content-center",
+                    )}
+                    data-testid={`figures-${folder.label}`}
+                  >
                     {stats.map((s) => (
                       <Tooltip key={s.label}>
                         {/* Above the card's link so the hint shows; a click still opens the set. */}

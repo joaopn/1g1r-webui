@@ -465,9 +465,10 @@ test("warnings sit in a two-line slot, most severe first, in full on hover", asy
   expect(slot.textContent).toBe(
     "The last scan failed: a long reason. Not NES ROMs or archives: 2 files. ",
   );
-  // A set without warnings keeps the slot, empty, so the cards have one size.
-  expect(screen.getByTestId("warnings-gb")).toHaveClass("h-8");
-  expect(screen.getByTestId("warnings-gb")).toBeEmptyDOMElement();
+  // A set without warnings has no slot: its figures take the space, centred.
+  expect(screen.queryByTestId("warnings-gb")).toBeNull();
+  expect(screen.getByTestId("figures-gb")).toHaveClass("flex-1", "content-center");
+  expect(screen.getByTestId("figures-nes")).not.toHaveClass("flex-1");
   await userEvent.hover(slot);
   expect(await screen.findByRole("tooltip")).toHaveTextContent(
     "The last scan failed: a long reason.Not NES ROMs or archives: 2 files.",
