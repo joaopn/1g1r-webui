@@ -205,6 +205,10 @@ def rows(
                 # Never converted, but unpacked: emulators read the bare image.
                 _unwrap(row, roms[0], len(row.members) - len(roms))
                 _originals(settings, label, row, delete_originals)
+            elif f["kind"] == "archive":
+                # One game's discs belong together (maintainer, 2026-10-21).
+                row.status = ACCEPTED
+                row.note = f"{len(roms)} ROM files kept together in one archive"
             else:
                 row.status, row.note = ACCEPTED, f".{kept} is kept as it is: it is never converted"
         elif to_disc and f["kind"] == "rom" and ext in discs.SHEETS:

@@ -123,6 +123,8 @@ def test_cdi_images_are_kept_as_they_are_and_unpacked_from_archives(dc, roms_roo
     assert zipped["note"] == "1 other file(s) in the archive stay in the original"
     together = found["Two Discs [CDI].zip"]
     assert (together["status"], together["output"]) == ("accepted", None)
+    # B10: why it is kept, not a bare .cdi's reason.
+    assert together["note"] == "2 ROM files kept together in one archive"
     assert client.get("/api/folders/dc").json()["unsupported"] == []
     unmatched = {f["rel_path"] for f in client.get("/api/folders/dc/unmatched").json()}
     assert unmatched == {"Homebrew (2020)(Dev).cdi", "Indie [CDI].zip", "Two Discs [CDI].zip"}
