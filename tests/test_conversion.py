@@ -37,6 +37,45 @@ def test_parse_slt_lists_files_not_folders():
     assert archives.parse_slt(SLT) == [archives.Member("Game (USA).gb", 32768, "1a2b3c4d")]
 
 
+# What 7-Zip printed for a .7z holding a folder, an empty file and a track (image's 7z).
+SLT_7Z_FOLDER = """
+--
+Path = /s/t.7z
+Type = 7z
+
+----------
+Path = 4x4 Jam
+Size = 0
+Packed Size = 0
+Attributes = D drwxrwxr-x
+CRC =\x20
+Encrypted = -
+
+Path = 4x4 Jam/empty.txt
+Size = 0
+Packed Size = 0
+Attributes = A -rw-rw-r--
+CRC =\x20
+Encrypted = -
+
+Path = 4x4 Jam/track01.bin
+Size = 5
+Packed Size = 9
+Attributes = A -rw-rw-r--
+CRC = E6C1C582
+Encrypted = -
+"""
+
+
+def test_parse_slt_knows_a_7z_folder_by_its_attributes():
+    """B11: a .7z prints no `Folder` line; an empty file has no CRC."""
+    assert archives.parse_slt(SLT_7Z_FOLDER) == [
+        archives.Member("4x4 Jam/empty.txt", 0, archives.EMPTY_CRC32),
+        archives.Member("4x4 Jam/track01.bin", 5, "e6c1c582"),
+    ]
+    assert archives.EMPTY_CRC32 == "00000000"
+
+
 def test_parse_slt_without_members_is_an_error():
     with pytest.raises(archives.ArchiveError):
         archives.parse_slt("garbage")

@@ -6,6 +6,7 @@ Zip archives are read with Python's zipfile; 7z archives are listed by 7-Zip
 
 import subprocess
 import zipfile
+import zlib
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -48,6 +49,18 @@ def run_seven_zip(settings: Settings, path: Path) -> str:
     return result.stdout
 
 
+# A folder's Windows attribute letter. Zips also get `Folder = +`; a .7z marks a folder only
+# by its attributes ("D drwxr-xr-x"), the Unix mode after them being lowercase.
+FOLDER_ATTRIBUTE = "D"
+# An empty file in a .7z is listed with no CRC: that of no bytes.
+EMPTY_CRC32 = format(zlib.crc32(b""), "08x")
+
+
+def _is_folder(fields: dict[str, str]) -> bool:
+    attributes = fields.get("Attributes", "").split()
+    return fields.get("Folder") == "+" or (bool(attributes) and FOLDER_ATTRIBUTE in attributes[0])
+
+
 def parse_slt(listing: str) -> list[Member]:
     _, found, body = listing.partition(f"\n{SLT_SEPARATOR}\n")
     if not found:
@@ -55,10 +68,11 @@ def parse_slt(listing: str) -> list[Member]:
     members = []
     for block in body.split("\n\n"):
         fields = dict(line.split(" = ", 1) for line in block.strip().splitlines() if " = " in line)
-        if "Path" not in fields or fields.get("Folder") == "+":
+        if "Path" not in fields or _is_folder(fields):
             continue
-        crc = fields.get("CRC") or None
-        members.append(Member(fields["Path"], int(fields.get("Size") or 0), crc and crc.lower()))
+        size = int(fields.get("Size") or 0)
+        crc = fields.get("CRC") or (EMPTY_CRC32 if not size else None)
+        members.append(Member(fields["Path"], size, crc and crc.lower()))
     return members
 
 

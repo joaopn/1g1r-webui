@@ -874,7 +874,8 @@ class Scanner:
             return {"members": [[m.name, m.size, m.crc32] for m in listed]}
 
         for f in progress.each("Reading archives", in_archives):
-            value = cache.get(f, "members", lambda f=f: read(f))
+            # Renamed when the listing changes (B11: 7z folders), so no old one is reused.
+            value = cache.get(f, "archive-members", lambda f=f: read(f))
             if "error" in value:
                 problems.append((f.rel_path, value["error"]))
                 continue
