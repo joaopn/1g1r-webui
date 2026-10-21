@@ -4,7 +4,6 @@ import {
   ChartColumn,
   ChevronRight,
   FileCog,
-  FolderTree,
   House,
   ListChecks,
   Menu,
@@ -14,6 +13,7 @@ import {
 import { type ReactNode, useEffect, useId, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { AddPlatformDialog } from "@/components/AddPlatformDialog";
+import { AddRomsetsDialog } from "@/components/AddRomsetsDialog";
 import { AddSetsDialog } from "@/components/AddSetsDialog";
 import { Notifications } from "@/components/layout/Notifications";
 import { PlatformIcon } from "@/components/PlatformIcon";
@@ -201,25 +201,15 @@ function NavItems({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-type Adding = "one" | "many" | null;
+type Adding = "choose" | "one" | "many" | null;
 
-function SidebarFoot({ onAdd }: { onAdd: (what: Exclude<Adding, null>) => void }) {
+function SidebarFoot({ onAdd }: { onAdd: () => void }) {
   return (
     <div className="mt-auto flex flex-col gap-1 pt-4">
-      <Button onClick={() => onAdd("one")} className="justify-center gap-2" data-testid="add-set">
+      <Button onClick={onAdd} className="justify-center gap-2" data-testid="add-romsets">
         <Plus className="size-4" aria-hidden="true" />
-        Add set
+        Add romsets
       </Button>
-      <Button
-        variant="outline"
-        onClick={() => onAdd("many")}
-        className="justify-center gap-2"
-        data-testid="add-sets"
-      >
-        <FolderTree className="size-4" aria-hidden="true" />
-        Add sets from a folder
-      </Button>
-      <ThemeToggle />
     </div>
   );
 }
@@ -264,14 +254,17 @@ export function AppShell() {
         style={width === null ? undefined : { width: `${width}rem` }}
         className="sticky top-0 hidden h-screen shrink-0 flex-col border-border border-r bg-sidebar px-3 py-4 md:flex"
       >
-        <div className="px-2.5 pb-4">
-          <span className="font-semibold text-sidebar-foreground tracking-tight">{name}</span>
-          <p className="text-muted-foreground text-xs">one game, one ROM</p>
+        <div className="flex items-start gap-2 pb-4 pl-2.5">
+          <div className="min-w-0 flex-1">
+            <span className="font-semibold text-sidebar-foreground tracking-tight">{name}</span>
+            <p className="text-muted-foreground text-xs">one game, one ROM</p>
+          </div>
+          <ThemeToggle />
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto">
           <NavItems />
         </div>
-        <SidebarFoot onAdd={setAdding} />
+        <SidebarFoot onAdd={() => setAdding("choose")} />
         {bounds ? (
           // biome-ignore lint/a11y/useSemanticElements: an <hr> cannot take focus or a value; a focusable separator is the ARIA splitter.
           <div
@@ -303,14 +296,15 @@ export function AppShell() {
               </Button>
             </SheetTrigger>
             <SheetContent side="left" className="flex w-72 flex-col p-4">
-              <SheetHeader className="p-0 pb-4">
-                <SheetTitle>{name}</SheetTitle>
+              <SheetHeader className="flex-row items-center p-0 pr-8 pb-4">
+                <SheetTitle className="flex-1">{name}</SheetTitle>
+                <ThemeToggle />
               </SheetHeader>
               <NavItems onNavigate={() => setMobileOpen(false)} />
               <SidebarFoot
-                onAdd={(what) => {
+                onAdd={() => {
                   setMobileOpen(false);
-                  setAdding(what);
+                  setAdding("choose");
                 }}
               />
             </SheetContent>
@@ -334,6 +328,11 @@ export function AppShell() {
           )}
         </footer>
       </div>
+      <AddRomsetsDialog
+        open={adding === "choose"}
+        onOpenChange={(open) => setAdding(open ? "choose" : null)}
+        onChoose={setAdding}
+      />
       <AddPlatformDialog
         open={adding === "one"}
         onOpenChange={(open) => setAdding(open ? "one" : null)}

@@ -6,14 +6,15 @@ import { readTheme, saveTheme, type ThemeChoice } from "@/lib/theme";
 const NEXT: Record<ThemeChoice, ThemeChoice> = { system: "light", light: "dark", dark: "system" };
 const ICON = { system: Monitor, light: Sun, dark: Moon };
 
-export function ThemeToggle({ compact = false }: { compact?: boolean }) {
+export function ThemeToggle() {
   const [choice, setChoice] = useState<ThemeChoice>(readTheme);
   const Icon = ICON[choice];
   return (
     <Button
       variant="ghost"
-      size="sm"
-      className="justify-start gap-2"
+      size="icon-sm"
+      className="text-muted-foreground"
+      data-testid="theme-toggle"
       onClick={() => {
         const next = NEXT[choice];
         saveTheme(next);
@@ -22,7 +23,7 @@ export function ThemeToggle({ compact = false }: { compact?: boolean }) {
       title={`Theme: ${choice} (click to change)`}
     >
       <Icon className="size-4" aria-hidden="true" />
-      {compact ? <span className="sr-only">Theme: {choice}</span> : <span>Theme: {choice}</span>}
+      <span className="sr-only">Theme: {choice}</span>
     </Button>
   );
 }

@@ -30,7 +30,7 @@ const choiceOf = (row: SetCandidate): Choice => ({
 });
 
 /**
- * Add sets from a folder of platform folders (roms/nes, roms/snes...): each subfolder is
+ * Automatch folders: add sets from a folder of platform folders (roms/nes, roms/snes...): each subfolder is
  * offered with the platform its name matches; the user fixes wrong matches, unticks what
  * should not be a set, and adds the rest at once (all of them, or none).
  */
@@ -104,7 +104,7 @@ export function AddSetsDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-4xl">
         <DialogHeader>
-          <DialogTitle>Add sets from a folder</DialogTitle>
+          <DialogTitle>Automatch folders</DialogTitle>
           <DialogDescription>
             For a folder that already holds one folder per platform (roms/nes, roms/snes…). Its
             subfolders are matched to platforms by name; check the matches, fix the wrong ones,

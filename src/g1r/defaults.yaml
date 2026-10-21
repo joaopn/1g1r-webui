@@ -125,7 +125,7 @@ ui:
 folders:
   # Folder labels name the folder in the UI and its discarded/<label>/ directory.
   label_pattern: "^[a-z0-9][a-z0-9._-]*$"
-  # "Add sets from a folder": a subfolder named after a platform (its id, short name, name,
+  # "Automatch folders": a subfolder named after a platform (its id, short name, name,
   # DAT name or one of platforms.profiles.<id>.aliases, compared without case, spaces or
   # punctuation) is matched to it. These names belong to platforms not supported yet: the
   # table says so instead of leaving them unmatched.

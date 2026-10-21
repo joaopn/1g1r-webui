@@ -378,7 +378,7 @@ export type Browse = {
   suggested_label: string;
 };
 
-/** One subfolder offered by "Add sets from a folder". */
+/** One subfolder offered by "Automatch folders". */
 export type SetCandidate = {
   name: string;
   path: string;

@@ -46,7 +46,13 @@ const FOLDERS = [
 
 function renderShell(path = "/", folders = FOLDERS) {
   vi.stubGlobal("fetch", async (url: string) => {
-    const body = url.endsWith("/meta") ? META : url.endsWith("/folders") ? folders : [];
+    const body = url.endsWith("/meta")
+      ? META
+      : url.endsWith("/folders")
+        ? folders
+        : url.includes("/browse")
+          ? { mount: "roms", path: "", location: "/roms", children: [], suggested_label: "" }
+          : [];
     return new Response(JSON.stringify(body), { status: 200 });
   });
   const client = new QueryClient();
@@ -121,6 +127,30 @@ test("hidden sets stay out of the sidebar, and both ways to add sets are at its 
   await userEvent.click((await screen.findAllByRole("button", { name: /Matching & 1G1R/ }))[0]);
   expect(await screen.findAllByTitle("Nintendo Entertainment System · nes")).not.toHaveLength(0);
   expect(screen.queryByTitle("Game Boy · gb")).not.toBeInTheDocument();
-  expect(screen.getAllByTestId("add-set")[0]).toHaveTextContent("Add set");
-  expect(screen.getAllByTestId("add-sets")[0]).toHaveTextContent("Add sets from a folder");
+  expect(screen.queryByTestId("add-set")).not.toBeInTheDocument();
+  expect(screen.queryByTestId("add-sets")).not.toBeInTheDocument();
+  expect(screen.getAllByTestId("add-romsets")[0]).toHaveTextContent("Add romsets");
+});
+
+test("Add romsets offers both ways to add sets, each opening its own dialog", async () => {
+  renderShell();
+  await userEvent.click((await screen.findAllByTestId("add-romsets"))[0]);
+  const chooser = await screen.findByRole("dialog", { name: "Add romsets" });
+  expect(chooser).toHaveTextContent("Add single folder");
+  await userEvent.click(screen.getByRole("button", { name: "Automatch folders" }));
+  expect(await screen.findByRole("dialog", { name: "Automatch folders" })).toBeInTheDocument();
+  expect(screen.queryByRole("dialog", { name: "Add romsets" })).not.toBeInTheDocument();
+  await userEvent.keyboard("{Escape}");
+  await userEvent.click(screen.getAllByTestId("add-romsets")[0]);
+  await userEvent.click(await screen.findByRole("button", { name: "Add single folder" }));
+  expect(await screen.findByRole("dialog", { name: "Add single folder" })).toBeInTheDocument();
+});
+
+test("the theme toggle is an icon at the top of the sidebar and cycles", async () => {
+  renderShell();
+  const toggle = (await screen.findAllByTestId("theme-toggle"))[0];
+  const before = toggle.textContent;
+  await userEvent.click(toggle);
+  expect(toggle.textContent).not.toBe(before);
+  expect(toggle.textContent).toMatch(/^Theme: /);
 });

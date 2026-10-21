@@ -313,9 +313,9 @@ export function HomePage() {
         <div className="col-span-full max-w-xl rounded-lg border border-border bg-card p-6">
           <h2 className="font-medium">No sets yet</h2>
           <p className="mt-1 text-muted-foreground text-sm">
-            Add a platform folder with <strong>Add set</strong> at the bottom of the sidebar, or a
-            folder holding one folder per platform with <strong>Add sets from a folder</strong>.
-            Each set holds exactly one platform.
+            Add them with <strong>Add romsets</strong> at the bottom of the sidebar: one platform
+            folder, or a folder holding one folder per platform, matched by name. Each set holds
+            exactly one platform.
           </p>
         </div>
       ) : (

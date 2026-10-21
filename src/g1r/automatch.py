@@ -1,4 +1,4 @@
-"""Matching the subfolders of a folder to platforms ("Add sets from a folder").
+"""Matching the subfolders of a folder to platforms ("Automatch folders").
 
 Exact names only, never a guess: a subfolder matches a platform when its name, lowercased
 with everything but letters and digits removed, equals the same reduction of the platform's

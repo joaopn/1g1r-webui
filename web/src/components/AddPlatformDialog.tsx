@@ -63,7 +63,7 @@ export function AddPlatformDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Add set</DialogTitle>
+          <DialogTitle>Add single folder</DialogTitle>
           <DialogDescription>
             A set is one folder of games of <strong>one platform only</strong>, with its label.
             Every set is handled on its own, even when two have the same platform, and a folder can
