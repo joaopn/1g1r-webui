@@ -17,7 +17,7 @@ import zlib
 from collections.abc import Callable
 from pathlib import Path, PurePosixPath
 
-from g1r import conversion, cso, decrypt, discs, hashing, moves
+from g1r import conversion, cso, decrypt, discs, hashing, moves, stopping
 from g1r.config import Settings
 
 CRC_FORMAT = "08x"
@@ -32,6 +32,7 @@ def crc_and_size(chunk_bytes: int, path: Path) -> tuple[str, int]:
     crc, size = 0, 0
     with path.open("rb") as handle:
         while chunk := handle.read(chunk_bytes):
+            stopping.check()
             crc = zlib.crc32(chunk, crc)
             size += len(chunk)
     return format(crc, CRC_FORMAT), size
@@ -54,13 +55,12 @@ def extract_member(settings: Settings, archive: Path, member: str, output: Path)
     command = [settings.archives.seven_zip_binary, "e", "-so", "-spd", "--", str(archive), member]
     try:
         with output.open("xb") as dst:
-            result = subprocess.run(
+            result = stopping.run(
                 command,
+                settings.apply.extract_timeout_seconds,
                 stdout=dst,
                 stderr=subprocess.PIPE,
                 text=True,
-                timeout=settings.apply.extract_timeout_seconds,
-                check=False,
             )
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise moves.MoveError(f"7-Zip could not extract {member}: {exc}") from exc
@@ -302,6 +302,7 @@ class Converter:
             one = hashlib.sha1(usedforsecurity=False)
             with path.open("rb") as handle:
                 while chunk := handle.read(self.config.copy_chunk_bytes):
+                    stopping.check()
                     one.update(chunk)
                     whole.update(chunk)
             each.append(one.hexdigest())

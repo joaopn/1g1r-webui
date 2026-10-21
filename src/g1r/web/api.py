@@ -1012,6 +1012,14 @@ def build_router(
             raise conflict(str(exc), exc.problems) from exc
         return journal.progress(conn, run_id)
 
+    @router.post("/folders/{label}/convert/stop", status_code=HTTPStatus.ACCEPTED)
+    def stop_conversion(label: str, request: Request, conn: Conn):
+        """No file starts; the ones under way are cut off and their output deleted."""
+        folder_or_404(label)
+        if not request.app.state.jobs.stop_conversion(conn, label):
+            raise conflict("no conversion is running in this folder")
+        return journal.latest_run(conn, label)
+
     @router.get("/folders/{label}/run")
     def run_status(label: str, conn: Conn):
         folder_or_404(label)

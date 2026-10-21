@@ -20,6 +20,7 @@ from pyctr.crypto.engine import BOOT9_PROT_HASH
 from pyctr.type.cci import CCIReader
 from pyctr.type.ncch import NCCHReader, NCCHSection, NCCHSeedError
 
+from g1r import stopping
 from g1r.config import Settings
 from g1r.private_files import write_private
 
@@ -133,10 +134,12 @@ def decrypt_cci(settings: Settings, source: Path, output: Path) -> None:
                 )
                 with ncch.open_raw_section(NCCHSection.FullDecrypted) as clear:
                     while block := clear.read(chunk):
+                        stopping.check()
                         out.write(block)
                 position = region.offset + region.size
             raw.seek(position)
             while block := raw.read(chunk):
+                stopping.check()
                 out.write(block)
     except (NCCHSeedError, SeedDBError) as exc:
         hint = "its seed is not in the seeddb added" if seeds else "no seeddb has been added"

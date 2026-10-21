@@ -1,4 +1,7 @@
+import { Square } from "lucide-react";
 import { useEffect, useRef } from "react";
+import { Button } from "@/components/ui/button";
+import { useStopConversion } from "@/lib/conversion";
 import { formatCount, formatWhen } from "@/lib/format";
 import { invalidateFolder, useRun } from "@/lib/queries";
 import type { Meta } from "@/lib/types";
@@ -13,6 +16,7 @@ const SCOPE_VERBS: Record<string, string> = {
 /** The folder's latest apply or restore: progress while it runs, its outcome after. */
 export function RunPanel({ label, meta }: { label: string; meta: Meta }) {
   const run = useRun(label, meta.ui.poll_interval_ms).data;
+  const stop = useStopConversion(label);
   const running = run?.status === "running";
   // When a run ends, every table of the folder is stale.
   const wasRunning = useRef(running);
@@ -31,9 +35,19 @@ export function RunPanel({ label, meta }: { label: string; meta: Meta }) {
       )}
     >
       {running ? (
-        <p>
-          {verb} running: {formatCount(run.done)} of {formatCount(run.total)} steps…
-        </p>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <p>
+            {verb} {run.stopping ? "stopping" : "running"}: {formatCount(run.done)} of{" "}
+            {formatCount(run.total)} steps…
+          </p>
+          {run.kind === "apply" && run.scope === "convert" ? (
+            <StopButton
+              label={label}
+              stopping={run.stopping || stop.isPending}
+              onStop={() => stop.mutate()}
+            />
+          ) : null}
+        </div>
       ) : (
         <p className={run.status === "failed" ? "text-status-bad" : "text-muted-foreground"}>
           Last {verb.toLowerCase()} {formatWhen(run.finished_at)}: {run.message}.
@@ -49,5 +63,31 @@ export function RunPanel({ label, meta }: { label: string; meta: Meta }) {
         </ul>
       ) : null}
     </section>
+  );
+}
+
+/** Stops a running conversion: what is converted stays, the files under way are left as they
+ * were. */
+export function StopButton({
+  label,
+  stopping,
+  onStop,
+}: {
+  label: string;
+  stopping: boolean;
+  onStop: () => void;
+}) {
+  return (
+    <Button
+      size="sm"
+      variant="outline"
+      aria-label={`Stop the conversion of ${label}`}
+      title="Files already converted stay converted; the ones being converted are left as they were"
+      disabled={stopping}
+      onClick={onStop}
+    >
+      <Square className="size-3.5" aria-hidden="true" />
+      {stopping ? "Stopping…" : "Stop"}
+    </Button>
   );
 }

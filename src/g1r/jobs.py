@@ -34,6 +34,8 @@ class Jobs:
             max_workers=settings.jobs.apply_workers, thread_name_prefix="g1r-apply"
         )
         self.starting = threading.Lock()
+        # The stop event of each apply run under way, by run id.
+        self.stops: dict[int, threading.Event] = {}
 
     def _connect(self):
         return db.connect(self.settings.paths.database_path, self.settings.database.busy_timeout_ms)
@@ -84,17 +86,33 @@ class Jobs:
             store = self.scanner.store
             workers = store.parallel_conversions(store.load())
             run_id = journal.start_run(conn, label, kind, scope, len(plan))
+            self.stops[run_id] = threading.Event()
         self.applies.submit(self._run_apply, run_id, label, plan, workers, after)
         return run_id
 
     def _run_apply(self, run_id: int, label: str, plan, workers: int, after=None) -> None:
         conn = self._connect()
+        stop = self.stops[run_id]
         try:
-            journal.run(self.settings.apply, conn, run_id, label, plan, self.converter, workers)
+            journal.run(
+                self.settings.apply, conn, run_id, label, plan, self.converter, workers, stop
+            )
         finally:
             conn.close()
+            with self.starting:
+                del self.stops[run_id]
             if after is not None:
                 after()
+
+    def stop_conversion(self, conn, label: str) -> bool:
+        """Stop the folder's running conversion: no file starts, the ones under way are cut
+        off. False when no conversion runs."""
+        with self.starting:
+            run_id = journal.ask_stop(conn, label)
+            if run_id is None or run_id not in self.stops:
+                return False
+            self.stops[run_id].set()
+        return True
 
     def shutdown(self) -> None:
         for pool in (self.scans, self.applies):

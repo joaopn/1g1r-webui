@@ -835,6 +835,9 @@ apply:
   # Disc conversions unpack and check tracks in a work directory with this suffix, beside
   # the output; removed when done, and at start-up if a restart left one.
   work_suffix: .g1r-work
+  # Stopping a conversion: a tool still converting a file (chdman, dolphin-tool, 7-Zip) is
+  # killed within this many seconds, and what it wrote is deleted.
+  stop_poll_seconds: 0.5
 
 # Copier/emulator headers some ROM files carry in front of the data. When igir finds no
 # match, the header is stripped and the remaining data looked up in the DAT by CRC and size.

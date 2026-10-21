@@ -7,6 +7,7 @@ import struct
 import zlib
 from pathlib import Path
 
+from g1r import stopping
 from g1r.config import CsoConfig
 
 CSO = "cso"
@@ -41,6 +42,7 @@ def decode(config: CsoConfig, source: Path, output: Path) -> int:
         written = 0
         with output.open("xb") as out:
             for n in range(blocks):
+                stopping.check()
                 start = (index[n] & ~plain) << shift
                 end = (index[n + 1] & ~plain) << shift
                 handle.seek(start)

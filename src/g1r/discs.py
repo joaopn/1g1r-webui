@@ -12,6 +12,7 @@ import re
 import subprocess
 from pathlib import Path, PurePosixPath
 
+from g1r import stopping
 from g1r.config import ChdmanConfig, DolphinConfig
 
 CUE = "cue"
@@ -99,12 +100,12 @@ def sheet_paths(cue: Path) -> list[Path]:
 def _run(config: ChdmanConfig | DolphinConfig, args: list[str]) -> str:
     tool = Path(config.binary).name
     try:
-        result = subprocess.run(
+        result = stopping.run(
             [config.binary, *args],
-            capture_output=True,
+            config.timeout_seconds,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=config.timeout_seconds,
-            check=False,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise DiscError(f"{tool} could not run: {exc}") from exc

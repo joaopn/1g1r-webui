@@ -163,8 +163,9 @@ export type FolderCard = FolderInfo & {
   /** ROM files with nothing left to do, and the rest. */
   progress: { processed: number; to_process: number; to_match: number; to_convert: number };
   discarded: { files: number; bytes: number };
-  /** The conversion running in the folder: steps finished of the planned total, files failed. */
-  converting: { done: number; total: number; failed: number } | null;
+  /** The conversion running in the folder: steps finished of the planned total, files failed,
+   * and whether a stop was asked for. */
+  converting: { done: number; total: number; failed: number; stopping: boolean } | null;
   warnings: FolderWarning[];
 };
 
@@ -313,6 +314,8 @@ export type Run = {
   status: "running" | "done" | "failed";
   total: number;
   done: number;
+  /** A stop was asked for (conversions only); a stopped run's message starts "stopped:". */
+  stopping: boolean;
   message: string;
   started_at: string;
   finished_at: string | null;

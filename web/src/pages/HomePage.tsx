@@ -3,11 +3,13 @@ import { Download, Info, RefreshCw, TriangleAlert } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { StopButton } from "@/components/apply/RunPanel";
 import { PlatformIcon } from "@/components/PlatformIcon";
 import { type ChipTone, QuickViewBar } from "@/components/QuickViewBar";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ApiError, api } from "@/lib/api";
+import { useStopConversion } from "@/lib/conversion";
 import { formatBytes, formatCount, formatFiles, formatWhen } from "@/lib/format";
 import { foldersByName } from "@/lib/platforms";
 import { invalidateFolder, useFolders, useMeta } from "@/lib/queries";
@@ -121,7 +123,7 @@ function conversionProgress(folder: FolderCard): { fraction: number; text: React
     fraction,
     text: (
       <>
-        Converting: {PERCENT.format(fraction)}
+        {run.stopping ? "Stopping" : "Converting"}: {PERCENT.format(fraction)}
         {run.failed > 0 ? (
           <span className="text-status-bad"> · {formatFiles(run.failed)} failed</span>
         ) : null}
@@ -227,6 +229,7 @@ function Warnings({
 
 function CardActions({ folder }: { folder: FolderCard }) {
   const scan = useStartScan(folder.label);
+  const stop = useStopConversion(folder.label);
   const download = useMutation({
     mutationFn: (source: string) =>
       api(`/dats/${folder.platform}/download?source=${encodeURIComponent(source)}`, {
@@ -271,6 +274,13 @@ function CardActions({ folder }: { folder: FolderCard }) {
         <RefreshCw className={running ? "size-4 animate-spin" : "size-4"} aria-hidden="true" />
         Scan
       </Button>
+      {folder.converting ? (
+        <StopButton
+          label={folder.label}
+          stopping={folder.converting.stopping || stop.isPending}
+          onStop={() => stop.mutate()}
+        />
+      ) : null}
       {guard ? <span className="text-muted-foreground text-xs">{guard}</span> : null}
     </div>
   );

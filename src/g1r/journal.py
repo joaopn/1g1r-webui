@@ -18,7 +18,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-from g1r import cards, conversion, moves
+from g1r import cards, conversion, moves, stopping
 from g1r.config import ApplyConfig
 from g1r.converter import CRC_FORMAT
 
@@ -667,9 +667,13 @@ def _files(n: int) -> str:
     return f"{n} {'file' if n == 1 else 'files'}"
 
 
-def _summary(kind: str, plan: list[Move], finished: list[Move], failed: int) -> str:
-    """What the run did (the steps in `finished`), then how many files failed."""
+def _summary(kind: str, plan: list[Move], finished: list[Move], failed: int, left: int = 0) -> str:
+    """What the run did (the steps in `finished`), then how many files failed; a stopped
+    conversion says so first, with the files it `left` as they were."""
     converted = sum(1 for m in finished if m.action == CONVERT)
+    if left:
+        done = f"stopped: {_files(converted)} converted, {left} not converted"
+        return f"{done}; {failed} failed" if failed else done
     if plan and all(m.action == DELETE for m in plan):
         done = f"{_files(len(finished))} deleted"
     elif kind == APPLY and any(m.action == CONVERT for m in plan):
@@ -689,13 +693,18 @@ def run(
     plan: list[Move],
     convert: Convert | None = None,
     workers: int = 1,
+    stop: threading.Event | None = None,
 ) -> None:
     """Carry out a planned run. A file that fails is left in place, its error recorded, and
     the run goes on with the others (maintainer, 2026-10-21: "run fully and report the
     errored roms"). A conversion run carries out `workers` conversions at a time, each with
-    the steps that finish it. Only an unexpected error stops the run."""
+    the steps that finish it. Only an unexpected error stops the run.
+
+    Once `stop` is set, no file starts; a conversion under way is cut off and its output
+    deleted (its original stays), and a file already converted finishes its steps (maintainer,
+    2026-10-21: "Done rom work is kept, in-flight has its generated files deleted")."""
     try:
-        _run(config, conn, run_id, label, plan, convert, workers)
+        _run(config, conn, run_id, label, plan, convert, workers, stop)
     except Exception as exc:  # a background run must never stay 'running'
         _finish_run(conn, run_id, FAILED, f"unexpected error: {exc!r}")
         raise
@@ -712,13 +721,14 @@ def _units(plan: list[Move]) -> list[list[Move]]:
     return units
 
 
-def _run(config, conn, run_id: int, label: str, plan: list[Move], convert, workers) -> None:
+def _run(config, conn, run_id: int, label: str, plan: list[Move], convert, workers, stop) -> None:
     kind = conn.execute("SELECT kind FROM apply_run WHERE id = ?", (run_id,)).fetchone()[0]
     # The connection is shared by the workers; the files are worked on outside the lock.
     lock = threading.Lock()
     finished: list[Move] = []
     failed = 0  # units (files) that failed
     stopped = False  # an unexpected error: nothing new starts
+    left = 0  # files the user's stop left unconverted (not started, or cut off)
     # Restore: conversions with an original that did not come back keep their output.
     not_back: set[int] = set()
 
@@ -732,9 +742,12 @@ def _run(config, conn, run_id: int, label: str, plan: list[Move], convert, worke
             raise
 
     def carry_steps(unit: list[Move]) -> None:
-        nonlocal failed
+        nonlocal failed, left
         converting = None  # the convert step the following steps finish
         with lock:
+            if stop is not None and stop.is_set():
+                left += sum(1 for m in unit if m.action == CONVERT)
+                return
             if stopped:
                 return  # nothing new starts; a started unit is finished below
         for m in unit:
@@ -747,7 +760,18 @@ def _run(config, conn, run_id: int, label: str, plan: list[Move], convert, worke
             if kept:
                 return
             try:
-                moved = _carry_out(config, convert, m)
+                # Only a conversion is cut off; the steps after it finish what it began.
+                with stopping.armed(
+                    stop if m.action == CONVERT else None, config.stop_poll_seconds
+                ):
+                    moved = _carry_out(config, convert, m)
+            except stopping.Stopped:
+                # Cut off by the user's stop: its output is deleted, its original untouched,
+                # so the step never happened and leaves no row.
+                with lock:
+                    conn.execute("DELETE FROM operation WHERE id = ?", (op_id,))
+                    left += 1
+                return
             except (moves.MoveError, OSError) as exc:
                 with lock:
                     _set_state(conn, op_id, FAILED, str(exc))
@@ -770,7 +794,9 @@ def _run(config, conn, run_id: int, label: str, plan: list[Move], convert, worke
     else:
         for unit in units:
             carry_unit(unit)
-    _finish_run(conn, run_id, FAILED if failed else DONE, _summary(kind, plan, finished, failed))
+    _finish_run(
+        conn, run_id, FAILED if failed else DONE, _summary(kind, plan, finished, failed, left)
+    )
 
 
 def _start_step(conn, run_id: int, label: str, m: Move, converting: int | None) -> int:
@@ -810,6 +836,7 @@ def progress(conn: sqlite3.Connection, run_id: int) -> dict | None:
     ).fetchall()
     return {
         **dict(run_row),
+        "stopping": bool(run_row["stopping"]),
         "done": states.get(DONE, 0) + states.get(RESTORED, 0),
         "failed": [dict(r) for r in failed],
     }
@@ -824,10 +851,11 @@ def latest_run(conn: sqlite3.Connection, label: str) -> dict | None:
 
 def running_conversion(conn: sqlite3.Connection, label: str) -> dict | None:
     """The folder's conversion while it runs: steps finished (failed ones too) of the
-    planned total, and how many files failed so far. None when no conversion runs."""
+    planned total, how many files failed so far, and whether a stop was asked for. None when
+    no conversion runs."""
     run_row = conn.execute(
-        "SELECT id, total FROM apply_run WHERE folder_label = ? AND kind = ? AND scope = ? "
-        "AND status = ? ORDER BY id DESC LIMIT 1",
+        "SELECT id, total, stopping FROM apply_run WHERE folder_label = ? AND kind = ? "
+        "AND scope = ? AND status = ? ORDER BY id DESC LIMIT 1",
         (label, APPLY, CONVERT, RUNNING),
     ).fetchone()
     if run_row is None:
@@ -837,7 +865,25 @@ def running_conversion(conn: sqlite3.Connection, label: str) -> dict | None:
         "FROM operation WHERE run_id = ?",
         (STARTED, FAILED, CONVERT, run_row["id"]),
     ).fetchone()
-    return {"done": finished, "total": run_row["total"], "failed": failed}
+    return {
+        "done": finished,
+        "total": run_row["total"],
+        "failed": failed,
+        "stopping": bool(run_row["stopping"]),
+    }
+
+
+def ask_stop(conn: sqlite3.Connection, label: str) -> int | None:
+    """Mark the folder's running conversion as stopping; its id, or None when none runs."""
+    row = conn.execute(
+        "SELECT id FROM apply_run WHERE folder_label = ? AND kind = ? AND scope = ? "
+        "AND status = ? ORDER BY id DESC LIMIT 1",
+        (label, APPLY, CONVERT, RUNNING),
+    ).fetchone()
+    if row is None:
+        return None
+    conn.execute("UPDATE apply_run SET stopping = 1 WHERE id = ?", (row["id"],))
+    return row["id"]
 
 
 def failed_operations(conn: sqlite3.Connection, label: str) -> list[sqlite3.Row]:

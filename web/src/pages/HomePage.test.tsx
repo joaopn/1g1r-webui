@@ -93,7 +93,12 @@ test("Simplified has no scan line: a running scan leads the warnings block", asy
 });
 
 test("a running conversion fills the card by steps finished, with the files failed", async () => {
-  renderPage([{ ...card("psx", "psx", SCAN), converting: { done: 30, total: 40, failed: 2 } }]);
+  renderPage([
+    {
+      ...card("psx", "psx", SCAN),
+      converting: { done: 30, total: 40, failed: 2, stopping: false },
+    },
+  ]);
   expect(await screen.findByTestId("conversion-status-psx")).toHaveTextContent(
     "Converting: 75% · 2 files failed",
   );
@@ -102,9 +107,27 @@ test("a running conversion fills the card by steps finished, with the files fail
   expect(screen.getByRole("button", { name: "Scan psx" })).toBeDisabled();
 });
 
+test("Stop on the card stops the set's conversion; a stopping one says so", async () => {
+  const converting = { done: 1, total: 4, failed: 0, stopping: false };
+  const calls = renderPage([
+    { ...card("psx", "psx", SCAN), converting },
+    { ...card("gb", "gb", SCAN), converting: { ...converting, stopping: true } },
+    card("nes", "nes", SCAN),
+  ]);
+  await userEvent.click(await screen.findByRole("button", { name: "Stop the conversion of psx" }));
+  expect(
+    calls.some((c) => c.url.endsWith("/folders/psx/convert/stop") && c.init?.method === "POST"),
+  ).toBe(true);
+  expect(screen.getByRole("button", { name: "Stop the conversion of gb" })).toBeDisabled();
+  expect(screen.getByTestId("conversion-status-gb")).toHaveTextContent(/^Stopping: 25%$/);
+  expect(screen.queryByRole("button", { name: "Stop the conversion of nes" })).toBeNull();
+});
+
 test("Simplified: a running conversion leads the warnings block", async () => {
   localStorage.setItem("g1r.home.detail.v1", JSON.stringify("simplified"));
-  renderPage([{ ...card("psx", "psx", SCAN), converting: { done: 0, total: 4, failed: 0 } }]);
+  renderPage([
+    { ...card("psx", "psx", SCAN), converting: { done: 0, total: 4, failed: 0, stopping: false } },
+  ]);
   expect(await screen.findByTestId("warnings-psx")).toContainElement(
     screen.getByTestId("conversion-status-psx"),
   );

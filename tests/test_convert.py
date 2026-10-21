@@ -1,4 +1,6 @@
+import subprocess
 import threading
+import time
 import zipfile
 import zlib
 from http import HTTPStatus
@@ -6,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from g1r import conversion, converter, db, discs, journal, moves
+from g1r import conversion, converter, db, discs, journal, moves, stopping
 from g1r.converter import Converter, crc_and_size
 
 from .test_api import scanned, setup  # noqa: F401  (fixture)
@@ -396,3 +398,100 @@ def test_a_restore_keeps_an_output_whose_original_did_not_come_back(
         "kept: not every original came back",
     ]
     assert (folder / "odd.zip").exists() and (roms_root / ORIGINALS / "odd.nes").exists()
+
+
+# Stopping a conversion run -------------------------------------------------------------
+
+LONG = ["sleep", "30"]
+
+
+def test_an_armed_tool_is_killed_when_the_stop_comes():
+    stop = threading.Event()
+    threading.Timer(0.1, stop.set).start()
+    started = time.monotonic()
+    with stopping.armed(stop, CONFIG.stop_poll_seconds), pytest.raises(stopping.Stopped):
+        stopping.run(LONG, 60)
+    assert time.monotonic() - started < 5
+    # Unarmed (a scan), or armed with no stop, a tool runs as before.
+    assert stopping.run(["true"], 5).returncode == 0
+    with stopping.armed(threading.Event(), CONFIG.stop_poll_seconds):
+        assert stopping.run(["sh", "-c", "echo hi"], 5, stdout=subprocess.PIPE).stdout == b"hi\n"
+        with pytest.raises(subprocess.TimeoutExpired):
+            stopping.run(LONG, 0.2)
+
+
+def test_a_stopped_run_keeps_converted_files_and_deletes_the_one_under_way(make_settings, tmp_path):
+    """a is converted, b is cut off while 7-Zip extracts it, c never starts."""
+    settings = make_settings()
+    folder = tmp_path / "folder"
+    folder.mkdir()
+    plan = _conversion_plan(folder, ["a"])
+    archive = folder / "b.zip"
+    write_zip(archive, "b.nes", b"rom data")
+    crc = format(zipfile.ZipFile(archive).getinfo("b.nes").CRC, "08x")
+    member = {"member": "b.nes", "member_size": len(b"rom data"), "member_crc32": crc}
+    plan.append(step(archive, folder / "b.nes", paired_rel="b.nes", **member))
+    stat = archive.stat()
+    plan.append(
+        journal.Move(
+            "b.zip", "", "originals", archive, None, stat.st_size, stat.st_mtime_ns,
+            action=journal.DELETE, follows=True,
+        )
+    )  # fmt: skip
+    plan += _conversion_plan(folder, ["c"])
+    conn, run_id = _conversion_run(tmp_path, plan)
+    stop = threading.Event()
+    output = folder / "b.nes"
+
+    def slow_extract(settings, archive, member, out):
+        out.write_bytes(b"half")
+        stop.set()  # the user presses Stop while 7-Zip works
+        stopping.run(LONG, 60)
+
+    started = time.monotonic()
+    journal.run(CONFIG, conn, run_id, "f", plan, Converter(settings, slow_extract), 1, stop)
+    assert time.monotonic() - started < 5
+    run = journal.progress(conn, run_id)
+    assert (run["status"], run["message"]) == (
+        "done",
+        "stopped: 1 file converted, 2 not converted",
+    )
+    assert run["failed"] == []
+    assert (folder / "a.zip").exists() and not (folder / "a.nes").exists()
+    assert archive.exists() and not output.exists()
+    assert not moves.temp_path(settings.apply, output).exists()
+    assert (folder / "c.nes").exists() and not (folder / "c.zip").exists()
+    states = conn.execute("SELECT rel_path, action, state FROM operation ORDER BY id").fetchall()
+    # b was cut off: nothing of it is left to restore or to recover.
+    assert [tuple(r) for r in states] == [("a.nes", "convert", "done"), ("a.nes", "delete", "done")]
+
+
+def test_stop_through_the_api(setup, roms_root, monkeypatch):  # noqa: F811
+    client, _, _ = setup
+    scanned(client)
+    stop = client.post("/api/folders/nes/convert/stop")
+    assert stop.status_code == HTTPStatus.CONFLICT
+    jobs = client.app.state.jobs
+    running = threading.Event()
+
+    def slow(m):
+        running.set()
+        stopping.run(LONG, 60)
+
+    monkeypatch.setattr(jobs, "converter", slow)
+    plan = preview(client)
+    started = client.post("/api/folders/nes/convert", json={"token": plan["token"]})
+    assert started.status_code == HTTPStatus.ACCEPTED
+    assert running.wait(5)
+    card = {f["label"]: f for f in client.get("/api/folders").json()}["nes"]
+    assert card["converting"]["stopping"] is False
+    stop = client.post("/api/folders/nes/convert/stop")
+    assert stop.status_code == HTTPStatus.ACCEPTED and stop.json()["stopping"] is True
+    run = wait_run(client)
+    assert (run["status"], run["stopping"], run["message"]) == (
+        "done",
+        True,
+        "stopped: 0 files converted, 1 not converted",
+    )
+    assert (roms_root / "NES Set" / "odd.nes").exists()
+    assert {f["label"]: f for f in client.get("/api/folders").json()}["nes"]["converting"] is None

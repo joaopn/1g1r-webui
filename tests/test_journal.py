@@ -16,6 +16,7 @@ CONFIG = ApplyConfig(
     zip_compress_level=6,
     extract_timeout_seconds=5,
     work_suffix=".work",
+    stop_poll_seconds=0.05,
 )
 
 
@@ -244,6 +245,7 @@ def test_running_conversion_counts_finished_steps_and_failed_files(tmp_path):
         "done": 1 + 1 + 1,
         "total": 1 + 1 + 1 + 1,
         "failed": 1,
+        "stopping": False,
     }
     assert journal.running_conversion(conn, "other") is None
     conn.execute("UPDATE apply_run SET status = 'failed' WHERE id = ?", (run_id,))

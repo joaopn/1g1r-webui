@@ -425,6 +425,8 @@ class ApplyConfig(_Strict):
     # A disc conversion unpacks and checks its tracks in a directory with this suffix beside
     # the output; one left behind by a restart is removed at start-up.
     work_suffix: str = Field(min_length=1)
+    # A tool running for a conversion that is being stopped is killed within this many seconds.
+    stop_poll_seconds: float = Field(gt=0)
 
 
 class HeaderRule(_Strict):
