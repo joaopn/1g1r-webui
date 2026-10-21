@@ -421,6 +421,7 @@ def build_router(
                         (r["rel_path"] for r in scanner.unmatched_files(conn, folder.label, parts)),
                     ),
                     "discarded": discarded.totals(settings, folder.label),
+                    "converting": journal.running_conversion(conn, folder.label),
                     "warnings": dashboard.warnings(
                         conn,
                         folder.label,

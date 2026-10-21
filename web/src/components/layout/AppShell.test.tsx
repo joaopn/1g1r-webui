@@ -40,6 +40,7 @@ const FOLDERS = [
       all: 0,
     },
     discarded: { files: 0, bytes: 0 },
+    converting: null,
     warnings: [],
   },
 ];

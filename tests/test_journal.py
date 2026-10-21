@@ -218,3 +218,33 @@ def test_recovery_settles_interrupted_moves(tmp_path):
     assert not (gone / ("untouched.zip" + CONFIG.temp_suffix)).exists()
     run = conn.execute("SELECT status, message FROM apply_run").fetchone()
     assert run["status"] == "failed" and "restart" in run["message"]
+
+
+def test_running_conversion_counts_finished_steps_and_failed_files(tmp_path):
+    conn = db.connect(tmp_path / "state.db", 1000)
+    db.migrate(conn)
+    assert journal.running_conversion(conn, "f") is None
+    moves_run = journal.start_run(conn, "f", journal.APPLY, "", 1)
+    assert journal.running_conversion(conn, "f") is None  # a 1G1R apply is not a conversion
+    conn.execute("UPDATE apply_run SET status = 'done' WHERE id = ?", (moves_run,))
+    run_id = journal.start_run(conn, "f", journal.APPLY, journal.CONVERT, 1 + 1 + 1 + 1)
+    for state, action in (
+        ("done", journal.CONVERT),
+        ("done", journal.DELETE),
+        ("failed", journal.CONVERT),
+        ("started", journal.CONVERT),
+    ):
+        conn.execute(
+            "INSERT INTO operation (run_id, folder_label, rel_path, reason, source, "
+            "destination, size, mtime_ns, state, action) "
+            "VALUES (?, 'f', 'a.iso', 'convert', 'a', 'b', 1, 1, ?, ?)",
+            (run_id, state, action),
+        )
+    assert journal.running_conversion(conn, "f") == {
+        "done": 1 + 1 + 1,
+        "total": 1 + 1 + 1 + 1,
+        "failed": 1,
+    }
+    assert journal.running_conversion(conn, "other") is None
+    conn.execute("UPDATE apply_run SET status = 'failed' WHERE id = ?", (run_id,))
+    assert journal.running_conversion(conn, "f") is None

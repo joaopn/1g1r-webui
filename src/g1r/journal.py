@@ -822,6 +822,24 @@ def latest_run(conn: sqlite3.Connection, label: str) -> dict | None:
     return progress(conn, row[0]) if row else None
 
 
+def running_conversion(conn: sqlite3.Connection, label: str) -> dict | None:
+    """The folder's conversion while it runs: steps finished (failed ones too) of the
+    planned total, and how many files failed so far. None when no conversion runs."""
+    run_row = conn.execute(
+        "SELECT id, total FROM apply_run WHERE folder_label = ? AND kind = ? AND scope = ? "
+        "AND status = ? ORDER BY id DESC LIMIT 1",
+        (label, APPLY, CONVERT, RUNNING),
+    ).fetchone()
+    if run_row is None:
+        return None
+    finished, failed = conn.execute(
+        "SELECT COALESCE(SUM(state != ?), 0), COALESCE(SUM(state = ? AND action = ?), 0) "
+        "FROM operation WHERE run_id = ?",
+        (STARTED, FAILED, CONVERT, run_row["id"]),
+    ).fetchone()
+    return {"done": finished, "total": run_row["total"], "failed": failed}
+
+
 def failed_operations(conn: sqlite3.Connection, label: str) -> list[sqlite3.Row]:
     return conn.execute(
         "SELECT * FROM operation WHERE folder_label = ? AND state = ? ORDER BY id",

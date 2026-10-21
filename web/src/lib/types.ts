@@ -163,6 +163,8 @@ export type FolderCard = FolderInfo & {
   /** ROM files with nothing left to do, and the rest. */
   progress: { processed: number; to_process: number; to_match: number; to_convert: number };
   discarded: { files: number; bytes: number };
+  /** The conversion running in the folder: steps finished of the planned total, files failed. */
+  converting: { done: number; total: number; failed: number } | null;
   warnings: FolderWarning[];
 };
 

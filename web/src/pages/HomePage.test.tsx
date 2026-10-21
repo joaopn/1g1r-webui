@@ -40,6 +40,7 @@ const card = (label: string, platform: string, scan: Scan | null): FolderCard =>
   conversion: { to_convert: 0, flagged: 0 } as FolderCard["conversion"],
   progress: { processed: 0, to_process: 0, to_match: 0, to_convert: 0 },
   discarded: { files: 0, bytes: 0 },
+  converting: null,
   warnings: [],
 });
 
@@ -89,6 +90,25 @@ test("Simplified has no scan line: a running scan leads the warnings block", asy
   expect(await screen.findByTestId("warnings-nes")).toContainElement(
     screen.getByTestId("scan-status-nes"),
   );
+});
+
+test("a running conversion fills the card by steps finished, with the files failed", async () => {
+  renderPage([{ ...card("psx", "psx", SCAN), converting: { done: 30, total: 40, failed: 2 } }]);
+  expect(await screen.findByTestId("conversion-status-psx")).toHaveTextContent(
+    "Converting: 75% · 2 files failed",
+  );
+  expect(screen.getByTestId("conversion-progress")).toHaveStyle({ transform: "scaleX(0.75)" });
+  expect(screen.queryByTestId("scan-progress")).toBeNull();
+  expect(screen.getByRole("button", { name: "Scan psx" })).toBeDisabled();
+});
+
+test("Simplified: a running conversion leads the warnings block", async () => {
+  localStorage.setItem("g1r.home.detail.v1", JSON.stringify("simplified"));
+  renderPage([{ ...card("psx", "psx", SCAN), converting: { done: 0, total: 4, failed: 0 } }]);
+  expect(await screen.findByTestId("warnings-psx")).toContainElement(
+    screen.getByTestId("conversion-status-psx"),
+  );
+  expect(screen.getByTestId("conversion-status-psx")).toHaveTextContent(/^Converting: 0%$/);
 });
 
 test("a step without a file count pulses the whole card", async () => {

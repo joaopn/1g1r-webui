@@ -13,7 +13,7 @@ import { foldersByName } from "@/lib/platforms";
 import { invalidateFolder, useFolders, useMeta } from "@/lib/queries";
 import { scanProgress, useStartScan } from "@/lib/scan";
 import { readJson, writeJson } from "@/lib/storage";
-import type { FolderCard, Scan } from "@/lib/types";
+import type { FolderCard } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /** One figure on a card, with the hint shown on hover. */
@@ -110,16 +110,40 @@ function DetailSwitch({ value, onChange }: { value: Detail; onChange: (d: Detail
   );
 }
 
-/** The card's scan button and, behind the card, the running scan's progress. */
-function ScanBackground({ scan }: { scan: Scan | null }) {
-  const progress = scanProgress(scan);
+const PERCENT = new Intl.NumberFormat("en-US", { style: "percent" });
+
+/** How far the folder's running conversion is, and a line saying so. Null when none runs. */
+function conversionProgress(folder: FolderCard): { fraction: number; text: ReactNode } | null {
+  const run = folder.converting;
+  if (!run) return null;
+  const fraction = run.total > 0 ? Math.min(run.done / run.total, 1) : 0;
+  return {
+    fraction,
+    text: (
+      <>
+        Converting: {PERCENT.format(fraction)}
+        {run.failed > 0 ? (
+          <span className="text-status-bad"> · {formatFiles(run.failed)} failed</span>
+        ) : null}
+      </>
+    ),
+  };
+}
+
+/** Behind the card, the running scan's or conversion's progress (a folder runs one job at a
+ * time). */
+function CardProgress({ folder }: { folder: FolderCard }) {
+  const scan = scanProgress(folder.scan);
+  const converting = conversionProgress(folder);
+  const progress = scan ?? converting;
   if (!progress) return null;
   return (
     <div
       aria-hidden="true"
-      data-testid="scan-progress"
+      data-testid={scan ? "scan-progress" : "conversion-progress"}
       className={cn(
-        "pointer-events-none absolute inset-0 origin-left bg-primary/10 transition-transform duration-500",
+        "pointer-events-none absolute inset-0 origin-left transition-transform duration-500",
+        scan ? "bg-primary/10" : "bg-status-convert/15",
         progress.fraction === null && "animate-pulse",
       )}
       style={progress.fraction === null ? undefined : { transform: `scaleX(${progress.fraction})` }}
@@ -237,8 +261,11 @@ function CardActions({ folder }: { folder: FolderCard }) {
         size="sm"
         variant="outline"
         aria-label={`Scan ${folder.label}`}
-        title={guard ?? "Scan for conversion and matching"}
-        disabled={Boolean(guard) || running || scan.isPending}
+        title={
+          guard ??
+          (folder.converting ? "A conversion is running" : "Scan for conversion and matching")
+        }
+        disabled={Boolean(guard) || running || Boolean(folder.converting) || scan.isPending}
         onClick={() => scan.mutate({})}
       >
         <RefreshCw className={running ? "size-4 animate-spin" : "size-4"} aria-hidden="true" />
@@ -406,8 +433,12 @@ export function HomePage() {
                 },
               ];
           const progress = scanProgress(folder.scan);
-          // Simplified leaves out the last scan's date; a running or failed scan still shows.
-          const scanLine = folder.scan ? (
+          const converting = conversionProgress(folder);
+          // Simplified leaves out the last scan's date; a running conversion, or a running or
+          // failed scan, still shows.
+          const scanLine = converting ? (
+            <span data-testid={`conversion-status-${folder.label}`}>{converting.text}</span>
+          ) : folder.scan ? (
             folder.scan.status === "done" ? (
               extended ? (
                 `Scanned ${formatWhen(folder.scan.finished_at)}`
@@ -436,7 +467,7 @@ export function HomePage() {
                 tone ? CARD_BORDERS[tone] : "border-border hover:border-primary/50",
               )}
             >
-              <ScanBackground scan={folder.scan} />
+              <CardProgress folder={folder} />
               {/* The title's link covers the card (::after); links inside sit above it. */}
               <div className="relative p-4">
                 <div className="flex min-w-0 items-center gap-2">

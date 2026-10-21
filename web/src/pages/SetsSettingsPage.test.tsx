@@ -15,6 +15,7 @@ const SET = {
   discarded_to: "/roms/discarded/nes/",
   hidden: false,
   discarded: { files: 2, bytes: 2048 },
+  converting: null,
 };
 
 function renderPage() {
@@ -33,6 +34,7 @@ function renderPage() {
               platform: "gb",
               hidden: true,
               discarded: { files: 0, bytes: 0 },
+              converting: null,
             },
           ]
         : {};

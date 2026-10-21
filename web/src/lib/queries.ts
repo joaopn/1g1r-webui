@@ -48,7 +48,7 @@ export const useFolders = () =>
     queryKey: keys.folders,
     queryFn: () => api<FolderCard[]>("/folders"),
     refetchInterval: (query) =>
-      query.state.data?.some((f) => f.scan?.status === "running")
+      query.state.data?.some((f) => f.scan?.status === "running" || f.converting)
         ? (queryClient.getQueryData<Meta>(keys.meta)?.ui.poll_interval_ms ?? false)
         : false,
   });
