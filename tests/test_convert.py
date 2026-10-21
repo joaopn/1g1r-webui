@@ -340,37 +340,59 @@ def test_a_conversion_run_converts_several_files_at_a_time(make_settings, tmp_pa
             assert s["step_of"] == converts[s["rel_path"]]
 
 
-def test_a_failed_conversion_starts_no_other_and_keeps_its_original(
+def test_a_failed_conversion_keeps_its_original_and_the_run_goes_on(
     make_settings, tmp_path, monkeypatch
 ):
-    """b fails while a is converting: a still finishes, c and d never start."""
+    """B12: b fails while a is converting; a, c and d are still converted, b is listed."""
     folder = tmp_path / "folder"
     folder.mkdir()
     plan = _conversion_plan(folder, ["a", "b", "c", "d"])
     conn, run_id = _conversion_run(tmp_path, plan)
     wrap = Converter(make_settings())
-    failed = threading.Event()
-    set_state = journal._set_state
-
-    def recording(conn_, op_id, state, error="", moved=None):
-        set_state(conn_, op_id, state, error, moved)
-        if state == journal.FAILED:
-            failed.set()
-
-    monkeypatch.setattr(journal, "_set_state", recording)
     started = []
 
     def convert(m):
         started.append(m.rel_path)
         if m.rel_path == "b.nes":
             raise moves.MoveError("chdman exited with 1")
-        assert failed.wait(timeout=1)
         return wrap(m)
 
     journal.run(CONFIG, conn, run_id, "f", plan, convert, workers=1 + 1)
     run = journal.progress(conn, run_id)
-    assert run["status"] == "failed" and "chdman exited with 1" in run["message"]
-    assert sorted(started) == ["a.nes", "b.nes"]
-    assert (folder / "a.zip").exists() and not (folder / "a.nes").exists()
+    assert (run["status"], run["message"]) == ("failed", "3 files converted; 1 failed")
+    assert run["failed"] == [{"rel_path": "b.nes", "error": "chdman exited with 1"}]
+    assert sorted(started) == ["a.nes", "b.nes", "c.nes", "d.nes"]
+    for name in ("a", "c", "d"):
+        assert (folder / f"{name}.zip").exists() and not (folder / f"{name}.nes").exists()
     assert (folder / "b.nes").exists() and not (folder / "b.zip").exists()
-    assert (folder / "c.nes").exists() and (folder / "d.nes").exists()
+
+
+def test_a_restore_keeps_an_output_whose_original_did_not_come_back(
+    setup,  # noqa: F811
+    roms_root,
+    monkeypatch,
+):
+    """B12: the run goes on after a failed move back, but never removes that conversion's
+    output: the original is still in discarded/, the output the only copy in the folder."""
+    client, _, _ = setup
+    scanned(client)
+    folder = roms_root / "NES Set"
+    client.post("/api/folders/nes/convert", json={"token": preview(client)["token"]})
+    assert wait_run(client)["message"] == "1 file converted"
+    original = client.get("/api/folders/nes/discarded").json()["reasons"][0]["files"][0]
+    move = moves.move
+
+    def failing(config, source, destination):
+        if source.name == "odd.nes":
+            raise moves.MoveError("the disk went away")
+        return move(config, source, destination)
+
+    monkeypatch.setattr(moves, "move", failing)
+    client.post("/api/folders/nes/restore", json={"operation_ids": [original["operation_id"]]})
+    run = wait_run(client)
+    assert (run["status"], run["message"]) == ("failed", "0 files restored; 2 failed")
+    assert [f["error"] for f in run["failed"]] == [
+        "the disk went away",
+        "kept: not every original came back",
+    ]
+    assert (folder / "odd.zip").exists() and (roms_root / ORIGINALS / "odd.nes").exists()

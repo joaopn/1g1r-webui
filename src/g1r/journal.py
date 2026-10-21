@@ -103,6 +103,9 @@ class Move:
     step_of: int | None = None
     # The source is a file in discarded/ (emptying it), not in the folder.
     in_discarded: bool = False
+    # Restore only: the conversion this original belongs to. Its output is removed only
+    # when every one of its originals came back.
+    back_for: int | None = None
     # Convert only: how (conversion.RECIPE_*), chdman's mode for a disc, an archive's members
     # as listed (name, size, CRC32) for a disc unpacked from it, and the bytes it needs free.
     recipe: str | None = None
@@ -408,6 +411,7 @@ def plan_restore(
                 op["size"],
                 op["moved_mtime_ns"],
                 undoes=op["id"],
+                back_for=op["step_of"],
             )
         )
     for step_of in sorted(conversions):
@@ -659,18 +663,22 @@ def _carry_out(config: ApplyConfig, convert: Convert | None, m: Move):
     return None
 
 
-def _summary(kind: str, plan: list[Move], done: int) -> str:
-    def files(n: int) -> str:
-        return f"{n} {'file' if n == 1 else 'files'}"
+def _files(n: int) -> str:
+    return f"{n} {'file' if n == 1 else 'files'}"
 
-    converted = sum(1 for m in plan if m.action == CONVERT)
+
+def _summary(kind: str, plan: list[Move], finished: list[Move], failed: int) -> str:
+    """What the run did (the steps in `finished`), then how many files failed."""
+    converted = sum(1 for m in finished if m.action == CONVERT)
     if plan and all(m.action == DELETE for m in plan):
-        return f"{files(done)} deleted"
-    if kind == APPLY and converted:
-        return f"{files(converted)} converted"
-    if kind == RESTORE:
-        return f"{files(sum(1 for m in plan if m.action == MOVE))} restored"
-    return f"{files(done)} moved to discarded/"
+        done = f"{_files(len(finished))} deleted"
+    elif kind == APPLY and any(m.action == CONVERT for m in plan):
+        done = f"{_files(converted)} converted"
+    elif kind == RESTORE:
+        done = f"{_files(sum(1 for m in finished if m.action == MOVE))} restored"
+    else:
+        done = f"{_files(len(finished))} moved to discarded/"
+    return f"{done}; {failed} failed" if failed else done
 
 
 def run(
@@ -682,9 +690,10 @@ def run(
     convert: Convert | None = None,
     workers: int = 1,
 ) -> None:
-    """Carry out a planned run; stops at the first failure, leaving that file in place.
-    A conversion run carries out `workers` conversions at a time, each with the steps that
-    finish it; once one fails, no further conversion starts, and those under way finish."""
+    """Carry out a planned run. A file that fails is left in place, its error recorded, and
+    the run goes on with the others (maintainer, 2026-10-21: "run fully and report the
+    errored roms"). A conversion run carries out `workers` conversions at a time, each with
+    the steps that finish it. Only an unexpected error stops the run."""
     try:
         _run(config, conn, run_id, label, plan, convert, workers)
     except Exception as exc:  # a background run must never stay 'running'
@@ -707,40 +716,53 @@ def _run(config, conn, run_id: int, label: str, plan: list[Move], convert, worke
     kind = conn.execute("SELECT kind FROM apply_run WHERE id = ?", (run_id,)).fetchone()[0]
     # The connection is shared by the workers; the files are worked on outside the lock.
     lock = threading.Lock()
-    done = 0
-    failure: list[str] = []
+    finished: list[Move] = []
+    failed = 0  # units (files) that failed
+    stopped = False  # an unexpected error: nothing new starts
+    # Restore: conversions with an original that did not come back keep their output.
+    not_back: set[int] = set()
 
     def carry_unit(unit: list[Move]) -> None:
+        nonlocal stopped
         try:
             carry_steps(unit)
-        except Exception as exc:  # stops the other workers too; run() records it
+        except Exception:  # a bug or a database error: run() records it
             with lock:
-                failure.append(repr(exc))
+                stopped = True
             raise
 
     def carry_steps(unit: list[Move]) -> None:
-        nonlocal done
+        nonlocal failed
         converting = None  # the convert step the following steps finish
         with lock:
-            if failure:
+            if stopped:
                 return  # nothing new starts; a started unit is finished below
         for m in unit:
             with lock:
                 op_id = _start_step(conn, run_id, label, m, converting)
+                kept = m.action == REMOVE and m.step_of in not_back
+                if kept:
+                    _set_state(conn, op_id, FAILED, "kept: not every original came back")
+                    failed += 1
+            if kept:
+                return
             try:
                 moved = _carry_out(config, convert, m)
             except (moves.MoveError, OSError) as exc:
                 with lock:
                     _set_state(conn, op_id, FAILED, str(exc))
-                    failure.append(str(exc))
+                    failed += 1
+                    if m.back_for is not None:
+                        not_back.add(m.back_for)
                 return
             with lock:
                 _settle(conn, kind, label, op_id, m, moved)
-                done += 1
+                finished.append(m)
             if m.action == CONVERT:
                 converting = op_id
 
     units = _units(plan)
+    # Restores never convert, so they run in order: a remove after its originals.
     if workers > 1 and any(m.action == CONVERT for m in plan):
         with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="g1r-convert") as pool:
             for future in [pool.submit(carry_unit, unit) for unit in units]:
@@ -748,14 +770,7 @@ def _run(config, conn, run_id: int, label: str, plan: list[Move], convert, worke
     else:
         for unit in units:
             carry_unit(unit)
-            if failure:
-                break
-    if failure:
-        _finish_run(
-            conn, run_id, FAILED, f"stopped after {done} of {len(plan)} steps: {failure[0]}"
-        )
-    else:
-        _finish_run(conn, run_id, DONE, _summary(kind, plan, done))
+    _finish_run(conn, run_id, FAILED if failed else DONE, _summary(kind, plan, finished, failed))
 
 
 def _start_step(conn, run_id: int, label: str, m: Move, converting: int | None) -> int:
