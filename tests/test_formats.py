@@ -32,3 +32,16 @@ def test_romsets_are_not_judged_by_their_chip_names(folder_of):
         z.writestr("201-c1.c1", b"\0")
     proposals(client, "neogeomvs")
     assert client.get("/api/folders/neogeomvs").json()["unsupported"] == []
+
+
+def test_game_gear_carts_in_master_system_mode_are_game_gear_roms(folder_of):
+    # No-Intro's Game Gear DAT lists 25 such carts as .sms (B13).
+    client, folder = folder_of("gamegear")
+    name = "Castle of Illusion Starring Mickey Mouse (USA, Europe, Brazil) (En)"
+    with zipfile.ZipFile(folder / f"{name}.zip", "w") as z:
+        z.writestr(f"{name}.sms", b"\0")
+    (folder / "Chase H.Q. (USA).sms").write_bytes(b"\0")
+    rows = proposals(client, "gamegear")
+    assert client.get("/api/folders/gamegear").json()["unsupported"] == []
+    assert rows[f"{name}.zip"]["status"] == "done"
+    assert rows["Chase H.Q. (USA).sms"]["output"] == "Chase H.Q. (USA).zip"

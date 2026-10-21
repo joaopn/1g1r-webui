@@ -51,7 +51,7 @@ Files are read bare or inside `.zip`/`.7z`. Files in other formats are listed an
 | Game Boy | `gb` | zip | No-Intro |
 | Game Boy Advance | `gba` | zip | No-Intro |
 | Game Boy Color | `gbc` | zip | No-Intro |
-| Game Gear | `gg` | zip | No-Intro |
+| Game Gear | `gg`, `sms` (carts that run in Master System mode) | zip | No-Intro |
 | GameCube | `rvz`, `iso`, `gcm` | rvz | Redump |
 | Master System | `sms` | zip | No-Intro |
 | Mega Drive / Genesis | `md`, `gen`, `bin`, `smd` | zip | No-Intro |

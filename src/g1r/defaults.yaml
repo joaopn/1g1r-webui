@@ -298,7 +298,8 @@ platforms:
       kind: handheld
       aliases: ["gg", "sega game gear"]
       dat_name: Sega - Game Gear
-      rom_extensions: [gg]
+      # No-Intro lists the carts that run in Master System mode as .sms.
+      rom_extensions: [gg, sms]
       targets: [zip, plain]
       default_target: zip
     gb:
