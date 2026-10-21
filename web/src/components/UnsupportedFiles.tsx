@@ -1,17 +1,23 @@
-import { TriangleAlert } from "lucide-react";
+import { Archive, TriangleAlert } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { formatBytes, formatFiles } from "@/lib/format";
 import type { Meta, UnsupportedFile } from "@/lib/types";
 
 /** The files a scan found that are not in a format the folder's platform supports: they are
- * never converted, matched or moved, and the user is told so instead of seeing them vanish. */
+ * never converted, matched or moved by the app, and the user is told so instead of seeing them
+ * vanish. `onMove` (when given) reviews moving them to discarded/. */
 export function UnsupportedFiles({
   files,
   platform,
   meta,
+  onMove,
+  busy = false,
 }: {
   files: UnsupportedFile[];
   platform: string;
   meta: Meta;
+  onMove?: (relPaths: string[]) => void;
+  busy?: boolean;
 }) {
   if (files.length === 0) return null;
   const profile = meta.platforms[platform];
@@ -25,10 +31,24 @@ export function UnsupportedFiles({
         alone
       </summary>
       <div className="space-y-2 border-border border-t px-4 py-3 text-sm">
-        <p className="text-muted-foreground">
-          Supported: {formats}, bare or inside {archives}. These files are not converted, matched or
-          moved.
-        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="min-w-56 flex-1 text-muted-foreground">
+            Supported: {formats}, bare or inside {archives}. These files are not converted, matched
+            or moved unless you move them.
+          </p>
+          {onMove ? (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={busy}
+              onClick={() => onMove(files.map((f) => f.rel_path))}
+              title="Review, then move these files to discarded/ (can be restored)"
+            >
+              <Archive className="size-3.5" aria-hidden="true" /> Move {formatFiles(files.length)}{" "}
+              to discarded/
+            </Button>
+          ) : null}
+        </div>
         <ul className="space-y-1">
           {files.map((file) => (
             <li key={file.rel_path} className="flex justify-between gap-4">

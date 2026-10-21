@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { ApplyDialog } from "@/components/apply/ApplyDialog";
 import { RunPanel } from "@/components/apply/RunPanel";
 import { useRestore } from "@/components/apply/useRestore";
+import { useSetAside } from "@/components/apply/useSetAside";
 import { Box } from "@/components/Box";
 import { DatOrderEditor } from "@/components/DatOrderEditor";
 import { GamesTable } from "@/components/games/GamesTable";
@@ -44,6 +45,7 @@ export function FolderMatchingPage() {
   const [applying, setApplying] = useState<{ game: Game | null } | null>(null);
   const restore = useRestore(label);
   const unmatchedActions = useUnmatchedActions(label, meta.data);
+  const setAside = useSetAside(label, meta.data);
 
   const updateGame = (game: Game) =>
     queryClient.setQueryData<Game[]>(keys.games(label), (current) =>
@@ -164,7 +166,13 @@ export function FolderMatchingPage() {
         )}
       </ScanPanel>
 
-      <UnsupportedFiles files={f.unsupported} platform={f.platform} meta={meta.data} />
+      <UnsupportedFiles
+        files={f.unsupported}
+        platform={f.platform}
+        meta={meta.data}
+        busy={scanning}
+        onMove={setAside.move}
+      />
       {(f.summary.waiting ?? 0) > 0 ? (
         <p className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-muted-foreground text-sm">
           {formatCount(f.summary.waiting ?? 0)} cue sheet and track file(s) wait for conversion:
@@ -267,6 +275,7 @@ export function FolderMatchingPage() {
       ) : null}
 
       {unmatchedActions.dialog}
+      {setAside.dialog}
       {ignored.length > 0 ? (
         <details className="rounded-lg border border-border bg-card">
           <summary className="cursor-pointer px-4 py-3 font-medium">

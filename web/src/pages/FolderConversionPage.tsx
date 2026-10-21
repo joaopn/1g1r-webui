@@ -1,10 +1,11 @@
 import { useMutation } from "@tanstack/react-query";
-import { Play, TriangleAlert } from "lucide-react";
+import { Archive, Play, TriangleAlert } from "lucide-react";
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { ConvertDialog } from "@/components/apply/ConvertDialog";
 import { RunPanel } from "@/components/apply/RunPanel";
+import { useSetAside } from "@/components/apply/useSetAside";
 import { ConsoleKeys } from "@/components/conversion/ConsoleKeys";
 import { ConversionTable } from "@/components/conversion/ConversionTable";
 import { ScanPanel } from "@/components/ScanPanel";
@@ -23,6 +24,7 @@ export function FolderConversionPage() {
   const meta = useMeta();
   const folder = useFolder(label, meta.data?.ui.poll_interval_ms ?? false);
   const conversion = useConversion(label);
+  const setAside = useSetAside(label, meta.data);
   // The files under review: null is the whole folder.
   const [converting, setConverting] = useState<{ relPaths: string[] | null } | null>(null);
   const options = useMutation({
@@ -40,6 +42,9 @@ export function FolderConversionPage() {
   const counts = conversion.data?.counts;
   const toConvert = counts?.to_convert ?? 0;
   const scanning = f.scan?.status === "running";
+  const flagged = (conversion.data?.rows ?? [])
+    .filter((r) => r.status === "flagged")
+    .map((r) => r.rel_path);
 
   return (
     <div className="space-y-6">
@@ -56,7 +61,13 @@ export function FolderConversionPage() {
         </span>
       </ScanPanel>
 
-      <UnsupportedFiles files={f.unsupported} platform={f.platform} meta={meta.data} />
+      <UnsupportedFiles
+        files={f.unsupported}
+        platform={f.platform}
+        meta={meta.data}
+        busy={scanning}
+        onMove={setAside.move}
+      />
 
       {meta.data.platforms[f.platform]?.decrypts ? <ConsoleKeys label={label} /> : null}
 
@@ -110,7 +121,18 @@ export function FolderConversionPage() {
       <RunPanel label={label} meta={meta.data} />
 
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="font-semibold text-lg">Files</h2>
+        <h2 className="mr-auto font-semibold text-lg">Files</h2>
+        {flagged.length > 0 ? (
+          <Button
+            variant="outline"
+            disabled={scanning}
+            onClick={() => setAside.move(flagged)}
+            title="Review, then move every flagged file to discarded/ (can be restored)"
+          >
+            <Archive className="size-4" aria-hidden="true" />
+            Move flagged to discarded/ ({formatFiles(flagged.length)})
+          </Button>
+        ) : null}
         <Button
           variant={f.delete_originals ? "destructive" : "default"}
           disabled={toConvert === 0 || scanning}
@@ -129,6 +151,7 @@ export function FolderConversionPage() {
             meta={meta.data}
             busy={scanning}
             onConvert={(row) => setConverting({ relPaths: [row.rel_path] })}
+            onMove={(row) => setAside.move([row.rel_path])}
           />
         ) : (
           <p className="text-muted-foreground">Scan the folder to see what it would convert.</p>
@@ -153,6 +176,7 @@ export function FolderConversionPage() {
           }}
         />
       ) : null}
+      {setAside.dialog}
     </div>
   );
 }

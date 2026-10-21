@@ -75,3 +75,25 @@ test("the Matching table's tools: filters, any-column sort, column chooser, resi
   expect(window.localStorage.getItem("g1r.conversion.columns.v1")).not.toContain("contains");
   expect(screen.getByTestId("resize-file")).toHaveAttribute("role", "separator");
 });
+
+test("a flagged row can be moved to discarded/, a proposed one converted", async () => {
+  const moved: string[] = [];
+  render(
+    <MemoryRouter>
+      <ConversionTable
+        rows={CONVERSION_ROWS}
+        meta={META}
+        onConvert={() => {}}
+        onMove={(row) => moved.push(row.rel_path)}
+      />
+    </MemoryRouter>,
+  );
+  const flagged = screen.getByTestId("conversion-Two.zip");
+  await userEvent.click(
+    within(flagged).getByRole("button", { name: "Move Two.zip to discarded/" }),
+  );
+  expect(moved).toEqual(["Two.zip"]);
+  const wrap = screen.getByTestId("conversion-Bare (Europe).nes");
+  expect(within(wrap).queryByRole("button", { name: /to discarded/ })).toBeNull();
+  expect(within(wrap).getByRole("button", { name: /Convert/ })).toBeInTheDocument();
+});

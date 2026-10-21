@@ -1,4 +1,4 @@
-import { ArrowRight, Play, TriangleAlert } from "lucide-react";
+import { Archive, ArrowRight, Play, TriangleAlert } from "lucide-react";
 import { useMemo } from "react";
 import { type DataColumn, DataTable, type RowFilter } from "@/components/table/DataTable";
 import { Badge } from "@/components/ui/badge";
@@ -47,12 +47,15 @@ export function ConversionTable({
   rows,
   meta,
   onConvert,
+  onMove,
   busy = false,
 }: {
   rows: ConversionRow[];
   meta: Meta;
   /** Review and convert one file; the table shows the button only when this is given. */
   onConvert?: (row: ConversionRow) => void;
+  /** Review moving one flagged file to discarded/; shown only when given. */
+  onMove?: (row: ConversionRow) => void;
   busy?: boolean;
 }) {
   const columns = useMemo<DataColumn<ConversionRow>[]>(() => {
@@ -192,9 +195,9 @@ export function ConversionTable({
       searchPlaceholder="Search files, archive contents, outputs"
       filters={filters}
       actions={
-        onConvert
+        onConvert || onMove
           ? (r) =>
-              converting(r) ? (
+              onConvert && converting(r) ? (
                 <Button
                   variant="ghost"
                   size="icon-xs"
@@ -205,6 +208,17 @@ export function ConversionTable({
                 >
                   <Play className="size-3.5" aria-hidden="true" />
                   <span className="sr-only">Convert {r.rel_path}</span>
+                </Button>
+              ) : onMove && r.status === "flagged" ? (
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  disabled={busy}
+                  onClick={() => onMove(r)}
+                  title="Move this file to discarded/: review it first (can be restored)"
+                >
+                  <Archive className="size-3.5" aria-hidden="true" />
+                  <span className="sr-only">Move {r.rel_path} to discarded/</span>
                 </Button>
               ) : null
           : undefined
