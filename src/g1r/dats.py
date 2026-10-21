@@ -100,7 +100,9 @@ def _parse_xml(data: bytes) -> Dat:
             category=game_el.findtext("category"),
             description=game_el.findtext("description"),
             bios=game_el.get("isbios") == "yes",
-            serial=game_el.findtext("serial"),
+            # No-Intro writes the serial on the rom (B15).
+            serial=game_el.findtext("serial")
+            or next((r.get("serial") for r in game_el.iter("rom") if r.get("serial")), None),
             year=game_el.findtext("year"),
             manufacturer=game_el.findtext("manufacturer"),
         )
@@ -200,7 +202,15 @@ def _parse_clrmamepro(data: bytes) -> Dat:
             cloneof=_get(items, "cloneof"),
             category=_get(items, "category"),
             description=_get(items, "description"),
-            serial=_get(items, "serial"),
+            serial=_get(items, "serial")
+            or next(
+                (
+                    _get(rom, "serial")
+                    for key, rom in items
+                    if key == "rom" and not isinstance(rom, str) and _get(rom, "serial")
+                ),
+                None,
+            ),
             year=_get(items, "year"),
             manufacturer=_get(items, "manufacturer"),
         )

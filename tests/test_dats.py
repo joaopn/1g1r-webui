@@ -53,3 +53,20 @@ def test_serials_are_read_from_both_formats():
         b"</datafile>"
     )
     assert parse_dat_bytes(logiqx).games[0].serial == "SLUS-20246"
+
+
+def test_a_serial_written_on_the_rom_is_the_games():
+    # No-Intro writes it as an attribute of <rom> (B15); a game's own <serial> comes first.
+    logiqx = (
+        b"<datafile><header><name>Nintendo - Nintendo 3DS</name></header>"
+        b'<game name="P (USA)"><rom name="P.3ds" size="4" serial="CTR-P-AWAE"/></game>'
+        b'<game name="Q (USA)"><serial>CTR-P-QQQE</serial>'
+        b'<rom name="Q.3ds" size="4" serial="CTR-P-XXXX"/></game>'
+        b"</datafile>"
+    )
+    assert [g.serial for g in parse_dat_bytes(logiqx).games] == ["CTR-P-AWAE", "CTR-P-QQQE"]
+    clrmamepro = (
+        b'clrmamepro (\n\tname "Nintendo - Nintendo 3DS"\n)\n\ngame (\n'
+        b'\tname "P (USA)"\n\trom ( name "P.3ds" size 4 crc 47B9251C serial "CTR-P-AWAE" )\n)\n'
+    )
+    assert parse_dat_bytes(clrmamepro).games[0].serial == "CTR-P-AWAE"
