@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { META } from "@/test/fixtures";
@@ -155,4 +155,13 @@ test("the theme toggle is an icon at the top of the sidebar and cycles", async (
   await userEvent.click(toggle);
   expect(toggle.textContent).not.toBe(before);
   expect(toggle.textContent).toMatch(/^Theme: /);
+});
+
+test("the bell sits beside the theme toggle and the license line in the sidebar foot", async () => {
+  renderShell();
+  const sidebar = await screen.findByTestId("sidebar");
+  await waitFor(() => expect(within(sidebar).getByTestId("notifications")).toBeInTheDocument());
+  expect(within(sidebar).getByTestId("theme-toggle")).toBeInTheDocument();
+  expect(within(sidebar).getByTestId("license")).toHaveTextContent(/^License: AGPL 3\.0 · /);
+  expect(screen.queryByRole("contentinfo")).toBeNull();
 });

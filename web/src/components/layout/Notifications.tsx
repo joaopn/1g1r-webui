@@ -145,7 +145,7 @@ function Item({
   );
 }
 
-/** The bell at the top right: the latest scans and runs of every set in a side panel. */
+/** The bell beside the theme toggle in the sidebar: the latest scans and runs of every set in a side panel. */
 export function Notifications() {
   const feed = useNotifications();
   const folders = useFolders();
@@ -190,17 +190,17 @@ export function Notifications() {
       <SheetTrigger asChild>
         <Button
           variant="ghost"
-          size="icon"
+          size="icon-sm"
           aria-label={label}
           title={label}
           data-testid="notifications"
-          className="relative"
+          className="relative text-muted-foreground"
         >
           <Bell className="size-4" />
           {running && !unread.length ? (
             <span
               data-testid="notifications-running"
-              className="absolute top-1 right-1 size-2 animate-pulse rounded-full bg-status-info motion-reduce:animate-none"
+              className="absolute top-0.5 right-0.5 size-2 animate-pulse rounded-full bg-status-info motion-reduce:animate-none"
             />
           ) : null}
           {unread.length ? (
@@ -216,7 +216,7 @@ export function Notifications() {
           ) : null}
         </Button>
       </SheetTrigger>
-      <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-md">
+      <SheetContent side="left" className="flex w-full flex-col gap-0 p-0 sm:max-w-md">
         <SheetHeader className="border-border border-b pr-12">
           <SheetTitle>Notifications</SheetTitle>
           <SheetDescription>

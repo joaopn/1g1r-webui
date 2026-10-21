@@ -204,12 +204,24 @@ function NavItems({ onNavigate }: { onNavigate?: () => void }) {
 type Adding = "choose" | "one" | "many" | null;
 
 function SidebarFoot({ onAdd }: { onAdd: () => void }) {
+  const meta = useMeta();
+  const source = meta.data?.app.source_url;
   return (
-    <div className="mt-auto flex flex-col gap-1 pt-4">
+    <div className="mt-auto flex flex-col gap-3 pt-4">
       <Button onClick={onAdd} className="justify-center gap-2" data-testid="add-romsets">
         <Plus className="size-4" aria-hidden="true" />
         Add romsets
       </Button>
+      <p className="text-center text-muted-foreground text-xs" data-testid="license">
+        License: AGPL 3.0 ·{" "}
+        {source ? (
+          <a className="underline" href={source}>
+            Source code
+          </a>
+        ) : (
+          <span className="text-status-warn">Source URL not configured</span>
+        )}
+      </p>
     </div>
   );
 }
@@ -259,7 +271,10 @@ export function AppShell() {
             <span className="font-semibold text-sidebar-foreground tracking-tight">{name}</span>
             <p className="text-muted-foreground text-xs">one game, one ROM</p>
           </div>
-          <ThemeToggle />
+          <div className="flex items-center gap-0.5">
+            <Notifications />
+            <ThemeToggle />
+          </div>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto">
           <NavItems />
@@ -288,9 +303,9 @@ export function AppShell() {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-20 flex items-center gap-2 border-border border-b bg-background/95 px-4 py-2.5 backdrop-blur md:px-8 md:py-1.5">
+        <header className="sticky top-0 z-20 flex items-center gap-2 border-border border-b bg-background/95 px-4 py-2.5 backdrop-blur md:hidden">
           <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-            <SheetTrigger asChild className="md:hidden">
+            <SheetTrigger asChild>
               <Button variant="ghost" size="icon" aria-label="Open navigation">
                 <Menu className="size-4" />
               </Button>
@@ -298,6 +313,7 @@ export function AppShell() {
             <SheetContent side="left" className="flex w-72 flex-col p-4">
               <SheetHeader className="flex-row items-center p-0 pr-8 pb-4">
                 <SheetTitle className="flex-1">{name}</SheetTitle>
+                <Notifications />
                 <ThemeToggle />
               </SheetHeader>
               <NavItems onNavigate={() => setMobileOpen(false)} />
@@ -309,24 +325,11 @@ export function AppShell() {
               />
             </SheetContent>
           </Sheet>
-          <span className="font-medium text-sm md:hidden">{name}</span>
-          <div className="ml-auto">
-            <Notifications />
-          </div>
+          <span className="font-medium text-sm">{name}</span>
         </header>
         <main className="w-full flex-1 px-4 py-6 md:px-8">
           <Outlet />
         </main>
-        <footer className="border-border border-t px-4 py-2 text-center text-muted-foreground text-xs md:px-8">
-          {name} · AGPL-3.0-or-later ·{" "}
-          {meta.data?.app.source_url ? (
-            <a className="underline" href={meta.data.app.source_url}>
-              Source code
-            </a>
-          ) : (
-            <span className="text-status-warn">Source URL not configured</span>
-          )}
-        </footer>
       </div>
       <AddRomsetsDialog
         open={adding === "choose"}
