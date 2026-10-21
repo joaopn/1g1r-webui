@@ -8,6 +8,7 @@ its native order) and names the check that would prove it.
 import fnmatch
 import sqlite3
 from collections import Counter
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
@@ -123,10 +124,11 @@ def rows(
     *,
     delete_originals: bool,
     root: Path | None = None,
-    dat: Dat | None = None,
+    dats: Sequence[tuple[str, Dat]] = (),
 ) -> list[ConversionRow]:
     """`root`: the folder on disk, where loose cue sheets and card headers are read (None:
-    not available). `dat`: the active DAT, which proves a decryption."""
+    not available). `dats`: the platform's active DATs in order, each with its source's
+    name: an entry of any of them proves a decryption."""
     profile = settings.platforms.profiles[platform]
     rom_extensions = {e.lower() for e in profile.rom_extensions}
     part_extensions = {e.lower() for e in profile.part_extensions}
@@ -199,7 +201,7 @@ def rows(
             row.status = FLAGGED
             row.note = "already stripped of data (scrubbed or trimmed): never converted further"
         elif cards.ENCRYPTED in file_notes.get(rel, []) and row.container == PLAIN:
-            _decrypt(settings, label, row, profile, root, dat, delete_originals)
+            _decrypt(settings, label, row, profile, root, dats, delete_originals)
         elif kept := keep_as_is(rel, f["kind"], roms, keep_extensions):
             if f["kind"] == "archive" and len(roms) == 1:
                 # Never converted, but unpacked: emulators read the bare image.
@@ -393,9 +395,10 @@ def _disc(settings, label, row, recipe, source, profile, target, delete_original
         row.originals_to = originals_path(settings, label, row.rel_path)
 
 
-def _decrypt(settings, label, row, profile, root, dat, delete_originals) -> None:
-    """An encrypted card image: decrypted when the user's boot9 is there and the DAT lists
-    the decrypted image (by the card's product code), else flagged with what is missing."""
+def _decrypt(settings, label, row, profile, root, dats, delete_originals) -> None:
+    """An encrypted card image: decrypted when the user's boot9 is there and an active DAT
+    lists the decrypted image (by the card's product code), else flagged with what is
+    missing."""
     row.status = FLAGGED
     config = settings.card_images.get(profile.card_image or "")
     if config is None or not profile.decrypts:
@@ -403,7 +406,7 @@ def _decrypt(settings, label, row, profile, root, dat, delete_originals) -> None
     if decrypt.boot9_path(settings) is None:
         row.note = "to decrypt it, add your console's boot9 under Console keys on this page"
         return
-    if dat is None:
+    if not dats:
         row.note = "decrypting needs an active DAT, whose entry proves the result"
         return
     info = (
@@ -413,12 +416,13 @@ def _decrypt(settings, label, row, profile, root, dat, delete_originals) -> None
         row.note = "its card header cannot be read"
         return
     code = info.product_code.upper()
-    games = [g for g in dat.games if (g.serial or "").upper() == code] if code else []
+    games = [g for _, d in dats for g in d.games if code and (g.serial or "").upper() == code]
     expected = sorted(
         {r.sha1 for g in games for r in g.roms if r.sha1 and r.size == info.image_size}
     )
     if not expected:
-        row.note = f"the DAT has no decrypted image with product code {code or '(none)'}"
+        searched = " or ".join(name for name, _ in dats)
+        row.note = f"no decrypted image with product code {code or '(none)'} in {searched}"
         return
     path = PurePosixPath(row.rel_path)
     row.status, row.recipe = DECRYPT, RECIPE_DECRYPT
@@ -426,7 +430,7 @@ def _decrypt(settings, label, row, profile, root, dat, delete_originals) -> None
     row.expect_sha1, row.image_size = expected, info.image_size
     row.padding_hex = config.padding_hex
     row.verify = "the decrypted image's SHA1 must be the DAT's for " + " or ".join(
-        g.name for g in games
+        dict.fromkeys(g.name for g in games)
     )
     row.note = "decrypted with your console's keys"
     if delete_originals:

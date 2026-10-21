@@ -7,18 +7,28 @@ from g1r import decrypt
 from tests.test_3ds import UNITS, card
 
 
-def scan(client, games: list[tuple[str, str, bytes]]):
-    """Upload a 3DS DAT of (name, serial, decrypted image) and scan the folder."""
+def upload(client, games: list[tuple[str, str, bytes]], *, serial="game", nointro=False):
+    """Upload a 3DS DAT of (name, serial, decrypted image). `serial`: where the DAT writes it,
+    a `<serial>` of the game, an attribute of the rom (as No-Intro does), or nowhere (None).
+    `nointro`: the file says it is No-Intro's, so it takes that source (else "upload")."""
     entries = "".join(
-        f'<game name="{n}"><serial>{s}</serial><rom name="{n}.3ds" size="{len(d)}" '
-        f'sha1="{hashlib.sha1(d).hexdigest()}"/></game>'
+        f'<game name="{n}">{f"<serial>{s}</serial>" if serial == "game" else ""}'
+        f'<rom name="{n}.3ds" size="{len(d)}" sha1="{hashlib.sha1(d).hexdigest()}"'
+        f"{f" serial='{s}'" if serial == 'rom' else ''}/></game>"
         for n, s, d in games
     )
+    homepage = "<homepage>No-Intro</homepage>" if nointro else ""
     dat = (
-        "<?xml version='1.0'?><datafile><header><name>Nintendo - Nintendo 3DS</name></header>"
-        f"{entries}</datafile>"
+        "<?xml version='1.0'?><datafile><header><name>Nintendo - Nintendo 3DS</name>"
+        f"{homepage}</header>{entries}</datafile>"
     ).encode()
     client.post("/api/dats/3ds/upload", files={"file": ("3ds.dat", dat)})
+
+
+def scan(client, games: list[tuple[str, str, bytes]] | None = None):
+    """Upload a 3DS DAT of (name, serial, decrypted image), if given, and scan the folder."""
+    if games is not None:
+        upload(client, games)
     client.post("/api/folders/3ds/scan")
     for _ in range(500):
         if client.get("/api/folders/3ds/scan").json()["status"] != "running":
@@ -84,6 +94,43 @@ def test_a_decryption_is_proposed_only_when_the_dat_can_prove_it(
     assert (
         z["status"] == "flagged" and "no decrypted image with product code CTR-P-ZZZZ" in z["note"]
     )
+
+
+def test_a_serial_on_the_rom_is_the_games(n3ds, make_settings, keys_root):
+    # No-Intro writes the serial as an attribute of <rom>, not as the game's <serial> (B15).
+    client, folder = n3ds
+    (keys_root / "boot9_prot.bin").write_bytes(b"key")
+    locked, _ = card(make_settings, encrypted=True, product="CTR-P-AWAE")
+    clear, _ = card(make_settings, encrypted=False, product="CTR-P-AWAE")
+    (folder / "P (USA).3ds").write_bytes(locked)
+    upload(client, [("P (USA)", "CTR-P-AWAE", clear)], serial="rom", nointro=True)
+    row = scan(client)["P (USA).3ds"]
+    assert row["status"] == "decrypt"
+    assert row["expect_sha1"] == [hashlib.sha1(clear).hexdigest()]
+
+
+def test_every_active_dat_is_searched_for_the_product_code(n3ds, make_settings, keys_root):
+    # The first DAT in the order lists no serials: the next one's entry proves it (B15).
+    client, folder = n3ds
+    (keys_root / "boot9_prot.bin").write_bytes(b"key")
+    locked, _ = card(make_settings, encrypted=True, product="CTR-P-AWAE")
+    clear, _ = card(make_settings, encrypted=False, product="CTR-P-AWAE")
+    rev, _ = card(make_settings, encrypted=False, product="CTR-P-AWAE")
+    other, _ = card(make_settings, encrypted=True, product="CTR-P-ZZZZ")
+    (folder / "P (USA).3ds").write_bytes(locked)
+    (folder / "Z (USA).3ds").write_bytes(other)
+    upload(client, [("P (USA)", "CTR-P-AWAE", clear)], serial=None, nointro=True)
+    upload(client, [("P (USA) (Rev 1)", "CTR-P-AWAE", rev)])
+    rows = scan(client)
+    p = rows["P (USA).3ds"]
+    assert p["status"] == "decrypt"
+    assert p["expect_sha1"] == [hashlib.sha1(rev).hexdigest()]
+    assert "P (USA) (Rev 1)" in p["verify"]
+    z = rows["Z (USA).3ds"]
+    assert z["status"] == "flagged"
+    assert "no decrypted image with product code CTR-P-ZZZZ" in z["note"]
+    # The note says which DATs were searched.
+    assert "No-Intro" in z["note"] and "Uploaded file" in z["note"]
 
 
 def test_the_decrypted_image_must_be_the_dats(
