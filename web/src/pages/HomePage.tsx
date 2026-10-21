@@ -1,6 +1,6 @@
 import { useMutation } from "@tanstack/react-query";
 import { Download, Info, RefreshCw, TriangleAlert } from "lucide-react";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { PlatformIcon } from "@/components/PlatformIcon";
@@ -133,7 +133,16 @@ const SEVERITY = ["bad", "warn", "info"] as const;
 
 /** The card's warnings in a two-line slot (empty when there are none), most severe first;
  * the full text shows on hover. */
-function Warnings({ folder, onOpen }: { folder: FolderCard; onOpen: () => void }) {
+// `status` (Simplified: a running or failed scan) leads the block, so no line is kept empty for it.
+function Warnings({
+  folder,
+  status,
+  onOpen,
+}: {
+  folder: FolderCard;
+  status?: ReactNode;
+  onOpen: () => void;
+}) {
   const warnings = [...folder.warnings].sort(
     (a, b) => SEVERITY.indexOf(a.level) - SEVERITY.indexOf(b.level),
   );
@@ -144,6 +153,7 @@ function Warnings({ folder, onOpen }: { folder: FolderCard; onOpen: () => void }
       data-testid={`warnings-${folder.label}`}
       onClick={onOpen}
     >
+      {status ? <span className="block truncate">{status}</span> : null}
       {warnings.map((w) => {
         const Icon = w.level === "info" ? Info : TriangleAlert;
         return (
@@ -275,19 +285,15 @@ export function HomePage() {
       <header className="col-span-full mb-2 flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-64 flex-1">
           <h1 className="font-semibold text-2xl tracking-tight">Home</h1>
-          <p className="text-muted-foreground text-sm">
-            Everything here is a proposal until you apply it, and what is applied can be undone.
-            {hidden > 0 ? (
-              <>
-                {" "}
-                {formatCount(hidden)} hidden {hidden === 1 ? "set is" : "sets are"} left out (
-                <Link to="/settings/folders" className="underline underline-offset-2">
-                  Settings → Folders
-                </Link>
-                ).
-              </>
-            ) : null}
-          </p>
+          {hidden > 0 ? (
+            <p className="text-muted-foreground text-sm">
+              {formatCount(hidden)} hidden {hidden === 1 ? "set is" : "sets are"} left out (
+              <Link to="/settings/folders" className="underline underline-offset-2">
+                Settings → Folders
+              </Link>
+              ).
+            </p>
+          ) : null}
         </div>
         <DetailSwitch value={detail} onChange={changeDetail} />
         {visible.length > 0 ? (
@@ -448,9 +454,10 @@ export function HomePage() {
                 <p className="mt-1 truncate text-muted-foreground text-xs">
                   {folder.location ?? `mount ${folder.mount} unavailable`}
                 </p>
-                {/* Fixed slots, so the figures sit at the same height on every card. */}
-                <p className="mt-2 text-xs leading-4">
-                  {extended ? (
+                {/* Fixed slots, so the figures sit at the same height on every card. Simplified
+                    has no scan line: its running or failed scan leads the warnings block. */}
+                {extended ? (
+                  <p className="mt-2 text-xs leading-4">
                     <span
                       className="block truncate"
                       title={
@@ -465,10 +472,14 @@ export function HomePage() {
                         <span className="text-status-warn">No DAT yet</span>
                       )}
                     </span>
-                  ) : null}
-                  <span className="block min-h-4 truncate">{scanLine}</span>
-                </p>
-                <Warnings folder={folder} onOpen={() => navigate(target)} />
+                    <span className="block min-h-4 truncate">{scanLine}</span>
+                  </p>
+                ) : null}
+                <Warnings
+                  folder={folder}
+                  status={extended ? null : scanLine}
+                  onOpen={() => navigate(target)}
+                />
                 {folder.summary.roms > 0 ? (
                   <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2">
                     {stats.map((s) => (

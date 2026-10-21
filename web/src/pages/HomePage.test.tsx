@@ -83,6 +83,14 @@ test("a running scan fills the card by file count and its button waits", async (
   expect(screen.getByRole("button", { name: "Scan nes" })).toBeDisabled();
 });
 
+test("Simplified has no scan line: a running scan leads the warnings block", async () => {
+  localStorage.setItem("g1r.home.detail.v1", JSON.stringify("simplified"));
+  renderPage([card("nes", "nes", { ...SCAN, status: "running", stage: "Reading archives" })]);
+  expect(await screen.findByTestId("warnings-nes")).toContainElement(
+    screen.getByTestId("scan-status-nes"),
+  );
+});
+
 test("a step without a file count pulses the whole card", async () => {
   renderPage([
     card("nes", "nes", {
