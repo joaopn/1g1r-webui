@@ -481,8 +481,9 @@ export function HomePage() {
           ) : null;
           const done = isCompleted(folder);
           const tone = cardTone(folder);
-          // Pending conversions come first: the card opens where there is work to apply.
-          const page = folder.conversion.to_convert > 0 ? "conversion" : "matching";
+          // Conversion work comes first (the same test as the badge and the border): a set
+          // needing both opens Conversion.
+          const page = needsConversion(folder) ? "conversion" : "matching";
           const target = `/folders/${folder.label}/${page}`;
           return (
             <div

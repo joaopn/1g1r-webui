@@ -205,15 +205,15 @@ test("a hint links to where it is acted on, and the card still opens the set", a
   );
 });
 
-test("a card with conversions to apply opens Conversion", async () => {
+test("a card needing conversion opens Conversion, also when it needs matching too", async () => {
   renderPage([
     {
       ...card("nes", "nes", SCAN),
-      conversion: { to_convert: 2, flagged: 0 } as FolderCard["conversion"],
+      progress: { processed: 0, to_process: 3, to_match: 2, to_convert: 1 },
     },
     {
       ...card("gb", "gb", SCAN),
-      conversion: { to_convert: 0, flagged: 1 } as FolderCard["conversion"],
+      progress: { processed: 0, to_process: 2, to_match: 2, to_convert: 0 },
     },
   ]);
   expect(await screen.findByRole("link", { name: META.platforms.nes.name })).toHaveAttribute(
