@@ -589,7 +589,7 @@ export function HomePage() {
                         <TooltipTrigger asChild>
                           {/* biome-ignore lint/a11y/noStaticElementInteractions lint/a11y/useKeyWithClickEvents: the card's title link is the keyboard path; this keeps a click on a figure opening the set. */}
                           <div
-                            className="relative z-10 cursor-pointer"
+                            className="relative z-10 cursor-pointer even:text-right"
                             onClick={() => navigate(target)}
                           >
                             <dt className="text-muted-foreground text-xs">{s.label}</dt>
