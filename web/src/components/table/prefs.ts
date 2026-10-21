@@ -38,9 +38,20 @@ export function widthOf(size: ColumnSize, stored: number | undefined): number {
   return stored === undefined ? size.rem : Math.min(size.max, Math.max(size.min, stored));
 }
 
-/** The CSS grid template of the visible columns, in rem. */
+/**
+ * The CSS grid template of the visible columns. Each column is at least its width in rem and
+ * shares the space left over in proportion to that width, so a wide table has no empty strip
+ * after its last column. A column the user resized keeps its width (the drag follows the
+ * pointer); when every column was resized, they all share the space again.
+ */
 export function template(ids: string[], sizes: Record<string, ColumnSize>, widths: Widths) {
-  return ids.map((id) => `${widthOf(sizes[id], widths[id])}rem`).join(" ");
+  const allResized = ids.every((id) => widths[id] !== undefined);
+  return ids
+    .map((id) => {
+      const rem = widthOf(sizes[id], widths[id]);
+      return widths[id] === undefined || allResized ? `minmax(${rem}rem, ${rem}fr)` : `${rem}rem`;
+    })
+    .join(" ");
 }
 
 /** Sort values: numbers compare as numbers, everything else as text. */

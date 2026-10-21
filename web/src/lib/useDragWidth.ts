@@ -13,7 +13,8 @@ export function clampRem(value: number, min: number, max: number): number {
 /**
  * Pointer and keyboard handlers for a vertical splitter that sets a width in rem: drag with
  * pointer capture (the width follows the pointer outside the handle), arrows step it
- * (Shift multiplies the step), Home/End jump to the bounds, double-click resets.
+ * (Shift multiplies the step), Home/End jump to the bounds, double-click resets. Both start
+ * from the width shown when `measure` gives one.
  */
 export function useDragWidth({
   width,
@@ -22,6 +23,7 @@ export function useDragWidth({
   step,
   shiftMultiplier,
   defaultPx,
+  measure,
   onChange,
   onReset,
 }: {
@@ -32,22 +34,25 @@ export function useDragWidth({
   shiftMultiplier: number;
   /** Fallback rem size in px when the document reports none. */
   defaultPx: number;
+  /** The width shown, in px, when it can differ from `width` (a column stretched to fill). */
+  measure?: () => number | undefined;
   onChange: (rem: number) => void;
   onReset: () => void;
 }) {
   const drag = useRef<{ id: number; x: number; start: number; px: number } | null>(null);
   const set = (rem: number) => onChange(clampRem(rem, min, max));
+  const shown = (px: number) => {
+    // jsdom lays nothing out and measures 0.
+    const measured = measure?.();
+    return measured ? measured / px : width;
+  };
   return {
     onPointerDown(event: PointerEvent<HTMLElement>) {
       if (event.button !== 0) return;
       event.preventDefault();
       event.currentTarget.setPointerCapture?.(event.pointerId);
-      drag.current = {
-        id: event.pointerId,
-        x: event.clientX,
-        start: width,
-        px: remInPixels(defaultPx),
-      };
+      const px = remInPixels(defaultPx);
+      drag.current = { id: event.pointerId, x: event.clientX, start: shown(px), px };
     },
     onPointerMove(event: PointerEvent<HTMLElement>) {
       const current = drag.current;
@@ -70,11 +75,12 @@ export function useDragWidth({
     },
     onKeyDown(event: KeyboardEvent<HTMLElement>) {
       const delta = event.shiftKey ? step * shiftMultiplier : step;
+      const current = shown(remInPixels(defaultPx));
       const next =
         event.key === "ArrowLeft"
-          ? width - delta
+          ? current - delta
           : event.key === "ArrowRight"
-            ? width + delta
+            ? current + delta
             : event.key === "Home"
               ? min
               : event.key === "End"

@@ -187,7 +187,8 @@ export function DataTable<T>({
   });
   const ids = shownColumns.map((c) => c.id);
   const style = { "--table-grid": template(ids, sizes, widths) } as CSSProperties;
-  const grid = "grid items-center gap-3 [grid-template-columns:var(--table-grid)]";
+  const grid =
+    "grid flex-1 items-center gap-3 [grid-template-columns:var(--table-grid)] *:[contain:inline-size]";
 
   return (
     <div className={cn("space-y-3", fit && "w-fit max-w-full")}>

@@ -1,4 +1,5 @@
 import { ArrowDown, ArrowUp, Columns3, ListFilter } from "lucide-react";
+import { useRef } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -34,6 +35,7 @@ export function HeaderCell({
   onResize: (id: string, rem: number | null) => void;
   className?: string;
 }) {
+  const cell = useRef<HTMLDivElement>(null);
   const drag = useDragWidth({
     width,
     min: size.min,
@@ -41,11 +43,12 @@ export function HeaderCell({
     step: meta.ui.resize_step_rem,
     shiftMultiplier: meta.ui.resize_shift_multiplier,
     defaultPx: meta.ui.rem_fallback_px,
+    measure: () => cell.current?.getBoundingClientRect().width,
     onChange: (rem) => onResize(id, rem),
     onReset: () => onResize(id, null),
   });
   return (
-    <div className={cn("relative min-w-0", className)} data-testid={`header-${id}`}>
+    <div ref={cell} className={cn("relative min-w-0", className)} data-testid={`header-${id}`}>
       {sortable ? (
         <button
           type="button"

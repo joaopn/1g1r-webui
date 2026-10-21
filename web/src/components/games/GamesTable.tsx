@@ -59,7 +59,8 @@ import {
   widthOf,
 } from "./columns";
 
-const GRID = "grid items-center gap-3 [grid-template-columns:var(--games-grid)]";
+const GRID =
+  "grid flex-1 items-center gap-3 [grid-template-columns:var(--games-grid)] *:[contain:inline-size]";
 
 const STATUS_STYLE: Record<GameStatus, string> = {
   undecided: "border-status-warn text-status-warn",
