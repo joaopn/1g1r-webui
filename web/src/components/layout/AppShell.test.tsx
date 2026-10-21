@@ -75,25 +75,42 @@ beforeEach(() => window.localStorage.clear());
 
 test("groups start closed and open on click, with the chevron turning", async () => {
   renderShell();
-  const matching = (await screen.findAllByRole("button", { name: /Matching & 1G1R/ }))[0];
-  expect(matching).toHaveAttribute("aria-expanded", "false");
-  expect(screen.getAllByTestId("chevron-matching")[0]).not.toHaveClass("rotate-90");
-  await userEvent.click(matching);
-  expect(matching).toHaveAttribute("aria-expanded", "true");
-  expect(screen.getAllByTestId("chevron-matching")[0]).toHaveClass("rotate-90");
+  const romsets = (await screen.findAllByRole("button", { name: /Romsets/ }))[0];
+  expect(romsets).toHaveAttribute("aria-expanded", "false");
+  expect(screen.getAllByTestId("chevron-romsets")[0]).not.toHaveClass("rotate-90");
+  await userEvent.click(romsets);
+  expect(romsets).toHaveAttribute("aria-expanded", "true");
+  expect(screen.getAllByTestId("chevron-romsets")[0]).toHaveClass("rotate-90");
   expect(await screen.findAllByTitle("Nintendo Entertainment System · nes")).not.toHaveLength(0);
-  await userEvent.click(matching);
-  expect(matching).toHaveAttribute("aria-expanded", "false");
+  await userEvent.click(romsets);
+  expect(romsets).toHaveAttribute("aria-expanded", "false");
 });
 
-test("the group of the current page opens itself", async () => {
-  renderShell("/folders/nes/matching");
-  const matching = (await screen.findAllByRole("button", { name: /Matching & 1G1R/ }))[0];
-  await waitFor(() => expect(matching).toHaveAttribute("aria-expanded", "true"));
-  expect(screen.getAllByRole("button", { name: /Conversion/ })[0]).toHaveAttribute(
-    "aria-expanded",
-    "false",
-  );
+test("one Romsets group replaces the per-page groups", async () => {
+  renderShell();
+  await screen.findAllByRole("button", { name: /Romsets/ });
+  for (const name of [/^Conversion$/, /Matching & 1G1R/, /^Discarded$/]) {
+    expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
+  }
+});
+
+test("a set's entry stays open and highlighted on every one of its tabs", async () => {
+  renderShell("/folders/nes/discarded");
+  const romsets = (await screen.findAllByRole("button", { name: /Romsets/ }))[0];
+  await waitFor(() => expect(romsets).toHaveAttribute("aria-expanded", "true"));
+  const entry = screen.getAllByTitle("Nintendo Entertainment System · nes")[0];
+  expect(entry).toHaveClass("bg-sidebar-accent");
+});
+
+test("a set's entry opens Conversion when it has conversion work, else Matching", () => {
+  const folder = FOLDERS[0];
+  const converting = { ...folder, label: "gb", progress: { ...folder.progress, to_convert: 1 } };
+  const idle = { ...folder, progress: { ...folder.progress, to_convert: 0 } };
+  const romsets = navGroups([converting, idle], META).find((g) => g.id === "romsets");
+  expect(romsets?.children.map((c) => c.to).sort()).toEqual([
+    "/folders/gb/conversion",
+    "/folders/nes/matching",
+  ]);
 });
 
 test("the sidebar is resized with the keyboard and remembers its width", async () => {
@@ -116,8 +133,8 @@ test("folders are listed by platform name, then label", () => {
     { ...folder, label: "gb-2", platform: "gb" },
     { ...folder, label: "gb", platform: "gb" },
   ];
-  const matching = navGroups(folders, META).find((g) => g.id === "matching");
-  expect(matching?.children.map((c) => c.title)).toEqual([
+  const romsets = navGroups(folders, META).find((g) => g.id === "romsets");
+  expect(romsets?.children.map((c) => c.title)).toEqual([
     "Game Boy · gb",
     "Game Boy · gb-2",
     "Nintendo Entertainment System · nes",
@@ -126,7 +143,7 @@ test("folders are listed by platform name, then label", () => {
 
 test("hidden sets stay out of the sidebar, and both ways to add sets are at its foot", async () => {
   renderShell("/", [...FOLDERS, { ...FOLDERS[0], label: "gb", platform: "gb", hidden: true }]);
-  await userEvent.click((await screen.findAllByRole("button", { name: /Matching & 1G1R/ }))[0]);
+  await userEvent.click((await screen.findAllByRole("button", { name: /Romsets/ }))[0]);
   expect(await screen.findAllByTitle("Nintendo Entertainment System · nes")).not.toHaveLength(0);
   expect(screen.queryByTitle("Game Boy · gb")).not.toBeInTheDocument();
   expect(screen.queryByTestId("add-set")).not.toBeInTheDocument();

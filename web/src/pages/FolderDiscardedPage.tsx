@@ -37,7 +37,7 @@ export function FolderDiscardedPage() {
   const data = discarded.data;
   return (
     <div className="space-y-6">
-      <FolderHeader folder={f} meta={meta.data} section="Discarded" />
+      <FolderHeader folder={f} meta={meta.data} section="discarded" />
       <section className="space-y-1 rounded-lg border border-border bg-card px-4 py-3 text-sm">
         <p>
           Discarded files go to <code className="text-xs">{f.discarded_to}</code>, under the reason

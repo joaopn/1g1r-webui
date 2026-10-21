@@ -48,7 +48,7 @@ export function FolderConversionPage() {
 
   return (
     <div className="space-y-6">
-      <FolderHeader folder={f} meta={meta.data} section="Conversion" />
+      <FolderHeader folder={f} meta={meta.data} section="conversion" />
 
       <ScanPanel label={label} scan={f.scan} title="Scan">
         <span className="font-medium">Target</span> {target?.label}{" "}

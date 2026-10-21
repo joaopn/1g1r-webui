@@ -14,6 +14,7 @@ import { formatBytes, formatCount, formatFiles, formatWhen } from "@/lib/format"
 import { foldersByName } from "@/lib/platforms";
 import { invalidateFolder, useFolders, useMeta } from "@/lib/queries";
 import { scanProgress, useStartScan } from "@/lib/scan";
+import { needsConversion, openingSection, sectionPath } from "@/lib/sections";
 import { readJson, writeJson } from "@/lib/storage";
 import type { FolderCard } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -33,7 +34,6 @@ function isCompleted(folder: FolderCard): boolean {
   return folder.summary.roms > 0 && folder.progress.to_process === 0;
 }
 
-const needsConversion = (f: FolderCard) => f.progress.to_convert > 0;
 const needsMatching = (f: FolderCard) => f.progress.to_match > 0;
 /** Waiting for a scan: never scanned, the last scan failed, or the DAT changed since. */
 const needsScan = (f: FolderCard) => f.needs_scan;
@@ -481,10 +481,7 @@ export function HomePage() {
           ) : null;
           const done = isCompleted(folder);
           const tone = cardTone(folder);
-          // Conversion work comes first (the same test as the badge and the border): a set
-          // needing both opens Conversion.
-          const page = needsConversion(folder) ? "conversion" : "matching";
-          const target = `/folders/${folder.label}/${page}`;
+          const target = sectionPath(folder.label, openingSection(folder));
           return (
             <div
               key={folder.label}

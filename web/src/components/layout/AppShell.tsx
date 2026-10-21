@@ -1,11 +1,9 @@
 import type { LucideIcon } from "lucide-react";
 import {
-  Archive,
   ChartColumn,
   ChevronRight,
-  FileCog,
+  Gamepad2,
   House,
-  ListChecks,
   Menu,
   Plus,
   Settings as SettingsIcon,
@@ -22,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { foldersByName } from "@/lib/platforms";
 import { useFolders, useMeta } from "@/lib/queries";
+import { openingSection, sectionPath } from "@/lib/sections";
 import { isNumber, isStringArray, readJson, removeKey, writeJson } from "@/lib/storage";
 import type { FolderCard, Meta } from "@/lib/types";
 import { clampRem, useDragWidth } from "@/lib/useDragWidth";
@@ -31,18 +30,18 @@ import { cn } from "@/lib/utils";
 const OPEN_GROUPS_KEY = "g1r.sidebar.groups.v1";
 const WIDTH_KEY = "g1r.sidebar.width.v1";
 
-type NavChild = { to: string; label: ReactNode; title: string };
+/** `prefix`: the paths the entry stands for (a set's every tab), when wider than `to`. */
+type NavChild = { to: string; label: ReactNode; title: string; prefix?: string };
 type NavGroupItem = { id: string; label: string; icon: LucideIcon; children: NavChild[] };
 
-function folderChildren(
-  folders: FolderCard[],
-  meta: Meta | undefined,
-  section: string,
-): NavChild[] {
+const childPrefix = (child: NavChild) => child.prefix ?? child.to;
+
+function folderChildren(folders: FolderCard[], meta: Meta | undefined): NavChild[] {
   return foldersByName(folders, meta?.platforms).map((folder) => {
     const platform = meta?.platforms[folder.platform];
     return {
-      to: `/folders/${folder.label}/${section}`,
+      to: sectionPath(folder.label, openingSection(folder)),
+      prefix: `/folders/${folder.label}/`,
       title: `${platform?.name ?? folder.platform} · ${folder.label}`,
       label: (
         <span className="flex min-w-0 items-center gap-2">
@@ -57,24 +56,7 @@ function folderChildren(
 
 export function navGroups(folders: FolderCard[], meta: Meta | undefined): NavGroupItem[] {
   return [
-    {
-      id: "conversion",
-      label: "Conversion",
-      icon: FileCog,
-      children: folderChildren(folders, meta, "conversion"),
-    },
-    {
-      id: "matching",
-      label: "Matching & 1G1R",
-      icon: ListChecks,
-      children: folderChildren(folders, meta, "matching"),
-    },
-    {
-      id: "discarded",
-      label: "Discarded",
-      icon: Archive,
-      children: folderChildren(folders, meta, "discarded"),
-    },
+    { id: "romsets", label: "Romsets", icon: Gamepad2, children: folderChildren(folders, meta) },
     {
       id: "settings",
       label: "Settings",
@@ -106,7 +88,7 @@ function rowClass(active: boolean) {
 
 function NavGroup({ group, onNavigate }: { group: NavGroupItem; onNavigate?: () => void }) {
   const { pathname } = useLocation();
-  const inside = group.children.some((child) => pathname.startsWith(child.to));
+  const inside = group.children.some((child) => pathname.startsWith(childPrefix(child)));
   const [open, setOpen] = useState(
     () => inside || readJson(OPEN_GROUPS_KEY, [], isStringArray).includes(group.id),
   );
@@ -152,7 +134,7 @@ function NavGroup({ group, onNavigate }: { group: NavGroupItem; onNavigate?: () 
         className={cn("ml-4 flex flex-col gap-0.5 border-border border-l pl-2", !open && "hidden")}
       >
         {group.children.length === 0 ? (
-          <li className="px-2.5 py-1.5 text-muted-foreground text-xs">No platforms yet</li>
+          <li className="px-2.5 py-1.5 text-muted-foreground text-xs">No romsets yet</li>
         ) : (
           group.children.map((child) => (
             <li key={child.to}>
@@ -160,7 +142,7 @@ function NavGroup({ group, onNavigate }: { group: NavGroupItem; onNavigate?: () 
                 to={child.to}
                 title={child.title}
                 onClick={onNavigate}
-                className={({ isActive }) => cn(rowClass(isActive), "py-1.5")}
+                className={cn(rowClass(pathname.startsWith(childPrefix(child))), "py-1.5")}
               >
                 {child.label}
               </NavLink>

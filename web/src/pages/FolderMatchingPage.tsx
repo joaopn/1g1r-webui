@@ -104,7 +104,7 @@ export function FolderMatchingPage() {
 
   return (
     <div className="space-y-6">
-      <FolderHeader folder={f} meta={meta.data} section="Matching & 1G1R" />
+      <FolderHeader folder={f} meta={meta.data} section="matching" />
 
       {f.summary.roms > 0 ? (
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
