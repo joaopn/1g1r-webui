@@ -201,7 +201,12 @@ def rows(
         elif cards.ENCRYPTED in file_notes.get(rel, []) and row.container == PLAIN:
             _decrypt(settings, label, row, profile, root, dat, delete_originals)
         elif kept := keep_as_is(rel, f["kind"], roms, keep_extensions):
-            row.status, row.note = ACCEPTED, f".{kept} is kept as it is: it is never converted"
+            if f["kind"] == "archive" and len(roms) == 1:
+                # Never converted, but unpacked: emulators read the bare image.
+                _unwrap(row, roms[0], len(row.members) - len(roms))
+                _originals(settings, label, row, delete_originals)
+            else:
+                row.status, row.note = ACCEPTED, f".{kept} is kept as it is: it is never converted"
         elif to_disc and f["kind"] == "rom" and ext in discs.SHEETS:
             sheet = sheets.get(rel)
             if isinstance(sheet, str):
@@ -434,13 +439,7 @@ def _propose(settings, label, target, row, roms, delete_originals) -> None:
         and len(roms) == 1
         and _ext(roms[0]["name"]) == target.produces
     ):
-        member = roms[0]
-        row.status, row.recipe = UNWRAP, RECIPE_UNWRAP
-        row.output = str(parent / PurePosixPath(member["name"]).name)
-        row.verify = f"CRC32 {member['crc32']} and size {member['size']} of the extracted file"
-        extras = len(row.members) - len(roms)
-        if extras:
-            row.note = f"{extras} other file(s) in the archive stay in the original"
+        _unwrap(row, roms[0], len(row.members) - len(roms))
     elif target.produces != ZIP:
         row.status, row.note = FLAGGED, f"the app cannot make {target.produces} from this file"
         return
@@ -448,6 +447,19 @@ def _propose(settings, label, target, row, roms, delete_originals) -> None:
         row.status, row.recipe = WRAP, RECIPE_WRAP
         row.output = str(parent / f"{PurePosixPath(row.rel_path).stem}.{target.produces}")
         row.verify = f"CRC32 and size of the zipped member equal the file's ({row.size} bytes)"
+    _originals(settings, label, row, delete_originals)
+
+
+def _unwrap(row, member, extras: int) -> None:
+    """The archive's one ROM, extracted next to it."""
+    row.status, row.recipe = UNWRAP, RECIPE_UNWRAP
+    row.output = str(PurePosixPath(row.rel_path).parent / PurePosixPath(member["name"]).name)
+    row.verify = f"CRC32 {member['crc32']} and size {member['size']} of the extracted file"
+    if extras:
+        row.note = f"{extras} other file(s) in the archive stay in the original"
+
+
+def _originals(settings, label, row, delete_originals) -> None:
     if delete_originals:
         row.reversible = False
     else:

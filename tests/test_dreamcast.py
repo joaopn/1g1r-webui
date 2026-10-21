@@ -99,22 +99,56 @@ def test_a_gdi_becomes_a_verified_chd(dc, roms_root):
     assert [(originals / t.name).read_bytes() for t in tracks] == data
 
 
-def test_cdi_images_are_kept_as_they_are(dc, roms_root):
+def test_cdi_images_are_kept_as_they_are_and_unpacked_from_archives(dc, roms_root):
     client, folder = dc
     (folder / "Homebrew (2020)(Dev).cdi").write_bytes(b"cdi")
     with zipfile.ZipFile(folder / "Indie [CDI].zip", "w") as z:
         z.writestr("Indie.cdi", b"cdi image")
         z.writestr("Indie.url", b"[InternetShortcut]")
+    with zipfile.ZipFile(folder / "Two Discs [CDI].zip", "w") as z:
+        z.writestr("Two Discs (Disc 1).cdi", b"disc one")
+        z.writestr("Two Discs (Disc 2).cdi", b"disc two")
     scan(client)
     found = rows(client)
-    for name in ("Homebrew (2020)(Dev).cdi", "Indie [CDI].zip"):
-        assert found[name]["status"] == "accepted", found[name]
-        assert found[name]["output"] is None
-        assert "never converted" in found[name]["note"]
+    bare = found["Homebrew (2020)(Dev).cdi"]
+    assert (bare["status"], bare["output"]) == ("accepted", None)
+    assert "never converted" in bare["note"]
+    # B9: a .cdi is never converted, but an archive holding one is unpacked.
+    zipped = found["Indie [CDI].zip"]
+    assert (zipped["status"], zipped["recipe"], zipped["output"]) == (
+        "unwrap",
+        "unwrap",
+        "Indie.cdi",
+    )
+    assert zipped["note"] == "1 other file(s) in the archive stay in the original"
+    together = found["Two Discs [CDI].zip"]
+    assert (together["status"], together["output"]) == ("accepted", None)
     assert client.get("/api/folders/dc").json()["unsupported"] == []
     unmatched = {f["rel_path"] for f in client.get("/api/folders/dc/unmatched").json()}
-    assert unmatched == {"Homebrew (2020)(Dev).cdi", "Indie [CDI].zip"}
-    assert client.post("/api/folders/dc/convert/preview", json={}).json()["conversions"] == []
+    assert unmatched == {"Homebrew (2020)(Dev).cdi", "Indie [CDI].zip", "Two Discs [CDI].zip"}
+    plan = client.post("/api/folders/dc/convert/preview", json={}).json()
+    assert [c["rel_path"] for c in plan["conversions"]] == ["Indie [CDI].zip"]
+
+
+def test_a_zipped_cdi_is_unpacked_and_its_archive_kept_in_originals(dc, roms_root):
+    client, folder = dc
+    with zipfile.ZipFile(folder / "Indie [CDI].zip", "w") as z:
+        z.writestr("Indie.cdi", b"cdi image")
+        z.writestr("Indie.url", b"[InternetShortcut]")
+    scan(client)
+    plan = client.post("/api/folders/dc/convert/preview", json={}).json()
+    assert plan["problems"] == []
+    client.post("/api/folders/dc/convert", json={"token": plan["token"]})
+    for _ in range(5000):
+        run = client.get("/api/folders/dc/run").json()
+        if run and run["status"] != "running":
+            break
+    assert (run["status"], run["message"]) == ("done", "1 file converted"), run["failed"]
+    assert (folder / "Indie.cdi").read_bytes() == b"cdi image"
+    assert not (folder / "Indie [CDI].zip").exists()
+    original = roms_root / "discarded" / "dc" / "originals" / "Indie [CDI].zip"
+    with zipfile.ZipFile(original) as z:
+        assert sorted(z.namelist()) == ["Indie.cdi", "Indie.url"]
 
 
 def dc_dat(games: dict[str, list[tuple[str, bytes]]]) -> bytes:
