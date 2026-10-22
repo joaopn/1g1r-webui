@@ -42,7 +42,6 @@ from g1r.hashing import (
     content_hashes,
     magic_length,
     payload_count,
-    payloads,
     probe_sha1,
     rvz_identity,
     word_bytes,
@@ -51,8 +50,6 @@ from g1r.library import FolderEntry, Library, LibraryStore
 
 METHOD_CHECKSUM = "dat-checksum"
 METHOD_HEADERLESS = "dat-headerless"
-METHOD_BYTESWAPPED = "dat-byteswapped"
-METHOD_UNTRIMMED = "dat-untrimmed"
 METHOD_TITLE_ID = "title-id"
 # identity.dat_sha1 of an identification that needed no DAT (title IDs).
 NO_DAT = ""
@@ -157,34 +154,7 @@ def inventory(settings: Settings, root: Path, platform: str, ignored: list[str])
     return files
 
 
-# Header-stripped fallback -------------------------------------------------------
-
-
-def headerless_matches(settings: Settings, platform: str, path: Path, dat: Dat) -> set[str]:
-    return _look(_crc_index(dat), headerless_keys(settings, platform, path))
-
-
-def headerless_step(settings: Settings, platform: str) -> str:
-    return step(
-        "headerless",
-        settings.headers.get(platform, []),
-        settings.platforms.profiles[platform].rom_extensions,
-    )
-
-
-def headerless_keys(settings: Settings, platform: str, path: Path) -> list[list]:
-    """[CRC, size] of each ROM's data with its copier header removed, for every header rule
-    that recognises it."""
-    rules = settings.headers.get(platform, [])
-    if not rules:
-        return []
-    profile = settings.platforms.profiles[platform]
-    exts = {e.lower() for e in profile.rom_extensions}
-    return [
-        [digest.crc32, digest.size]
-        for payload in payloads(settings, path, exts, rules)
-        for digest in payload.headerless
-    ]
+# DAT lookups by CRC32 and size -------------------------------------------------
 
 
 def _look(index: dict[tuple[str, int], set[str]], keys: list[list]) -> set[str]:
@@ -201,40 +171,6 @@ def _crc_index(dat: Dat) -> dict[tuple[str, int], set[str]]:
             if rom.crc and rom.size is not None:
                 index.setdefault((rom.crc, rom.size), set()).add(game.name)
     return index
-
-
-def byte_order_matches(
-    settings: Settings, platform: str, path: Path, dat: Dat
-) -> tuple[set[str], set[str]]:
-    """On a platform with several byte orders: the games with a ROM equal to this file's
-    data as it is, and those equal to it in the native order. A DAT may list each order as a
-    ROM of one game (libretro's N64 DAT has .z64 and .v64), which igir then reports missing
-    unless every order is present: any one of them identifies the game."""
-    keys = byte_order_keys(settings, platform, path)
-    index = _crc_index(dat)
-    return _look(index, keys["as_is"]), _look(index, keys["native"])
-
-
-def byte_order_step(settings: Settings, platform: str) -> str:
-    return step(
-        "byte-order-crcs",
-        settings.byte_orders.get(platform),
-        settings.platforms.profiles[platform].rom_extensions,
-    )
-
-
-def byte_order_keys(settings: Settings, platform: str, path: Path) -> dict[str, list[list]]:
-    """[CRC, size] of each ROM's data as it is, and in the native byte order."""
-    config = settings.byte_orders.get(platform)
-    keys: dict[str, list[list]] = {"as_is": [], "native": []}
-    if config is None:
-        return keys
-    exts = {e.lower() for e in settings.platforms.profiles[platform].rom_extensions}
-    for payload in payloads(settings, path, exts, byte_order=config):
-        keys["as_is"].append([payload.full.crc32, payload.full.size])
-        if payload.native is not None:
-            keys["native"].append([payload.native.crc32, payload.native.size])
-    return keys
 
 
 # Byte orders ----------------------------------------------------------------------
@@ -599,8 +535,11 @@ class Scanner:
             )
         if not duplicates_checked:
             self._duplicates(root, folder.platform, final, found, progress)
-        # Every file still unmatched shows its hashes in the table.
-        self._hash(folder.platform, root, unmatched(), found, progress, "Hashing unmatched files")
+        if library.lookups.hasheous:
+            # With lookups on, every file still unmatched shows the hashes they send.
+            self._hash(
+                folder.platform, root, unmatched(), found, progress, "Hashing unmatched files"
+            )
         self._suggest(dat_of_name, [d for _, d in dats], unmatched(), found, progress)
         progress.stage("Saving")
         self._apply_manual(conn, label, final, found, dat_of_name)
@@ -632,8 +571,8 @@ class Scanner:
     def _dat_pass(
         self, entry, dat: Dat, named, platform, root, roms, unmatched, found, progress, run_igir
     ) -> None:
-        """One DAT's turn: igir's checksum match, then the header-stripped, byte-order and
-        trimmed-image checks, on the files no earlier step identified. `run_igir`: the
+        """One DAT's turn: igir's checksum match, then the header-stripped check, on the files
+        no earlier step identified. `run_igir`: the
         folder's igir cache and time limit."""
         sha1 = entry.version["sha1"]
         dat_file = self.settings.paths.data_dir / entry.version["file"]
@@ -664,24 +603,15 @@ class Scanner:
                     dat=sha1,
                 )
         if self.settings.headers.get(platform):
+            # igir matches a headered file, but not a headered ROM inside a zip.
             index = _crc_index(dat)
-            name = headerless_step(self.settings, platform)
             for f in progress.each(f"Checking header-stripped data{named}", unmatched()):
-                keys = found.cache.get(
-                    f, name, lambda f=f: headerless_keys(self.settings, platform, root / f.rel_path)
-                )
+                keys = [
+                    [h.crc32, h.size]
+                    for h in self._content_hashes(platform, root, f, found)
+                    if h.variant.split(":")[0] == hashing.HEADERLESS
+                ]
                 found.identify(f.rel_path, _look(index, keys), METHOD_HEADERLESS, dat=sha1)
-        if self.settings.byte_orders.get(platform):
-            index = _crc_index(dat)
-            name = byte_order_step(self.settings, platform)
-            for f in progress.each(f"Checking byte orders{named}", unmatched()):
-                keys = found.cache.get(
-                    f, name, lambda f=f: byte_order_keys(self.settings, platform, root / f.rel_path)
-                )
-                as_is, native = _look(index, keys["as_is"]), _look(index, keys["native"])
-                found.identify(f.rel_path, as_is, METHOD_CHECKSUM, dat=sha1)
-                found.identify(f.rel_path, native - as_is, METHOD_BYTESWAPPED, dat=sha1)
-        self._untrimmed(platform, root, unmatched(), dat, found, progress, sha1, named)
 
     def _content_hashes(self, platform, root, f: InventoryFile, found: "Found") -> list:
         """A file's hashes (CRC32, MD5, SHA1 of each ROM payload, header-stripped too; a
@@ -693,7 +623,6 @@ class Scanner:
                 "content-hashes",
                 profile.rom_extensions,
                 self.settings.headers.get(platform, []),
-                self.settings.byte_orders.get(platform),
                 self.settings.lookups.chd,
                 self.settings.dolphin,
             )
@@ -878,41 +807,6 @@ class Scanner:
             title = None if value is None else titles.Title(*value)
             if title is not None:
                 found.identify(f.rel_path, {titles.identity_name(title, config)}, METHOD_TITLE_ID)
-
-    def _untrimmed(
-        self, platform, root: Path, unmatched, dat: Dat, found: "Found", progress, sha1, named
-    ) -> None:
-        """A trimmed card image is the DAT's entry once padded back to the card's size."""
-        profile = self.settings.platforms.profiles[platform]
-        config = self.settings.card_images.get(profile.card_image or "")
-        if config is None:
-            return
-        index = _crc_index(dat)
-        name = step("padded-crc", config)
-
-        def read(f: InventoryFile, info: cards.CardInfo, member: str | None) -> str | None:
-            try:
-                return cards.padded_crc(
-                    config,
-                    root / f.rel_path,
-                    member,
-                    info.image_size,
-                    self.settings.apply.copy_chunk_bytes,
-                )
-            except (OSError, zipfile.BadZipFile, KeyError):
-                return None
-
-        for f in progress.each(f"Checking trimmed images{named}", unmatched):
-            card = found.cards.get(f.rel_path)
-            if card is None or not card[0].trimmed:
-                continue
-            info, member = card
-            crc = found.cache.get(f, name, lambda f=f, i=info, m=member: read(f, i, m))
-            if crc is None:
-                continue
-            found.identify(
-                f.rel_path, index.get((crc, info.image_size), set()), METHOD_UNTRIMMED, dat=sha1
-            )
 
     def _suggest(
         self, dat_of_name, dats: list[Dat], unmatched: list[InventoryFile], found: "Found", progress

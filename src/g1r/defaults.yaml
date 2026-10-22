@@ -901,7 +901,6 @@ title_ids:
 # NCSD (Nintendo 3DS .3ds/.cci): the image size and the first partition's offset are
 # little-endian u32 counts of media units of media_unit_bytes << flags[media_unit_flag]; the
 # first partition is an NCCH, encrypted unless its flags[crypto_flag] has no_crypto_mask.
-# A trimmed image (shorter than its size) is padded with padding_hex to compare with the DAT.
 # The NCCH's product code is plain text: an encrypted image that cannot be decrypted (which
 # never has the DAT's hash, the DAT listing decrypted images) is suggested the DAT entries
 # with that serial.
@@ -919,7 +918,6 @@ card_images:
     ncch_flags_offset: 392
     crypto_flag: 7
     no_crypto_mask: 4
-    padding_hex: ff
     product_code_offset: 336
     product_code_bytes: 16
     # The partition table: partition_count entries (offset, size: u32 media units each).

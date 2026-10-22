@@ -2,7 +2,8 @@
 
 The data is the bare file, or each ROM member of a zip; on platforms with copier headers
 the header-stripped data is hashed too, since databases list either form. On platforms whose
-dumps come in several byte orders (N64), a swapped file is hashed in the native order too.
+dumps come in several byte orders (N64), a swapped file is converted to the native order
+before it is ever hashed.
 Files are read in chunks, never whole, so their size does not matter.
 A CHD stands for its largest data track (decoded by `chd_track_hashes`), never for itself;
 an RVZ for its disc (decoded by `rvz_disc_hash`).
@@ -24,7 +25,6 @@ from g1r.config import ByteOrderConfig, HeaderRule, Settings
 
 FULL = "full"
 HEADERLESS = "headerless"
-SWAPPED = "native-order"
 
 
 def header_size(rule: HeaderRule, head: bytes, size: int) -> int | None:
@@ -96,12 +96,10 @@ class Digest:
 
 @dataclass
 class Payload:
-    """One ROM's digests: as it is, without each copier header a rule recognises, and in
-    the native byte order when it is swapped."""
+    """One ROM's digests: as it is, and without each copier header a rule recognises."""
 
     full: Digest
     headerless: list[Digest]
-    native: Digest | None
 
 
 def _digest(
@@ -109,16 +107,13 @@ def _digest(
     size: int,
     chunk: int,
     rules: list[HeaderRule],
-    byte_order: ByteOrderConfig | None,
     strong: tuple[str, ...],
     limit: int | None = None,
 ) -> Payload:
     """Read the stream once, `chunk` bytes at a time, feeding every variant's digest; with
     `limit`, only that many bytes from the start."""
     need = max([_head_length(r) for r in rules], default=0)
-    if byte_order is not None:
-        need = max(need, magic_length(byte_order))
-    at, rest = 0, b""
+    at = 0
 
     def read(want: int) -> bytes:
         return stream.read(want if limit is None else min(want, limit - at))
@@ -127,21 +122,14 @@ def _digest(
     full = Digest(strong)
     skips = [s for r in rules if (s := header_size(r, block, size)) is not None]
     headerless = [Digest(strong) for _ in skips]
-    word = word_bytes(byte_order, block)
-    native = Digest(strong) if word is not None and not size % word else None
     while block:
         full.update(block)
         for skip, digest in zip(skips, headerless, strict=True):
             if at + len(block) > skip:
                 digest.update(block[max(skip - at, 0) :])
-        if native is not None and word is not None:
-            data = rest + block
-            whole = len(data) - len(data) % word
-            native.update(swap_words(data[:whole], word))
-            rest = data[whole:]
         at += len(block)
         block = read(chunk)
-    return Payload(full, headerless, None if rest else native)
+    return Payload(full, headerless)
 
 
 def payloads(
@@ -149,7 +137,6 @@ def payloads(
     path: Path,
     rom_extensions: set[str],
     rules: list[HeaderRule] | None = None,
-    byte_order: ByteOrderConfig | None = None,
     strong: tuple[str, ...] = (),
     limit: int | None = None,
 ) -> list[Payload]:
@@ -158,7 +145,7 @@ def payloads(
     chunk = settings.hashing.chunk_bytes
 
     def read(stream: BinaryIO, size: int) -> Payload:
-        return _digest(stream, size, chunk, rules or [], byte_order, strong, limit)
+        return _digest(stream, size, chunk, rules or [], strong, limit)
 
     if path.suffix.lower() != ".zip":
         with path.open("rb") as stream:
@@ -350,14 +337,11 @@ def content_hashes(
     # An RVZ inside an archive cannot be decoded where it is; its bytes are a container's.
     extensions = {e.lower() for e in profile.rom_extensions} - {RVZ_SUFFIX.lstrip(".")}
     rules = settings.headers.get(platform, [])
-    byte_order = settings.byte_orders.get(platform)
     found: list[ContentHash] = []
-    read = payloads(settings, path, extensions, rules, byte_order, (MD5, SHA1))
+    read = payloads(settings, path, extensions, rules, (MD5, SHA1))
     for index, payload in enumerate(read):
         suffix = f":{index}" if index else ""
         found.append(_hash(FULL + suffix, payload.full))
         if payload.headerless:
             found.append(_hash(HEADERLESS + suffix, payload.headerless[0]))
-        if payload.native is not None:
-            found.append(_hash(SWAPPED + suffix, payload.native))
     return found

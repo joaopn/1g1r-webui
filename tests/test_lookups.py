@@ -277,3 +277,20 @@ def test_another_sources_unlisted_name_becomes_a_suggestion(env):  # noqa: F811
         "detail": "TOSEC: Known (1987)(Nintendo)(US)",
     }
     assert row["suggestions"][0]["game_name"] == "Known (USA)"
+
+
+def test_unmatched_files_are_hashed_only_for_lookups(env, make_settings):  # noqa: F811
+    """With online lookups off, nothing needs an unmatched file's hashes: it is not read.
+    (Header rules off here: the header-stripped check reads unmatched files on its own.)"""
+    _, store, registry, conn, _ = env
+    no_headers = make_settings({"headers": {"nes": []}})
+    folder_scanner = scanner.Scanner(no_headers, store, registry, lambda *a, **_: [])
+    count = "SELECT COUNT(*) FROM content_hash WHERE rel_path = ?"
+    folder_scanner.run(conn, folder_scanner.start(conn, "nes"), "nes")
+    assert conn.execute(count, (LOOSE,)).fetchone()[0] == 0
+    store.update(lambda lib: setattr(lib.lookups, "hasheous", True))
+    folder_scanner = scanner.Scanner(
+        no_headers, store, registry, lambda *a, **_: [], lookup_post=FakeHasheous()
+    )
+    folder_scanner.run(conn, folder_scanner.start(conn, "nes"), "nes")
+    assert conn.execute(count, (LOOSE,)).fetchone()[0] > 0

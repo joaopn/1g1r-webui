@@ -508,7 +508,6 @@ class NcsdConfig(_Strict):
     ncch_flags_offset: int = Field(ge=0)
     crypto_flag: int = Field(ge=0)
     no_crypto_mask: int = Field(gt=0)
-    padding_hex: str
     # The NCCH's product code ("CTR-P-AWAE"), NUL-padded, readable without keys.
     product_code_offset: int = Field(ge=0)
     product_code_bytes: int = Field(gt=0)

@@ -25,7 +25,6 @@ def test_a_check_reads_what_conversion_needs_and_hashes_nothing(env, monkeypatch
         raise AssertionError("a check identified or hashed")
 
     monkeypatch.setattr(scanner, "content_hashes", never)
-    monkeypatch.setattr(scanner, "headerless_keys", never)
     folder_scanner = scanner.Scanner(settings, store, registry, never)
     check = run(folder_scanner, conn, scanner.CHECK)
     assert (check["kind"], check["status"]) == ("check", "done")

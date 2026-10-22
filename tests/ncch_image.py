@@ -19,6 +19,9 @@ BLANK_UNITS = 2  # a blank partition's size
 CONTENT_SIZE = 0x104  # in the NCCH header, in media units
 MEDIA_ID = 0x108  # in the card header; all zeros would make it a NAND to pyctr
 
+# What a real card holds after its data: 0xFF bytes.
+CARD_PADDING = b"\xff"
+
 
 def _put(buf: bytearray, at: int, data: bytes) -> None:
     buf[at : at + len(data)] = data
@@ -124,9 +127,7 @@ def card(
         partition += bytes([blank_byte]) * (BLANK_UNITS * UNIT)
     units = PARTITION_UNITS + len(partition) // UNIT + padding_units
     # Zeros up to the partition (unused partition-table slots are empty), card padding after.
-    image = bytearray(PARTITION_UNITS * UNIT) + bytes.fromhex(config.padding_hex) * (
-        (units - PARTITION_UNITS) * UNIT
-    )
+    image = bytearray(PARTITION_UNITS * UNIT) + CARD_PADDING * ((units - PARTITION_UNITS) * UNIT)
     _put(image, config.magic_offset, config.magic.encode())
     _put(image, MEDIA_ID, bytes.fromhex(program_id)[::-1])
     struct.pack_into(cards.U32, image, config.image_size_offset, units)

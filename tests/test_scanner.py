@@ -248,7 +248,6 @@ def test_a_quick_rescan_reads_no_unchanged_file(env, monkeypatch):
     def must_not_read(*args, **kwargs):
         raise AssertionError("an unchanged file was read again")
 
-    monkeypatch.setattr(scanner, "headerless_keys", must_not_read)
     monkeypatch.setattr(scanner, "content_hashes", must_not_read)
     monkeypatch.setattr(scanner.archives, "list_members", must_not_read)
     folder_scanner.run(conn, folder_scanner.start(conn, "nes"), "nes")

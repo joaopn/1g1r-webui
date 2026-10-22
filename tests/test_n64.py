@@ -6,6 +6,8 @@ from http import HTTPStatus
 import pytest
 from fastapi.testclient import TestClient
 
+from g1r import igir
+from g1r.dats import parse_dat_bytes
 from g1r.hashing import swap_words, word_bytes
 from g1r.web.app import create_app
 
@@ -43,6 +45,24 @@ def test_byte_orders_are_known_by_their_magic(make_settings):
     assert swap_words(swap_words(native, LITTLE), LITTLE) == native
 
 
+def report_by_crc(settings, dat_file, input_dir, **_):
+    """igir as far as these tests need it: a zip whose one ROM has a DAT ROM's CRC32 and size
+    is found as that game (no byte-swapped matches, as igir)."""
+    games = {
+        (rom.crc, rom.size): game.name
+        for game in parse_dat_bytes(dat_file.read_bytes()).games
+        for rom in game.roms
+    }
+    rows = []
+    for path in sorted(input_dir.glob("*.zip")):
+        with zipfile.ZipFile(path) as z:
+            (info,) = z.infolist()
+            game = games.get((format(info.CRC, "08x"), info.file_size))
+        if game:
+            rows.append(igir.ReportRow(game, "FOUND", (str(path),)))
+    return rows
+
+
 @pytest.fixture
 def n64(make_settings, roms_root):
     folder = roms_root / "n64"
@@ -50,7 +70,7 @@ def n64(make_settings, roms_root):
     (roms_root / "discarded").mkdir()
     # Reads of 3 bytes: every swap and copy crosses a word boundary between reads.
     small_reads = make_settings({"hashing": {"chunk_bytes": 3}, "apply": {"copy_chunk_bytes": 3}})
-    with TestClient(create_app(small_reads, report_runner=lambda *a, **_: [])) as client:
+    with TestClient(create_app(small_reads, report_runner=report_by_crc)) as client:
         body = {"platform": "n64", "mount": "roms", "path": "n64", "label": "n64"}
         assert client.post("/api/folders", json=body).status_code == HTTPStatus.CREATED
         yield client, folder
@@ -166,17 +186,6 @@ def test_a_swapped_rom_named_like_its_output_is_flagged(n64):
     client.put("/api/settings/targets", json={"targets": {"n64": "plain"}})
     found = rows(client)["odd.z64"]
     assert found["status"] == "flagged" and "rename" in found["note"]
-
-
-def test_online_lookups_get_the_native_order_hash_too(make_settings, tmp_path):
-    from g1r.hashing import FULL, SWAPPED, content_hashes
-
-    native = rom(b"lookup")
-    path = tmp_path / "x.v64"
-    path.write_bytes(swap_words(native, V64))
-    hashes = {h.variant: h.sha1 for h in content_hashes(make_settings(), "n64", path)}
-    assert hashes[SWAPPED] == hashlib.sha1(native).hexdigest()
-    assert hashes[FULL] == hashlib.sha1(swap_words(native, V64)).hexdigest()
 
 
 def test_the_zip_takes_back_its_originals_name(n64, roms_root):

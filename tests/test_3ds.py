@@ -5,6 +5,8 @@ import zlib
 
 from g1r import cards
 
+from .ncch_image import CARD_PADDING
+
 UNITS = 8
 PARTITION_UNIT = 1
 
@@ -16,7 +18,7 @@ def card(
     DAT lists it, and the file as dumped (cut after `keep_units` when trimmed)."""
     c = make_settings().card_images["ncsd"]
     unit = c.media_unit_bytes
-    image = bytearray(bytes.fromhex(c.padding_hex) * (unit * UNITS))
+    image = bytearray(CARD_PADDING * (unit * UNITS))
     data_end = unit * (keep_units if keep_units < UNITS else UNITS)
     image[:data_end] = os.urandom(data_end)
     image[c.magic_offset : c.magic_offset + len(c.magic)] = c.magic.encode()
@@ -41,10 +43,6 @@ def test_the_header_tells_encryption_and_trimming(make_settings, tmp_path):
     info = cards.read_ncsd(config, path, None, len(dumped))
     assert info is not None and info.notes() == [cards.TRIMMED]
     assert info.image_size == len(full)
-    chunk = make_settings().apply.copy_chunk_bytes
-    assert cards.padded_crc(config, path, None, info.image_size, chunk) == format(
-        zlib.crc32(full), "08x"
-    )
     full, _ = card(make_settings, encrypted=True)
     with zipfile.ZipFile(tmp_path / "b.zip", "w") as z:
         z.writestr("b.3ds", full)
@@ -61,7 +59,7 @@ def scan(client):
             return
 
 
-def test_trimmed_images_match_and_encrypted_ones_are_flagged(n3ds, make_settings):
+def test_trimmed_images_are_noted_and_encrypted_ones_are_flagged(n3ds, make_settings):
     client, folder = n3ds
     trimmed_full, trimmed = card(make_settings, encrypted=False, keep_units=UNITS - 2)
     locked, _ = card(make_settings, encrypted=True)
@@ -87,15 +85,13 @@ def test_trimmed_images_match_and_encrypted_ones_are_flagged(n3ds, make_settings
     zipped = rows["Zipped (USA).zip"]
     assert (zipped["status"], zipped["output"]) == ("unwrap", "Zipped (USA).3ds")
 
-    # Matching waits for the others: once they are gone, the trimmed image is matched.
+    # Matching waits for the others. A trimmed image is matched only as igir pads it (to the
+    # next power of two): this one's card is larger, so it stays unmatched.
     (folder / "Locked (USA).3ds").unlink()
     (folder / "Zipped (USA).zip").unlink()
     scan(client)
-    versions = {
-        v["rel_path"]: v for g in client.get("/api/folders/3ds/games").json() for v in g["versions"]
-    }
-    assert versions["Trim (USA).3ds"]["method"] == "dat-untrimmed"
-    assert versions["Trim (USA).3ds"]["notes"] == ["trimmed"]
+    unmatched = {f["rel_path"] for f in client.get("/api/folders/3ds/unmatched").json()}
+    assert unmatched == {"Trim (USA).3ds"}
 
 
 def test_an_unmatched_image_is_suggested_the_entries_with_its_product_code(n3ds, make_settings):

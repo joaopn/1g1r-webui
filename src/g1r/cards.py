@@ -12,7 +12,6 @@ proof of a decryption, which needs no DAT.
 import hashlib
 import struct
 import zipfile
-import zlib
 from collections.abc import Callable, Iterator
 from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass
@@ -131,23 +130,6 @@ def read_ncsd(
     # Little-endian in the header; written as people read it ("00040000001b5000").
     program_id = raw[::-1].hex() if len(raw) == config.program_id_bytes and any(raw) else ""
     return CardInfo(units * unit, size, encrypted, product, seed, program_id)
-
-
-def padded_crc(
-    config: NcsdConfig, path: Path, member: str | None, image_size: int, chunk: int
-) -> str:
-    """CRC32 of the image padded back to its full size, as the DAT lists it."""
-    crc, read = 0, 0
-    with open_payload(path, member) as stream:
-        while block := stream.read(chunk):
-            crc = zlib.crc32(block, crc)
-            read += len(block)
-    padding = bytes.fromhex(config.padding_hex) * chunk
-    while read < image_size:
-        step = min(chunk, image_size - read)
-        crc = zlib.crc32(padding[:step], crc)
-        read += step
-    return format(crc, "08x")
 
 
 # Proof of a decryption -------------------------------------------------------------
