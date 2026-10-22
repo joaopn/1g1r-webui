@@ -1,7 +1,9 @@
 """The JSON API the web app talks to. Every route is read-only towards ROM folders."""
 
+import json
 import re
 import sqlite3
+import threading
 from collections.abc import Callable
 from dataclasses import asdict
 from http import HTTPStatus
@@ -338,12 +340,16 @@ def build_router(
             for e in registry.entries(conn, library, platform)
         ]
 
-    def conversion_rows(library: Library, folder: FolderEntry, conn) -> list:
-        target = settings.platforms.targets[store.target_for(library, folder.platform)]
+    def folder_on_disk(folder: FolderEntry):
+        """The folder on disk, or None when it is not there."""
         try:
             root = mounts.resolve(settings, folder.mount, folder.path)
         except mounts.FolderPathError:
-            root = None
+            return None
+        return root if root.is_dir() else None
+
+    def conversion_rows(library: Library, folder: FolderEntry, conn) -> list:
+        target = settings.platforms.targets[store.target_for(library, folder.platform)]
         return conversion.rows(
             settings,
             conn,
@@ -351,7 +357,7 @@ def build_router(
             folder.platform,
             target,
             delete_originals=folder.delete_originals,
-            root=root if root is not None and root.is_dir() else None,
+            root=folder_on_disk(folder),
         )
 
     # Meta ------------------------------------------------------------------------
@@ -399,23 +405,67 @@ def build_router(
         """The platform identifies by title ID, so a scan needs no DAT."""
         return platform in platforms and platforms[platform].title_ids
 
+    # Home's figures per folder, kept with what they were computed from: the folder's and
+    # the DATs' change counters, the library, the console keys and whether the folder is on
+    # disk. Building them reads every file of the folder, so they are rebuilt only when one of
+    # these moved.
+    cards: dict[str, tuple[str, dict]] = {}
+    cards_lock = threading.Lock()
+
+    def card_figures(conn, library: Library, library_json: str, folder: FolderEntry) -> dict:
+        key = json.dumps(
+            [
+                library_json,
+                dashboard.changes(conn, folder.label),
+                decrypt.key_files(settings),
+                folder_on_disk(folder) is not None,
+            ]
+        )
+        with cards_lock:
+            kept = cards.get(folder.label)
+        if kept is not None and kept[0] == key:
+            return kept[1]
+        ranking = store.ranking_for(folder)
+        converting = conversion_rows(library, folder, conn)
+        waiting = frozenset(conversion.waiting(converting))
+        games = matching.game_rows(
+            settings, conn, folder.label, ranking, produces(library, folder, conn, waiting)
+        )
+        table = matching.table(settings, conn, folder.label, ranking, games=games)
+        parts = parts_of(folder)
+        figures = {
+            "summary": scanner.folder_summary(conn, folder.label, parts, waiting),
+            "counts": table.counts,
+            "reclaim_bytes": table.reclaim_bytes,
+            "conversion": conversion.counts(converting),
+            "progress": dashboard.progress(
+                scanner.rom_paths(conn, folder.label),
+                games,
+                converting,
+                # Not scanned yet counts too: a Scan is how it gets matched.
+                (
+                    r["rel_path"]
+                    for r in [
+                        *scanner.unmatched_files(conn, folder.label, parts, waiting),
+                        *scanner.unscanned_files(conn, folder.label, parts, waiting),
+                    ]
+                ),
+            ),
+        }
+        with cards_lock:
+            cards[folder.label] = (key, figures)
+        return figures
+
     @router.get("/folders")
     def list_folders(conn: Conn):
         library = store.load()
+        library_json = library.model_dump_json()
         result = []
         for folder in library.folders:
-            ranking = store.ranking_for(folder)
-            converting = conversion_rows(library, folder, conn)
-            waiting = frozenset(conversion.waiting(converting))
-            games = matching.game_rows(
-                settings, conn, folder.label, ranking, produces(library, folder, conn, waiting)
-            )
-            table = matching.table(settings, conn, folder.label, ranking, games=games)
+            figures = card_figures(conn, library, library_json, folder)
             info = folder_info(library, folder)
             scan = scanner.latest_scan(conn, folder.label)
             dat = registry.active_version(conn, library, folder.platform)
-            parts = parts_of(folder)
-            summary = scanner.folder_summary(conn, folder.label, parts, waiting)
             last_scan = scanner.latest_scan(conn, folder.label, scanner.IDENTIFY)
             needed = dashboard.needs(
                 scan, last_scan, dat, journal.last_conversion_end(conn, folder.label)
@@ -427,30 +477,20 @@ def build_router(
                     "scan": row_dict(scan),
                     "last_scan": row_dict(last_scan),
                     "dat": row_dict(dat),
-                    "summary": summary,
+                    "summary": figures["summary"],
                     "dat_download": default_download(folder.platform) if dat is None else None,
                     "needs_dat": dat is None and not title_ids(folder.platform),
                     "needs_scan": needed is not None,
                     # Which button: "check" (Check files) or "identify" (Scan).
                     "needs": needed,
-                    "counts": table.counts,
-                    "reclaim_bytes": table.reclaim_bytes,
-                    "conversion": conversion.counts(converting),
-                    "progress": dashboard.progress(
-                        scanner.rom_paths(conn, folder.label),
-                        games,
-                        converting,
-                        # Not scanned yet counts too: a Scan is how it gets matched.
-                        (
-                            r["rel_path"]
-                            for r in [
-                                *scanner.unmatched_files(conn, folder.label, parts, waiting),
-                                *scanner.unscanned_files(conn, folder.label, parts, waiting),
-                            ]
-                        ),
-                    ),
+                    "counts": figures["counts"],
+                    "reclaim_bytes": figures["reclaim_bytes"],
+                    "conversion": figures["conversion"],
+                    "progress": figures["progress"],
                     "discarded": discarded.totals(settings, folder.label),
                     "converting": journal.running_conversion(conn, folder.label),
+                    # An apply or a restore runs: Home polls until it ends.
+                    "running": journal.running(conn, folder.label),
                     "warnings": dashboard.warnings(
                         conn,
                         folder.label,
@@ -462,7 +502,7 @@ def build_router(
                         ),
                         scan=scan,
                         dat=dat,
-                        unmatched=summary["unmatched"],
+                        unmatched=figures["summary"]["unmatched"],
                         hasheous_offered=not library.lookups.hasheous,
                     ),
                 }

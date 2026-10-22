@@ -13,6 +13,16 @@ INFO = "info"
 LOOKUPS_PAGE = "/settings/lookups"
 
 
+def changes(conn: sqlite3.Connection, label: str) -> list[int]:
+    """The folder's change counter and the DATs' (table `folder_change`, kept by triggers)."""
+    found = dict(
+        conn.execute(
+            "SELECT folder_label, n FROM folder_change WHERE folder_label IN (?, '')", (label,)
+        ).fetchall()
+    )
+    return [found.get(label, 0), found.get("", 0)]
+
+
 def _dat_changed(scan: sqlite3.Row | None, dat: sqlite3.Row | None) -> bool:
     """The last scan finished with another DAT than the active one."""
     return (

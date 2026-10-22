@@ -139,15 +139,23 @@ def token(plan: list[Move]) -> str:
     return digest.hexdigest()
 
 
+def running(conn: sqlite3.Connection, label: str) -> bool:
+    """An apply or a restore (of any kind, conversions included) runs on the folder."""
+    return (
+        conn.execute(
+            "SELECT 1 FROM apply_run WHERE folder_label = ? AND status = ?", (label, RUNNING)
+        ).fetchone()
+        is not None
+    )
+
+
 def busy(conn: sqlite3.Connection, label: str) -> str | None:
     """Why the folder cannot start an apply or a scan now, or None."""
     if conn.execute(
         "SELECT 1 FROM scan WHERE folder_label = ? AND status = 'running'", (label,)
     ).fetchone():
         return "a scan of this folder is already running"
-    if conn.execute(
-        "SELECT 1 FROM apply_run WHERE folder_label = ? AND status = ?", (label, RUNNING)
-    ).fetchone():
+    if running(conn, label):
         return "an apply or restore is running on this folder"
     return None
 

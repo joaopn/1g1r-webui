@@ -43,6 +43,17 @@ def keys_dir(settings: Settings) -> Path:
     return settings.paths.data_dir / settings.decryption.keys_dir
 
 
+def key_files(settings: Settings) -> list[list]:
+    """The stored key files as [name, size, modification time]: what changes when one is
+    uploaded or removed."""
+    folder = keys_dir(settings)
+    if not folder.is_dir():
+        return []
+    return sorted(
+        [p.name, p.stat().st_size, p.stat().st_mtime_ns] for p in folder.iterdir() if p.is_file()
+    )
+
+
 def _path(settings: Settings, kind: str) -> Path:
     config = settings.decryption
     return keys_dir(settings) / (config.boot9_file if kind == BOOT9 else config.seeddb_file)

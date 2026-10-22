@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from g1r import dashboard, db, igir, scanner
+from g1r import dashboard, db, igir, matching, scanner
 from g1r.library import LibraryStore
 from g1r.web.api import suggest_label
 from g1r.web.app import create_app
@@ -386,6 +386,54 @@ def test_unmatched_assign_and_lookup_settings(setup):
     assert client.get("/api/settings").json()["lookups"] == {"hasheous": False}
     switched = client.put("/api/settings/lookups", json={"hasheous": True}).json()
     assert switched == {"hasheous": True}
+
+
+def test_home_cards_are_kept_until_the_folder_changes(setup, monkeypatch):
+    client, _, settings = setup
+    scanned(client)
+    built = []
+    game_rows = matching.game_rows
+
+    def counted(*args, **kwargs):
+        built.append(args[2])
+        return game_rows(*args, **kwargs)
+
+    monkeypatch.setattr(matching, "game_rows", counted)
+    card = client.get("/api/folders").json()[0]
+    assert card["summary"]["unmatched"] == 1 and not card["running"]
+    assert client.get("/api/folders").json() == [card]
+    assert built == ["nes"]
+
+    # A manual match is a write to the folder's data: the card is rebuilt.
+    client.put(
+        "/api/folders/nes/assign", json={"rel_path": "stray.zip", "game_name": "Solo (Japan)"}
+    )
+    assert client.get("/api/folders").json()[0]["summary"]["unmatched"] == 0
+    assert built == ["nes", "nes"]
+    client.get("/api/folders")
+    assert built == ["nes", "nes"]
+
+    # So is a change to the library (a ranking, a target, an ignored name).
+    client.put(
+        "/api/folders/nes/ranking",
+        json={
+            "ranking": {
+                "criteria": ["region"],
+                "regions": ["Japan"],
+                "languages": ["En"],
+                "multi_region": "best",
+            }
+        },
+    )
+    client.get("/api/folders")
+    assert built == ["nes", "nes", "nes"]
+
+    # An apply or a restore running: Home polls until it ends.
+    conn = db.connect(settings.paths.database_path, busy_timeout_ms=0)
+    conn.execute(
+        "INSERT INTO apply_run (folder_label, kind, status) VALUES ('nes', 'apply', 'running')"
+    )
+    assert client.get("/api/folders").json()[0]["running"]
 
 
 def test_discarded_listing_and_home_warnings(setup, roms_root):
