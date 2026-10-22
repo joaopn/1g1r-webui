@@ -365,8 +365,11 @@ class ChdLookupConfig(_Strict):
     audio_track_types: list[str]
 
 
+class HashingConfig(_Strict):
+    chunk_bytes: int = Field(gt=0)
+
+
 class LookupsConfig(_Strict):
-    max_hash_bytes: int = Field(gt=0)
     chd: ChdLookupConfig
     hasheous: HasheousConfig
 
@@ -662,6 +665,7 @@ class Settings(_Strict):
     archives: ArchivesConfig
     chdman: ChdmanConfig
     dolphin: DolphinConfig
+    hashing: HashingConfig
     lookups: LookupsConfig
     fuzzy: FuzzyConfig
     jobs: JobsConfig

@@ -15,6 +15,8 @@ import subprocess
 import zipfile
 import zlib
 from collections.abc import Callable
+from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path, PurePosixPath
 
 from g1r import cards, conversion, cso, decrypt, discs, hashing, moves, stopping
@@ -72,6 +74,18 @@ def extract_member(settings: Settings, archive: Path, member: str, output: Path)
 def _drop_unpacked(work: Path) -> None:
     """Remove what was unpacked for the conversion as soon as the output is written."""
     shutil.rmtree(work / UNPACKED, ignore_errors=True)
+
+
+@dataclass(frozen=True)
+class Swapped:
+    """What a byteswap pass read: the SHA1 of the source and of the swapped data, the
+    source's CRC32 and size, and any trailing bytes short of a word."""
+
+    sha1: str
+    swapped_sha1: str
+    crc32: str
+    size: int
+    rest: bytes
 
 
 class Converter:
@@ -136,49 +150,74 @@ class Converter:
 
     def _byteswap(self, step, temp: Path) -> None:
         """Write the ROM in the native byte order; reading the result back and swapping it
-        again must give the original's SHA1."""
-        if step.member is None:
-            data = step.source.read_bytes()
-        else:
-            try:
-                with zipfile.ZipFile(step.source) as z:
-                    data = z.read(step.member)
-            except (zipfile.BadZipFile, KeyError) as exc:
-                raise moves.MoveError(f"cannot read {step.member} from {step.source}") from exc
-            found = (format(zlib.crc32(data), CRC_FORMAT), len(data))
-            if found != ((step.member_crc32 or "").lower(), step.member_size):
-                raise moves.MoveError(f"{step.member} is not the data the scan listed")
+        again must give the original's SHA1. Both passes stream, a chunk at a time."""
         word = step.word_bytes
-        if not word or len(data) % word:
+        if not word:
             raise moves.MoveError(f"{step.source.name} is not a whole number of {word}-byte words")
-        original = hashlib.sha1(data, usedforsecurity=False).hexdigest()
-        native = hashing.swap_words(data, word)
-        del data
-        if step.output_member is None:
-            with temp.open("xb") as handle:
-                handle.write(native)
-        else:
-            with zipfile.ZipFile(
-                temp,
-                "x",
-                compression=zipfile.ZIP_DEFLATED,
-                compresslevel=self.config.zip_compress_level,
-                strict_timestamps=False,
-            ) as z:
-                z.writestr(step.output_member, native)
-        del native
+        size = step.member_size if step.member is not None else step.source.stat().st_size
+        try:
+            with cards.open_payload(step.source, step.member) as source:
+                if step.output_member is None:
+                    with temp.open("xb") as out:
+                        read = self._swap_copy(source, out, word)
+                else:
+                    now = datetime.now()
+                    entry = zipfile.ZipInfo(
+                        step.output_member,
+                        (now.year, now.month, now.day, now.hour, now.minute, now.second),
+                    )
+                    entry.compress_type = zipfile.ZIP_DEFLATED
+                    entry.compress_level = self.config.zip_compress_level
+                    entry.file_size = size or 0
+                    with (
+                        zipfile.ZipFile(temp, "x", strict_timestamps=False) as z,
+                        z.open(entry, "w") as out,
+                    ):
+                        read = self._swap_copy(source, out, word)
+        except (zipfile.BadZipFile, KeyError) as exc:
+            raise moves.MoveError(f"cannot read {step.member} from {step.source}") from exc
+        if step.member is not None and (read.crc32, read.size) != (
+            (step.member_crc32 or "").lower(),
+            step.member_size,
+        ):
+            raise moves.MoveError(f"{step.member} is not the data the scan listed")
+        if read.rest:
+            raise moves.MoveError(f"{step.source.name} is not a whole number of {word}-byte words")
         try:
             if step.output_member is None:
-                back = temp.read_bytes()
+                with temp.open("rb") as back:
+                    again = self._swap_copy(back, None, word)
             else:
                 with zipfile.ZipFile(temp) as z:
-                    names = z.namelist()
-                    back = z.read(step.output_member) if names == [step.output_member] else b""
+                    if z.namelist() != [step.output_member]:
+                        raise moves.MoveError(f"the new file for {step.source.name} is unreadable")
+                    with z.open(step.output_member) as back:
+                        again = self._swap_copy(back, None, word)
         except (zipfile.BadZipFile, KeyError) as exc:
             raise moves.MoveError(f"the new file for {step.source.name} is unreadable") from exc
-        again = hashlib.sha1(hashing.swap_words(back, word), usedforsecurity=False).hexdigest()
-        if len(back) % word or again != original:
+        if again.rest or again.swapped_sha1 != read.sha1:
             raise moves.MoveError(f"the rewritten {step.source.name} does not hold the same ROM")
+
+    def _swap_copy(self, source, out, word: int) -> Swapped:
+        """Stream `source` into `out` (None: nowhere) with each `word`-byte word reversed."""
+        sha1 = hashlib.sha1(usedforsecurity=False)
+        swapped_sha1 = hashlib.sha1(usedforsecurity=False)
+        crc, size, rest = 0, 0, b""
+        while block := source.read(self.config.copy_chunk_bytes):
+            stopping.check()
+            sha1.update(block)
+            crc = zlib.crc32(block, crc)
+            size += len(block)
+            data = rest + block
+            whole = len(data) - len(data) % word
+            swapped = hashing.swap_words(data[:whole], word)
+            swapped_sha1.update(swapped)
+            if out is not None:
+                out.write(swapped)
+            rest = data[whole:]
+        return Swapped(
+            sha1.hexdigest(), swapped_sha1.hexdigest(), format(crc, CRC_FORMAT), size, rest
+        )
 
     def _decrypt(self, step, temp: Path) -> None:
         """Decrypt the card image with the user's keys (from an archive: its one ROM, unpacked

@@ -94,11 +94,12 @@ def test_inventory_kinds(env, roms_root):
 
 def test_header_rules():
     nes = HeaderRule(magic_hex="4e45531a", magic_offset=0, header_size=16)
-    assert hashing.header_size(nes, NES_HEADER + BODY) == 16
-    assert hashing.header_size(nes, BODY) is None
+    assert hashing.header_size(nes, NES_HEADER + BODY, len(NES_HEADER + BODY)) == 16
+    assert hashing.header_size(nes, BODY, len(BODY)) is None
     snes = HeaderRule(size_modulus=1024, header_size=512)
-    assert hashing.header_size(snes, bytes(1024 + 512)) == 512
-    assert hashing.header_size(snes, bytes(2048)) is None
+    # Size rules look at the whole size, not at the bytes read so far.
+    assert hashing.header_size(snes, bytes(16), 1024 + 512) == 512
+    assert hashing.header_size(snes, bytes(1024 + 512), 2048) is None
     with pytest.raises(ValueError):
         HeaderRule(header_size=16)
 

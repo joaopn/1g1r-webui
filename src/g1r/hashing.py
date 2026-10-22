@@ -3,6 +3,7 @@
 The data is the bare file, or each ROM member of a zip; on platforms with copier headers
 the header-stripped data is hashed too, since databases list either form. On platforms whose
 dumps come in several byte orders (N64), a swapped file is hashed in the native order too.
+Files are read in chunks, never whole, so their size does not matter.
 A CHD stands for its largest data track (decoded by `chd_track_hashes`), never for itself;
 an RVZ for its disc (decoded by `rvz_disc_hash`).
 """
@@ -16,6 +17,7 @@ import zlib
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
+from typing import BinaryIO
 
 from g1r import discs
 from g1r.config import ByteOrderConfig, HeaderRule, Settings
@@ -25,16 +27,24 @@ HEADERLESS = "headerless"
 SWAPPED = "native-order"
 
 
-def header_size(rule: HeaderRule, data: bytes) -> int | None:
+def header_size(rule: HeaderRule, head: bytes, size: int) -> int | None:
+    """The copier header's length, from the data's first bytes and its total size."""
     if rule.magic_hex is not None:
         magic = bytes.fromhex(rule.magic_hex)
         end = rule.magic_offset + len(magic)
-        if data[rule.magic_offset : end] == magic and len(data) > rule.header_size:
+        if head[rule.magic_offset : end] == magic and size > rule.header_size:
             return rule.header_size
         return None
-    if len(data) % rule.size_modulus == rule.header_size:
+    if size % rule.size_modulus == rule.header_size:
         return rule.header_size
     return None
+
+
+def _head_length(rule: HeaderRule) -> int:
+    """How many bytes from the start `header_size` needs to see."""
+    if rule.magic_hex is None:
+        return 0
+    return rule.magic_offset + len(bytes.fromhex(rule.magic_hex))
 
 
 def word_bytes(config: ByteOrderConfig | None, head: bytes) -> int | None:
@@ -63,27 +73,112 @@ def swap_words(data: bytes, word: int) -> bytes:
     return bytes(out)
 
 
-def native_order(config: ByteOrderConfig | None, data: bytes) -> bytes | None:
-    """The data in the platform's native byte order, when it is swapped (else None)."""
-    word = word_bytes(config, data)
-    if word is None or len(data) % word:
-        return None
-    return swap_words(data, word)
+class Digest:
+    """CRC32 and size of a byte stream fed in pieces, plus the named stronger hashes."""
+
+    def __init__(self, strong: tuple[str, ...]):
+        self.crc, self.size = 0, 0
+        self.strong = {name: hashlib.new(name, usedforsecurity=False) for name in strong}
+
+    def update(self, data: bytes) -> None:
+        self.crc = zlib.crc32(data, self.crc)
+        self.size += len(data)
+        for digest in self.strong.values():
+            digest.update(data)
+
+    @property
+    def crc32(self) -> str:
+        return format(self.crc, "08x")
+
+    def hexdigest(self, name: str) -> str:
+        return self.strong[name].hexdigest()
 
 
-def payloads(path: Path, rom_extensions: set[str], limit: int):
-    """The ROM data inside a file: the file itself, or each ROM member of a zip."""
-    if path.suffix.lower() == ".zip":
-        try:
-            with zipfile.ZipFile(path) as archive:
-                for info in archive.infolist():
-                    ext = PurePosixPath(info.filename).suffix.lower().lstrip(".")
-                    if ext in rom_extensions and info.file_size <= limit:
-                        yield archive.read(info)
-        except zipfile.BadZipFile:
-            return
-    elif path.stat().st_size <= limit:
-        yield path.read_bytes()
+@dataclass
+class Payload:
+    """One ROM's digests: as it is, without each copier header a rule recognises, and in
+    the native byte order when it is swapped."""
+
+    full: Digest
+    headerless: list[Digest]
+    native: Digest | None
+
+
+def _digest(
+    stream: BinaryIO,
+    size: int,
+    chunk: int,
+    rules: list[HeaderRule],
+    byte_order: ByteOrderConfig | None,
+    strong: tuple[str, ...],
+) -> Payload:
+    """Read the stream once, `chunk` bytes at a time, feeding every variant's digest."""
+    need = max([_head_length(r) for r in rules], default=0)
+    if byte_order is not None:
+        need = max(need, magic_length(byte_order))
+    block = stream.read(max(chunk, need))
+    full = Digest(strong)
+    skips = [s for r in rules if (s := header_size(r, block, size)) is not None]
+    headerless = [Digest(strong) for _ in skips]
+    word = word_bytes(byte_order, block)
+    native = Digest(strong) if word is not None and not size % word else None
+    at, rest = 0, b""
+    while block:
+        full.update(block)
+        for skip, digest in zip(skips, headerless, strict=True):
+            if at + len(block) > skip:
+                digest.update(block[max(skip - at, 0) :])
+        if native is not None and word is not None:
+            data = rest + block
+            whole = len(data) - len(data) % word
+            native.update(swap_words(data[:whole], word))
+            rest = data[whole:]
+        at += len(block)
+        block = stream.read(chunk)
+    return Payload(full, headerless, None if rest else native)
+
+
+def payloads(
+    settings: Settings,
+    path: Path,
+    rom_extensions: set[str],
+    rules: list[HeaderRule] | None = None,
+    byte_order: ByteOrderConfig | None = None,
+    strong: tuple[str, ...] = (),
+) -> list[Payload]:
+    """The digests of the ROM data inside a file: the file itself, or each ROM member of a
+    zip. Read in chunks, so a file of any size takes the same memory."""
+    chunk = settings.hashing.chunk_bytes
+
+    def read(stream: BinaryIO, size: int) -> Payload:
+        return _digest(stream, size, chunk, rules or [], byte_order, strong)
+
+    if path.suffix.lower() != ".zip":
+        with path.open("rb") as stream:
+            return [read(stream, path.stat().st_size)]
+    found = []
+    try:
+        with zipfile.ZipFile(path) as archive:
+            for info in archive.infolist():
+                ext = PurePosixPath(info.filename).suffix.lower().lstrip(".")
+                if ext in rom_extensions:
+                    with archive.open(info) as stream:
+                        found.append(read(stream, info.file_size))
+    except zipfile.BadZipFile:
+        return []
+    return found
+
+
+def rom_members(path: Path, rom_extensions: set[str]) -> int:
+    """How many ROM payloads `payloads` would read from the file (0 for a bad zip)."""
+    if path.suffix.lower() != ".zip":
+        return 1
+    try:
+        with zipfile.ZipFile(path) as archive:
+            names = archive.namelist()
+    except zipfile.BadZipFile:
+        return 0
+    return sum(1 for n in names if PurePosixPath(n).suffix.lower().lstrip(".") in rom_extensions)
 
 
 @dataclass(frozen=True)
@@ -96,13 +191,13 @@ class ContentHash:
     sha1: str
 
 
-def _hash(variant: str, data: bytes) -> ContentHash:
+MD5 = "md5"
+SHA1 = "sha1"
+
+
+def _hash(variant: str, digest: Digest) -> ContentHash:
     return ContentHash(
-        variant,
-        len(data),
-        format(zlib.crc32(data), "08x"),
-        hashlib.md5(data, usedforsecurity=False).hexdigest(),
-        hashlib.sha1(data, usedforsecurity=False).hexdigest(),
+        variant, digest.size, digest.crc32, digest.hexdigest(MD5), digest.hexdigest(SHA1)
     )
 
 
@@ -163,9 +258,9 @@ def rvz_identity(path: Path) -> str | None:
 
 
 def payload_sha1(
+    settings: Settings,
     path: Path,
     rom_extensions: set[str],
-    limit: int,
     rvz_sha1: Callable[[Path], str | None] | None = None,
     byte_order: ByteOrderConfig | None = None,
 ) -> str | None:
@@ -178,15 +273,13 @@ def payload_sha1(
     if path.suffix.lower() == RVZ_SUFFIX:
         # The disc's SHA1, which only dolphin-tool can tell (it decompresses the disc).
         return rvz_sha1(path) if rvz_sha1 is not None else None
-    found = []
-    for data in payloads(path, rom_extensions, limit):
-        native = native_order(byte_order, data)
-        found.append(
-            hashlib.sha1(data if native is None else native, usedforsecurity=False).hexdigest()
-        )
-        if len(found) > 1:
-            return None
-    return found[0] if found else None
+    if rom_members(path, rom_extensions) != 1:
+        return None
+    found = payloads(settings, path, rom_extensions, byte_order=byte_order, strong=(SHA1,))
+    if len(found) != 1:
+        return None
+    native = found[0].native
+    return (found[0].full if native is None else native).hexdigest(SHA1)
 
 
 # Reads a CHD's tracks: {"type": ..., "tracks": [{index, type, size, crc32, md5, sha1}]}.
@@ -265,15 +358,12 @@ def content_hashes(
     rules = settings.headers.get(platform, [])
     byte_order = settings.byte_orders.get(platform)
     found: list[ContentHash] = []
-    for index, data in enumerate(payloads(path, extensions, settings.lookups.max_hash_bytes)):
+    read = payloads(settings, path, extensions, rules, byte_order, (MD5, SHA1))
+    for index, payload in enumerate(read):
         suffix = f":{index}" if index else ""
-        found.append(_hash(FULL + suffix, data))
-        for rule in rules:
-            size = header_size(rule, data)
-            if size is not None:
-                found.append(_hash(HEADERLESS + suffix, data[size:]))
-                break
-        native = native_order(byte_order, data)
-        if native is not None:
-            found.append(_hash(SWAPPED + suffix, native))
+        found.append(_hash(FULL + suffix, payload.full))
+        if payload.headerless:
+            found.append(_hash(HEADERLESS + suffix, payload.headerless[0]))
+        if payload.native is not None:
+            found.append(_hash(SWAPPED + suffix, payload.native))
     return found

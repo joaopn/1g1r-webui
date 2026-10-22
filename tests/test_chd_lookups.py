@@ -42,8 +42,8 @@ def psx(make_settings, roms_root):
     folder.mkdir()
     for name in (DISC, BROKEN):
         (folder / name).write_bytes(b"MComprHD" + name.encode())
-    settings = make_settings({"lookups": {"max_hash_bytes": 16}})
-    (folder / BIG).write_bytes(bytes(settings.lookups.max_hash_bytes + 1))
+    settings = make_settings()
+    (folder / BIG).write_bytes(b"iso data")
     store = LibraryStore(settings)
     store.update(
         lambda lib: lib.folders.append(

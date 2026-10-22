@@ -740,12 +740,14 @@ igir:
   # and their matches are not used.
   max_excluded_files: 5000
 
+# Hashing a file's ROM data (lookups, duplicates, header and byte-order checks) reads it
+# this many bytes at a time, whatever the file's size.
+hashing:
+  chunk_bytes: 1048576
+
 # Online identification for files the local DAT misses. Off until switched on in
 # Settings -> Online lookups; only content hashes (CRC32, MD5, SHA1) are sent.
 lookups:
-  # Files larger than this are not hashed for a lookup (bytes); they are read into memory.
-  # CHDs are streamed instead (chd below), whatever their size.
-  max_hash_bytes: 268435456
   # A CHD is looked up by its largest data track, as Redump lists it: the tracks are
   # streamed through igir's chdman library by a helper script, nothing is written to disk.
   # The compressed file's own hash is never sent (no database lists it).

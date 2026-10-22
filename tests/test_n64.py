@@ -6,7 +6,7 @@ from http import HTTPStatus
 import pytest
 from fastapi.testclient import TestClient
 
-from g1r.hashing import native_order, swap_words, word_bytes
+from g1r.hashing import swap_words, word_bytes
 from g1r.web.app import create_app
 
 # A ROM in the native (big-endian, .z64) order starts with this magic.
@@ -41,9 +41,6 @@ def test_byte_orders_are_known_by_their_magic(make_settings):
     assert word_bytes(config, swap_words(native, V64)) == V64
     assert word_bytes(config, swap_words(native, LITTLE)) == LITTLE
     assert swap_words(swap_words(native, LITTLE), LITTLE) == native
-    assert native_order(config, swap_words(native, V64)) == native
-    # The extension says nothing: an unswapped .v64 is in the native order already.
-    assert native_order(config, native) is None
 
 
 @pytest.fixture
@@ -51,7 +48,9 @@ def n64(make_settings, roms_root):
     folder = roms_root / "n64"
     folder.mkdir()
     (roms_root / "discarded").mkdir()
-    with TestClient(create_app(make_settings(), report_runner=lambda *a, **_: [])) as client:
+    # Reads of 3 bytes: every swap and copy crosses a word boundary between reads.
+    small_reads = make_settings({"hashing": {"chunk_bytes": 3}, "apply": {"copy_chunk_bytes": 3}})
+    with TestClient(create_app(small_reads, report_runner=lambda *a, **_: [])) as client:
         body = {"platform": "n64", "mount": "roms", "path": "n64", "label": "n64"}
         assert client.post("/api/folders", json=body).status_code == HTTPStatus.CREATED
         yield client, folder

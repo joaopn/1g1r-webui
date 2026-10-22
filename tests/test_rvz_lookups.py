@@ -121,8 +121,8 @@ def test_an_rvz_is_looked_up_by_its_disc_never_by_its_own_hash(ngc):
     assert reasons == {BROKEN: {"status": hasheous.SKIPPED, "detail": "the disc could not be read"}}
 
 
-def test_an_rvz_has_no_size_cap_and_never_its_container_hash(make_settings, tmp_path):
-    settings = make_settings({"lookups": {"max_hash_bytes": 16}})
+def test_an_rvz_is_never_looked_up_by_its_container_hash(make_settings, tmp_path):
+    settings = make_settings()
     rvz = tmp_path / DISC
     rvz.write_bytes(rvz_bytes(b"GTST01"))
     assert hashing.content_hashes(settings, "ngc", rvz, read_rvz=read_rvz) == [DISC_HASH]

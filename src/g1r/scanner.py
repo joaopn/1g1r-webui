@@ -12,7 +12,6 @@ import os
 import sqlite3
 import time
 import zipfile
-import zlib
 from collections import Counter
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import asdict, dataclass, field
@@ -42,9 +41,7 @@ from g1r.hashing import (
     ContentHash,
     chd_identity,
     content_hashes,
-    header_size,
     magic_length,
-    native_order,
     payload_count,
     payload_sha1,
     payloads,
@@ -169,7 +166,6 @@ def headerless_step(settings: Settings, platform: str) -> str:
         "headerless",
         settings.headers.get(platform, []),
         settings.platforms.profiles[platform].rom_extensions,
-        settings.dats.max_upload_bytes,
     )
 
 
@@ -181,15 +177,11 @@ def headerless_keys(settings: Settings, platform: str, path: Path) -> list[list]
         return []
     profile = settings.platforms.profiles[platform]
     exts = {e.lower() for e in profile.rom_extensions}
-    keys = []
-    for data in payloads(path, exts, settings.dats.max_upload_bytes):
-        for rule in rules:
-            size = header_size(rule, data)
-            if size is None:
-                continue
-            body = data[size:]
-            keys.append([format(zlib.crc32(body), "08x"), len(body)])
-    return keys
+    return [
+        [digest.crc32, digest.size]
+        for payload in payloads(settings, path, exts, rules)
+        for digest in payload.headerless
+    ]
 
 
 def _look(index: dict[tuple[str, int], set[str]], keys: list[list]) -> set[str]:
@@ -225,7 +217,6 @@ def byte_order_step(settings: Settings, platform: str) -> str:
         "byte-order-crcs",
         settings.byte_orders.get(platform),
         settings.platforms.profiles[platform].rom_extensions,
-        settings.dats.max_upload_bytes,
     )
 
 
@@ -236,15 +227,10 @@ def byte_order_keys(settings: Settings, platform: str, path: Path) -> dict[str, 
     if config is None:
         return keys
     exts = {e.lower() for e in settings.platforms.profiles[platform].rom_extensions}
-
-    def key(data: bytes) -> list:
-        return [format(zlib.crc32(data), "08x"), len(data)]
-
-    for data in payloads(path, exts, settings.dats.max_upload_bytes):
-        keys["as_is"].append(key(data))
-        swapped = native_order(config, data)
-        if swapped is not None:
-            keys["native"].append(key(swapped))
+    for payload in payloads(settings, path, exts, byte_order=config):
+        keys["as_is"].append([payload.full.crc32, payload.full.size])
+        if payload.native is not None:
+            keys["native"].append([payload.native.crc32, payload.native.size])
     return keys
 
 
@@ -699,7 +685,6 @@ class Scanner:
             profile.rom_extensions,
             self.settings.headers.get(platform, []),
             self.settings.byte_orders.get(platform),
-            self.settings.lookups.max_hash_bytes,
             self.settings.lookups.chd,
             self.settings.dolphin,
         )
@@ -733,8 +718,6 @@ class Scanner:
             for rel, member in found.members
         ):
             return "an RVZ inside an archive: convert it first"
-        if f.size > self.settings.lookups.max_hash_bytes:
-            return "too large to hash for a lookup"
         return "no ROM data to look up"
 
     def _look_up(
@@ -820,15 +803,14 @@ class Scanner:
             for f, size in identified
             if size in unmatched_sizes or any(per_game[(g, size)] > 1 for g in games[f.rel_path])
         ] + [(f, size) for f, size in unmatched if size in identified_sizes]
-        limit = self.settings.lookups.max_hash_bytes
         byte_order = self.settings.byte_orders.get(platform)
-        name = step("payload-sha1", sorted(rom_extensions), limit, byte_order)
+        name = step("payload-sha1", sorted(rom_extensions), byte_order)
         for f, size in progress.each("Looking for duplicates", wanted):
             sha1 = found.cache.get(
                 f,
                 name,
                 lambda f=f: payload_sha1(
-                    root / f.rel_path, rom_extensions, limit, self._rvz_sha1, byte_order
+                    self.settings, root / f.rel_path, rom_extensions, self._rvz_sha1, byte_order
                 ),
             )
             if sha1 is not None:

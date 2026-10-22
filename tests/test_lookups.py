@@ -1,3 +1,4 @@
+import hashlib
 import json
 import zipfile
 import zlib
@@ -199,19 +200,27 @@ def test_an_archive_with_several_roms_is_not_looked_up(env):  # noqa: F811
     assert len(post.asked) == 1  # only the loose file
 
 
-def test_a_file_over_the_hash_cap_is_not_looked_up(env, make_settings):  # noqa: F811
+def test_a_file_larger_than_a_read_is_hashed_whole_and_looked_up(env, make_settings):  # noqa: F811
     _, store, registry, conn, _ = env
-    capped = make_settings({"lookups": {"max_hash_bytes": 4}})
+    small_reads = make_settings({"hashing": {"chunk_bytes": 5}})
     post = FakeHasheous()
-    folder_scanner = scanner.Scanner(capped, store, registry, lambda *a, **_: [], lookup_post=post)
+    folder_scanner = scanner.Scanner(
+        small_reads, store, registry, lambda *a, **_: [], lookup_post=post
+    )
     store.update(lambda lib: setattr(lib.lookups, "hasheous", True))
     folder_scanner.run(conn, folder_scanner.start(conn, "nes"), "nes")
-    rows = {r["rel_path"]: r for r in unmatched.rows(conn, "nes", hasheous_on=True)}
-    assert rows[LOOSE]["hasheous"] == {
-        "status": hasheous.SKIPPED,
-        "detail": "too large to hash for a lookup",
-    }
-    assert post.asked == []
+    assert hashlib.sha1(b"unknown data").hexdigest() in [sent["sha1"] for sent in post.asked]
+
+
+def test_hashes_read_in_pieces_equal_the_whole_files(env, make_settings):  # noqa: F811
+    settings, *_ = env
+    path = settings.paths.roms_root / "nes" / "Known (USA).zip"
+    for chunk in (3, 16, 17, 4096):
+        small_reads = make_settings({"hashing": {"chunk_bytes": chunk}})
+        hashes = {h.variant: h for h in hashing.content_hashes(small_reads, "nes", path)}
+        assert hashes[hashing.FULL].sha1 == hashlib.sha1(NES_HEADER + BODY).hexdigest()
+        assert hashes[hashing.HEADERLESS].md5 == hashlib.md5(BODY).hexdigest()
+        assert hashes[hashing.HEADERLESS].size == len(BODY)
 
 
 def test_a_lookup_error_leaves_the_file_unmatched_and_says_so(env):  # noqa: F811
