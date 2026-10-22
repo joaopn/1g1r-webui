@@ -218,3 +218,30 @@ test("Matched by names the DAT that identified the version", () => {
   });
   expect(methodLabel({ ...version, method: "hasheous", dat: null }).short).toBe("Hasheous");
 });
+
+test("a file waiting for its conversion is its own row, linking to the Conversion tab", async () => {
+  render(
+    <MemoryRouter>
+      <GamesTable
+        label="nes"
+        games={GAMES}
+        meta={META}
+        onKeep={vi.fn()}
+        onLeave={vi.fn()}
+        convertFirst={[{ rel_path: "loose/Wait (USA).nes", size: 40, kind: "rom" }]}
+      />
+    </MemoryRouter>,
+  );
+  expect(screen.getByText(/1 file to convert first/)).toBeInTheDocument();
+  const link = screen.getByRole("link", { name: "Convert loose/Wait (USA).nes first" });
+  expect(link).toHaveAttribute("href", "/folders/nes/conversion");
+  // Not a version: nothing is kept, and it is neither a one-version game nor unmatched.
+  expect(screen.queryByRole("img", { name: "kept" })).toBeNull();
+  const bar = screen.getByTestId("quick-views");
+  expect(within(bar).getByText("Convert first").parentElement).toHaveTextContent("1");
+  await userEvent.click(within(bar).getByRole("radio", { name: /Convert first/ }));
+  expect(screen.getByText("Wait (USA)")).toBeInTheDocument();
+  expect(screen.queryByText("Contra")).not.toBeInTheDocument();
+  await userEvent.click(within(bar).getByRole("radio", { name: /One version/ }));
+  expect(screen.queryByText("Wait (USA)")).not.toBeInTheDocument();
+});

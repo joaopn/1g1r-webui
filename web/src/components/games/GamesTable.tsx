@@ -1,6 +1,7 @@
 import {
   Archive,
   ArchiveRestore,
+  ArrowRightLeft,
   ChevronRight,
   Circle,
   CircleCheck,
@@ -18,7 +19,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { type CSSProperties, type KeyboardEvent, type ReactNode, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { Pager } from "@/components/Pager";
 import { QuickViewBar } from "@/components/QuickViewBar";
 import { ColumnChooser, HeaderCell } from "@/components/table/TableParts";
@@ -28,13 +29,14 @@ import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { UnmatchedDetail } from "@/components/unmatched/Unmatched";
 import { formatBytes, formatCount, formatFiles } from "@/lib/format";
-import type { Game, GameStatus, Meta, UnmatchedFile, Version } from "@/lib/types";
+import type { FileRow, Game, GameStatus, Meta, UnmatchedFile, Version } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import {
   activeFilterCount,
   COLUMNS,
   type Column,
   type ColumnId,
+  convertFirstRow,
   DEFAULT_VIEW,
   filterGames,
   filterGamesExceptView,
@@ -70,6 +72,7 @@ const STATUS_STYLE: Record<GameStatus, string> = {
   single: "border-border text-muted-foreground",
   applied: "border-status-good/60 bg-status-good/10 text-status-good",
   unmatched: "border-dashed border-status-warn text-status-warn",
+  "convert first": "border-dashed border-status-convert text-status-convert",
 };
 
 /** Files nothing identified, shown as rows of the table, and what can be done with them. */
@@ -118,6 +121,7 @@ export function GamesTable({
   onApplyGame,
   onRestore,
   unmatched,
+  convertFirst,
 }: {
   label: string;
   games: Game[];
@@ -130,6 +134,8 @@ export function GamesTable({
   /** Move discarded versions back: one version, or every one of a game. */
   onRestore?: (target: { version: Version } | { game: Game }) => void;
   unmatched?: UnmatchedRows;
+  /** Files waiting for their conversion: rows of their own, identified once converted. */
+  convertFirst?: FileRow[];
 }) {
   const [params, setParams] = useSearchParams();
   const filter = useMemo(() => readFilter(params), [params]);
@@ -148,9 +154,14 @@ export function GamesTable({
 
   const files = unmatched?.files;
   const rows = useMemo<Row[]>(
-    () => (files ? [...games, ...files.map(unmatchedRow)] : games),
-    [games, files],
+    () => [
+      ...games,
+      ...(files ?? []).map(unmatchedRow),
+      ...(convertFirst ?? []).map(convertFirstRow),
+    ],
+    [games, files, convertFirst],
   );
+  const waiting = convertFirst?.length ?? 0;
   const unviewed = useMemo(() => filterGamesExceptView(rows, filter), [rows, filter]);
   const filtered = useMemo(() => filterGames(rows, filter), [rows, filter]);
   const sorted = useMemo(() => sortGames(filtered, sort, order), [filtered, sort, order]);
@@ -254,8 +265,14 @@ export function GamesTable({
       </div>
       <p className="text-muted-foreground text-xs">
         {formatCount(sorted.length)} of {formatCount(rows.length)} rows
-        {files && files.length > 0
-          ? ` (${formatCount(games.length)} games, ${formatFiles(files.length)} unmatched)`
+        {(files && files.length > 0) || waiting > 0
+          ? ` (${[
+              `${formatCount(games.length)} games`,
+              files && files.length > 0 ? `${formatFiles(files.length)} unmatched` : "",
+              waiting > 0 ? `${formatFiles(waiting)} to convert first` : "",
+            ]
+              .filter(Boolean)
+              .join(", ")})`
           : ""}
         {moves > 0
           ? ` · ${formatCount(moves)} proposed moves would free ${formatSize(reclaim)}`
@@ -446,7 +463,9 @@ function versionCell(id: ColumnId, version: Version | null, ctx: CellContext) {
         </Cell>
       );
     case "match":
-      if (version.method === "unmatched") return <Cell key={id} />;
+      if (version.method === "unmatched" || version.method === "convert first") {
+        return <Cell key={id} />;
+      }
       return (
         <Cell key={id}>
           <MatchBar version={version} onUnassign={ctx.onUnassign} />
@@ -459,6 +478,8 @@ function versionCell(id: ColumnId, version: Version | null, ctx: CellContext) {
         </Cell>
       );
     case "proposed":
+      // Not in 1G1R until converted: nothing is proposed for it.
+      if (version.method === "convert first") return <Cell key={id} />;
       return (
         <Cell key={id} title={version.operation ?? undefined}>
           {version.discarded ? (
@@ -526,6 +547,8 @@ function GameRows({
   const gameCell = (id: ColumnId) => {
     switch (id) {
       case "keep":
+        // A file waiting for its conversion is no version yet: nothing is kept.
+        if (game.waiting) return <Cell key={id} />;
         return (
           <Cell key={id}>
             {!expandable ? (
@@ -627,6 +650,20 @@ function GameRows({
           </div>
         )}
         <div className="sticky right-0 flex w-20 shrink-0 items-center justify-end gap-1 bg-card">
+          {game.waiting ? (
+            <Button
+              asChild
+              variant="ghost"
+              size="icon-xs"
+              title="Convert it on the Conversion tab: the scan after identifies the result"
+              className="text-status-convert"
+            >
+              <Link to={`/folders/${ctx.label}/conversion`}>
+                <ArrowRightLeft className="size-3.5" aria-hidden="true" />
+                <span className="sr-only">Convert {game.waiting.rel_path} first</span>
+              </Link>
+            </Button>
+          ) : null}
           {file && ctx.unmatched ? (
             <>
               <Button

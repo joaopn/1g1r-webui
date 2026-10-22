@@ -5,8 +5,9 @@ import { formatCount } from "@/lib/format";
 import { invalidateFolder } from "@/lib/queries";
 import type { Scan } from "@/lib/types";
 
-/** Starts the folder's scan, which feeds both conversion and matching. A quick scan reuses
- * what earlier scans read from unchanged files; `full` reads every file again. */
+/** Starts the folder's Scan: the check, then the identification of the files with nothing
+ * left to convert. A quick scan reuses what earlier scans read from unchanged files; `full`
+ * reads every file again. */
 export function useStartScan(label: string) {
   return useMutation({
     mutationFn: ({ full = false }: { full?: boolean } = {}) =>
@@ -14,6 +15,22 @@ export function useStartScan(label: string) {
     onSuccess: () => invalidateFolder(label),
     onError: (err) => toast.error(err instanceof ApiError ? err.message : String(err)),
   });
+}
+
+/** Starts Check files: the listing and what conversion needs, nothing hashed. */
+export function useStartCheck(label: string) {
+  return useMutation({
+    mutationFn: () => api(`/folders/${label}/check`, { method: "POST" }),
+    onSuccess: () => invalidateFolder(label),
+    onError: (err) => toast.error(err instanceof ApiError ? err.message : String(err)),
+  });
+}
+
+/** How a run is named in a sentence: "check" or "scan", and its past form. */
+export function runWords(scan: Scan): { noun: string; past: string; ing: string } {
+  return scan.kind === "check"
+    ? { noun: "check", past: "Checked", ing: "Checking" }
+    : { noun: "scan", past: "Scanned", ing: "Scanning" };
 }
 
 /** How far a running scan is: the part of its step done (null when the step has no file

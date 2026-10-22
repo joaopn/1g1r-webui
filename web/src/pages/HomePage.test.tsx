@@ -10,6 +10,7 @@ import { HomePage } from "./HomePage";
 
 const SCAN: Scan = {
   id: 1,
+  kind: "identify",
   status: "done",
   started_at: "2026-10-18T10:00:00Z",
   finished_at: "2026-10-18T10:01:00Z",
@@ -31,11 +32,13 @@ const card = (label: string, platform: string, scan: Scan | null): FolderCard =>
   delete_originals: false,
   hidden: false,
   scan,
+  last_scan: scan?.kind === "identify" ? scan : null,
   dat: null,
   summary: { counts: {}, roms: 0, bytes: 0, identified: 0, unmatched: 0, methods: {} },
   dat_download: null,
   needs_dat: false,
   needs_scan: scan === null || scan.status === "failed",
+  needs: scan === null ? "check" : scan.status === "failed" ? scan.kind : null,
   counts: {},
   reclaim_bytes: 0,
   conversion: { to_convert: 0, flagged: 0 } as FolderCard["conversion"],
@@ -166,17 +169,25 @@ test("the scan button starts the set's scan", async () => {
   expect(screen.queryByTestId("scan-progress")).toBeNull();
 });
 
+/** Checked (Check files) but never scanned. */
+const CHECKED: Scan = { ...SCAN, kind: "check" };
+const checked = (label: string, platform: string): FolderCard => ({
+  ...card(label, platform, CHECKED),
+  needs: "identify",
+  needs_scan: true,
+});
+
 test("without a DAT the card offers the default one and holds the scan back", async () => {
+  const noDat = { source: "libretro", label: "libretro-database mirror" };
   const calls = renderPage([
-    {
-      ...card("nes", "nes", null),
-      needs_dat: true,
-      dat_download: { source: "libretro", label: "libretro-database mirror" },
-    },
+    { ...card("nes", "nes", null), needs_dat: true, dat_download: noDat },
+    { ...checked("snes", "snes"), needs_dat: true, dat_download: noDat },
   ]);
-  expect(await screen.findByRole("button", { name: "Scan nes" })).toBeDisabled();
+  // Check files needs no DAT; a scan does.
+  expect(await screen.findByRole("button", { name: "Check files of nes" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "Scan snes" })).toBeDisabled();
   expect(screen.getByTestId("empty-nes")).toHaveTextContent("Please download the DAT first");
-  await userEvent.click(screen.getByRole("button", { name: "Download DAT" }));
+  await userEvent.click(screen.getAllByRole("button", { name: "Download DAT" })[0]);
   expect(
     calls.some(
       (c) => c.url.endsWith("/dats/nes/download?source=libretro") && c.init?.method === "POST",
@@ -188,6 +199,7 @@ test("a set without figures shows a box saying what it waits for, in both views"
   const folders = [
     { ...card("nodat", "nes", null), needs_dat: true },
     card("new", "gb", null),
+    checked("checked", "gb"),
     card("empty", "gb", SCAN),
     {
       ...card("full", "gb", SCAN),
@@ -200,13 +212,28 @@ test("a set without figures shows a box saying what it waits for, in both views"
     expect(await screen.findByTestId("empty-nodat")).toHaveTextContent(
       "Please upload a DAT in Settings → DATs first",
     );
-    expect(screen.getByTestId("empty-new")).toHaveTextContent("Please scan");
+    expect(screen.getByTestId("empty-new")).toHaveTextContent("Please check files");
+    expect(screen.getByTestId("empty-checked")).toHaveTextContent("Please scan");
     expect(screen.getByTestId("empty-empty")).toHaveTextContent("No ROM files found");
     expect(screen.queryByTestId("empty-full")).toBeNull();
     // The box says it once: no "Not scanned yet" line beside it.
     expect(screen.queryByText("Not scanned yet")).toBeNull();
     cleanup();
   }
+});
+
+test("the card's button runs what is due: Check files first, then Scan", async () => {
+  const calls = renderPage([card("new", "gb", null), checked("checked", "gb")]);
+  await userEvent.click(await screen.findByRole("button", { name: "Check files of new" }));
+  await userEvent.click(screen.getByRole("button", { name: "Scan checked" }));
+  const posted = calls.filter((c) => c.init?.method === "POST").map((c) => c.url);
+  expect(posted).toEqual(["/api/folders/new/check", "/api/folders/checked/scan"]);
+});
+
+test("a check is named as one on the card", async () => {
+  localStorage.setItem("g1r.home.detail.v1", JSON.stringify("extended"));
+  renderPage([{ ...filled(checked("gb", "gb")) }]);
+  expect(await screen.findByText(/^Checked /)).toBeInTheDocument();
 });
 
 test("with a DAT there is no download button", async () => {

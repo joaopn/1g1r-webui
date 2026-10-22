@@ -1,7 +1,7 @@
 import { useMutation } from "@tanstack/react-query";
 import { Archive, TriangleAlert } from "lucide-react";
 import { useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { ApplyDialog } from "@/components/apply/ApplyDialog";
 import { RunPanel } from "@/components/apply/RunPanel";
@@ -121,7 +121,9 @@ export function FolderMatchingPage() {
 
       <ScanPanel
         label={label}
+        kind="identify"
         scan={f.scan}
+        lastScan={f.last_scan}
         title="Matching"
         actions={
           f.dat_order.some((e) => e.dat) ? (
@@ -173,10 +175,27 @@ export function FolderMatchingPage() {
         busy={scanning}
         onMove={setAside.move}
       />
+      {(f.summary.unscanned ?? 0) > 0 ? (
+        <p
+          className="rounded-md border border-border bg-card px-3 py-2 text-muted-foreground text-sm"
+          data-testid="unscanned"
+        >
+          Not scanned yet: {formatFiles(f.summary.unscanned ?? 0)}. Scan to identify them.
+        </p>
+      ) : null}
       {(f.summary.waiting ?? 0) > 0 ? (
-        <p className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-muted-foreground text-sm">
-          {formatCount(f.summary.waiting ?? 0)} cue sheet and track file(s) wait for conversion:
-          each disc becomes one version here once converted to one file (Conversion page).
+        <p
+          className="rounded-md border border-border bg-card px-3 py-2 text-muted-foreground text-sm"
+          data-testid="waiting"
+        >
+          Waiting for conversion: {formatFiles(f.summary.waiting ?? 0)}. Convert them on the{" "}
+          <Link
+            to={`/folders/${label}/conversion`}
+            className="text-primary underline underline-offset-2"
+          >
+            Conversion tab
+          </Link>
+          ; the scan after identifies them here.
         </p>
       ) : null}
       {(f.summary.counts.other ?? 0) > 0 ? (
@@ -229,6 +248,7 @@ export function FolderMatchingPage() {
             onLeave={(game, left) => leave.mutate({ game, left })}
             onUnassign={(version) => unassign.mutate(version)}
             onApplyGame={(game) => setApplying({ game })}
+            convertFirst={f.convert_first}
             unmatched={
               unmatchedFiles.data
                 ? {

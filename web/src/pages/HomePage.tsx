@@ -1,5 +1,5 @@
 import { useMutation } from "@tanstack/react-query";
-import { Download, Info, RefreshCw, TriangleAlert } from "lucide-react";
+import { Download, FileSearch, Info, RefreshCw, TriangleAlert } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -13,7 +13,7 @@ import { useStopConversion } from "@/lib/conversion";
 import { formatBytes, formatCount, formatFiles, formatWhen } from "@/lib/format";
 import { foldersByName } from "@/lib/platforms";
 import { invalidateFolder, useFolders, useMeta } from "@/lib/queries";
-import { scanProgress, useStartScan } from "@/lib/scan";
+import { runWords, scanProgress, useStartCheck, useStartScan } from "@/lib/scan";
 import { needsConversion, openingSection, sectionPath } from "@/lib/sections";
 import { readJson, writeJson } from "@/lib/storage";
 import type { FolderCard } from "@/lib/types";
@@ -251,11 +251,12 @@ function datGuard(folder: FolderCard): string | undefined {
     : "Please upload a DAT in Settings → DATs first";
 }
 
-/** What a set without ROM files yet is waiting for: a DAT or a scan. */
+/** What a set without ROM files yet is waiting for: a DAT, a check or a scan. */
 function emptyNote(folder: FolderCard): string {
   const guard = datGuard(folder);
   if (guard) return guard;
-  if (folder.needs_scan) return "Please scan";
+  if (folder.needs === "check") return "Please check files";
+  if (folder.needs) return "Please scan";
   return "No ROM files found";
 }
 
@@ -274,6 +275,7 @@ function EmptyBox({ folder, children }: { folder: FolderCard; children: ReactNod
 
 function CardActions({ folder }: { folder: FolderCard }) {
   const scan = useStartScan(folder.label);
+  const check = useStartCheck(folder.label);
   const stop = useStopConversion(folder.label);
   const download = useMutation({
     mutationFn: (source: string) =>
@@ -287,7 +289,9 @@ function CardActions({ folder }: { folder: FolderCard }) {
     onError: (err) => toast.error(err instanceof ApiError ? err.message : String(err)),
   });
   const running = folder.scan?.status === "running";
-  const guard = datGuard(folder);
+  // The run that is due: Check files first (it needs no DAT), then Scan.
+  const checking = folder.needs === "check";
+  const guard = checking ? undefined : datGuard(folder);
   return (
     <div className="relative flex flex-wrap items-center gap-2 px-4 pb-4">
       {folder.dat_download ? (
@@ -304,16 +308,30 @@ function CardActions({ folder }: { folder: FolderCard }) {
       <Button
         size="sm"
         variant="outline"
-        aria-label={`Scan ${folder.label}`}
+        aria-label={`${checking ? "Check files of" : "Scan"} ${folder.label}`}
         title={
           guard ??
-          (folder.converting ? "A conversion is running" : "Scan for conversion and matching")
+          (folder.converting
+            ? "A conversion is running"
+            : checking
+              ? "List the folder and read what conversion needs; nothing is hashed"
+              : "Identify the files with nothing left to convert")
         }
-        disabled={Boolean(guard) || running || Boolean(folder.converting) || scan.isPending}
-        onClick={() => scan.mutate({})}
+        disabled={
+          Boolean(guard) ||
+          running ||
+          Boolean(folder.converting) ||
+          scan.isPending ||
+          check.isPending
+        }
+        onClick={() => (checking ? check.mutate() : scan.mutate({}))}
       >
-        <RefreshCw className={running ? "size-4 animate-spin" : "size-4"} aria-hidden="true" />
-        Scan
+        {checking ? (
+          <FileSearch className={running ? "size-4 animate-spin" : "size-4"} aria-hidden="true" />
+        ) : (
+          <RefreshCw className={running ? "size-4 animate-spin" : "size-4"} aria-hidden="true" />
+        )}
+        {checking ? "Check files" : "Scan"}
       </Button>
       {folder.converting ? (
         <StopButton
@@ -501,10 +519,10 @@ export function HomePage() {
             ) : folder.scan ? (
               folder.scan.status === "done" ? (
                 extended ? (
-                  `Scanned ${formatWhen(folder.scan.finished_at)}`
+                  `${runWords(folder.scan).past} ${formatWhen(folder.scan.finished_at)}`
                 ) : null
               ) : progress || empty ? null : (
-                <span className="text-status-bad">Last scan failed</span>
+                <span className="text-status-bad">Last {runWords(folder.scan).noun} failed</span>
               )
             ) : extended && !empty ? (
               <span className="text-muted-foreground">Not scanned yet</span>

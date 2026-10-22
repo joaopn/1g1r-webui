@@ -4,7 +4,7 @@ import {
   template as tableTemplate,
   widthOf,
 } from "@/components/table/prefs";
-import type { ColumnSize, Game, GameStatus, UnmatchedFile, Version } from "@/lib/types";
+import type { ColumnSize, FileRow, Game, GameStatus, UnmatchedFile, Version } from "@/lib/types";
 
 export { widthOf };
 
@@ -91,29 +91,45 @@ export const METHOD_LABELS: Record<string, { short: string; long: string }> = {
     short: "unmatched",
     long: "nothing identified this file: open the row to say what it is",
   },
+  "convert first": {
+    short: "convert first",
+    long: "a conversion is proposed for this file (Conversion tab): the scan after it identifies the result",
+  },
 };
 
-/** A table row: a game, or a file nothing identified (which carries what is known of it). */
-export type Row = Game & { file?: UnmatchedFile };
+/** A table row: a game, a file nothing identified (which carries what is known of it), or a
+ * file waiting for its conversion. */
+export type Row = Game & { file?: UnmatchedFile; waiting?: FileRow };
 
 /** An unmatched file as a one-version row, named after its file, so it sorts and filters in. */
 export function unmatchedRow(file: UnmatchedFile): Row {
+  return { ...fileRow(file, "unmatched"), file };
+}
+
+/** A file waiting for its conversion, as a one-version row: not a version until converted. */
+export function convertFirstRow(file: FileRow): Row {
+  return { ...fileRow(file, "convert first"), waiting: file };
+}
+
+function fileRow(
+  file: { rel_path: string; size: number },
+  status: "unmatched" | "convert first",
+): Row {
   const base = file.rel_path.split("/").pop() ?? file.rel_path;
   return {
-    key: `unmatched:${file.rel_path}`,
+    key: `${status}:${file.rel_path}`,
     name: base.replace(/\.[^.]+$/, "") || base,
     source: "single",
-    status: "unmatched",
+    status,
     reason: "",
     kept: null,
     candidates: [],
-    file,
     versions: [
       {
         rel_path: file.rel_path,
         game_name: "",
         title: "",
-        method: "unmatched",
+        method: status,
         dat: null,
         probability: 0,
         regions: [],
@@ -154,6 +170,7 @@ export function methodLabel(version: Version): { short: string; long: string } {
 export const STATUS_ORDER: GameStatus[] = [
   "undecided",
   "unmatched",
+  "convert first",
   "your pick",
   "decided",
   "left alone",
@@ -284,7 +301,8 @@ export const QUICK_VIEWS: QuickView[] = [
   {
     id: "one",
     label: "One version",
-    test: (g) => g.versions.length === 1 && g.status !== "unmatched",
+    test: (g) =>
+      g.versions.length === 1 && g.status !== "unmatched" && g.status !== "convert first",
   },
   { id: "several", label: "Several versions", test: (g) => g.versions.length > 1 },
   {
@@ -292,6 +310,7 @@ export const QUICK_VIEWS: QuickView[] = [
     label: "Unmatched",
     test: (g) => g.versions.some((v) => v.method === "unmatched"),
   },
+  { id: "convert-first", label: "Convert first", test: (g) => g.status === "convert first" },
   { id: "to-apply", label: "To apply", test: (g) => g.versions.some((v) => v.operation) },
   { id: "applied", label: "Applied", test: (g) => g.versions.some((v) => v.discarded) },
 ];

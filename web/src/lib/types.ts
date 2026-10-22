@@ -83,6 +83,8 @@ export type Notification = {
 
 export type Scan = {
   id: number;
+  /** "check": Check files (what conversion needs, nothing hashed); "identify": a Scan. */
+  kind: "check" | "identify";
   status: "running" | "done" | "failed";
   started_at: string;
   finished_at: string | null;
@@ -130,8 +132,11 @@ export type Summary = {
   bytes: number;
   identified: number;
   unmatched: number;
-  /** Cue sheets and track files: versions once converted to one file. */
+  /** Files a conversion is proposed for (cue sheets and tracks included): identified once
+   * converted, neither versions nor unmatched until then. */
   waiting?: number;
+  /** Listed (by Check files, or new since the last scan) but not looked at by a Scan yet. */
+  unscanned?: number;
   methods: Record<string, number>;
 };
 
@@ -150,14 +155,18 @@ export type FolderInfo = {
 };
 
 export type FolderCard = FolderInfo & {
+  /** The latest run of either kind, and the latest Scan. */
   scan: Scan | null;
+  last_scan: Scan | null;
   dat: DatVersion | null;
   summary: Summary;
   /** Without an active DAT: where the platform's DAT downloads from by default. */
   dat_download: { source: string; label: string } | null;
   /** No active DAT, and the platform needs one to identify anything. */
   needs_dat: boolean;
-  /** Never scanned, the last scan failed, or the active DAT changed since it. */
+  /** Which run is due ("Needing scanning"): Check files before any run, else a Scan when
+   * never scanned, after a failed one, a DAT change or a conversion; null when none is. */
+  needs: "check" | "identify" | null;
   needs_scan: boolean;
   counts: Record<string, number>;
   reclaim_bytes: number;
@@ -207,9 +216,12 @@ export type FolderDetail = FolderInfo & {
   dat_order: DatOrderEntry[];
   dat_order_own: boolean;
   scan: Scan | null;
+  last_scan: Scan | null;
   dat: DatVersion | null;
   summary: Summary;
   unmatched: FileRow[];
+  /** ROM files a conversion is proposed for: identified once converted. */
+  convert_first: FileRow[];
   others: FileRow[];
   unsupported: UnsupportedFile[];
   ranking: Ranking;
@@ -261,7 +273,9 @@ export type GameStatus =
   | "left alone"
   | "applied"
   /** A file nothing identified, shown as a row of its own (never from the API's games). */
-  | "unmatched";
+  | "unmatched"
+  /** A file waiting for its conversion, shown as a row of its own: identified once converted. */
+  | "convert first";
 
 export type PlannedMove = {
   rel_path: string;
