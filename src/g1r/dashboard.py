@@ -4,7 +4,7 @@ import sqlite3
 from collections.abc import Iterable
 from pathlib import Path
 
-from g1r import conversion, hasheous, matching
+from g1r import conversion, hasheous, matching, scanner
 
 WARN = "warn"
 BAD = "bad"
@@ -24,10 +24,29 @@ def _dat_changed(scan: sqlite3.Row | None, dat: sqlite3.Row | None) -> bool:
     )
 
 
-def needs_scan(scan: sqlite3.Row | None, dat: sqlite3.Row | None) -> bool:
-    """The set waits for a scan: never scanned, the last scan failed (a first one included),
-    or the active DAT changed since. A running scan is already on it."""
-    return scan is None or scan["status"] == "failed" or _dat_changed(scan, dat)
+def needs(
+    last: sqlite3.Row | None,
+    scanned: sqlite3.Row | None,
+    dat: sqlite3.Row | None,
+    converted_at: str | None,
+) -> str | None:
+    """What the set waits for (Home's "Needing scanning" badge, one for both): a check
+    (`scanner.CHECK`) before any run or after a failed one; a scan (`scanner.IDENTIFY`) when
+    it was never scanned, the last scan failed, the active DAT changed since, or a conversion
+    ended after the scan began (its outputs are identified by a scan). None while a run is
+    under way, or when nothing is due. `last`: the latest run of either kind; `scanned`: the
+    latest scan."""
+    if last is None:
+        return scanner.CHECK
+    if last["status"] == "running":
+        return None
+    if last["status"] == "failed":
+        return scanner.CHECK if last["kind"] == scanner.CHECK else scanner.IDENTIFY
+    if scanned is None or scanned["status"] == "failed" or _dat_changed(scanned, dat):
+        return scanner.IDENTIFY
+    if converted_at is not None and converted_at >= scanned["started_at"]:
+        return scanner.IDENTIFY
+    return None
 
 
 def warnings(

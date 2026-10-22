@@ -113,8 +113,8 @@ def test_apply_and_restore_a_folder(setup, roms_root):  # noqa: F811
     assert contra["status"] == "applied"
     gone = next(v for v in contra["versions"] if v["rel_path"] == "Contra (Japan).zip")
     assert gone["discarded"] and gone["operation"] is None
-    # 6 ROM files were scanned (5 zips and odd.nes); one is now in discarded/.
-    assert client.get("/api/folders/nes").json()["summary"]["roms"] == 5
+    # 7 ROM files were scanned (6 zips and odd.nes); one is now in discarded/.
+    assert client.get("/api/folders/nes").json()["summary"]["roms"] == 6
     listing = client.get("/api/folders/nes/discarded").json()
     assert listing["reasons"][0]["files"][0]["operation_id"] == gone["discarded"]
 

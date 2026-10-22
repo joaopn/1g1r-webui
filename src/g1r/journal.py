@@ -895,6 +895,17 @@ def latest_run(conn: sqlite3.Connection, label: str) -> dict | None:
     return progress(conn, row[0]) if row else None
 
 
+def last_conversion_end(conn: sqlite3.Connection, label: str) -> str | None:
+    """When the folder's latest finished conversion run ended (its outputs are identified by
+    the next scan), or None."""
+    row = conn.execute(
+        "SELECT finished_at FROM apply_run WHERE folder_label = ? AND kind = ? AND scope = ? "
+        "AND finished_at IS NOT NULL ORDER BY id DESC LIMIT 1",
+        (label, APPLY, CONVERT),
+    ).fetchone()
+    return row["finished_at"] if row else None
+
+
 def running_conversion(conn: sqlite3.Connection, label: str) -> dict | None:
     """The folder's conversion while it runs: steps finished (failed ones too) of the
     planned total, how many files failed so far, and whether a stop was asked for. None when

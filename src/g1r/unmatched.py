@@ -12,8 +12,9 @@ def rows(
     label: str,
     hasheous_on: bool,
     parts: frozenset[str] = frozenset(),
+    waiting: frozenset[str] = frozenset(),
 ) -> list[dict]:
-    files = scanner.unmatched_files(conn, label, parts)
+    files = scanner.unmatched_files(conn, label, parts, waiting)
     hashes: dict[str, dict] = {}
     for h in conn.execute(
         "SELECT rel_path, variant, crc32, sha1 FROM content_hash WHERE folder_label = ? "

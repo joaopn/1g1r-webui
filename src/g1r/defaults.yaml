@@ -735,6 +735,10 @@ igir:
   default_reader_threads: 6
   default_pool_threads: 4
   max_threads: 64
+  # A scan leaves out files waiting for a conversion with one --input-exclude each (exact
+  # paths). Past this many the command line could grow too long: igir then reads them too,
+  # and their matches are not used.
+  max_excluded_files: 5000
 
 # Online identification for files the local DAT misses. Off until switched on in
 # Settings -> Online lookups; only content hashes (CRC32, MD5, SHA1) are sent.

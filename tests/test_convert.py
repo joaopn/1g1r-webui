@@ -137,12 +137,14 @@ def test_wrap_a_folder_then_restore_the_original(setup, roms_root):  # noqa: F81
 def test_unwrap_carries_the_identity_and_the_pick(setup, roms_root):  # noqa: F811
     client, _, _ = setup
     scanned(client)
-    client.put("/api/settings/targets", json={"targets": {"nes": "plain"}})
     contra = next(g for g in client.get("/api/folders/nes/games").json() if g["name"] == "Contra")
     client.put(
         "/api/folders/nes/keep",
         json={"group_key": contra["key"], "rel_path": "Contra (Japan).zip"},
     )
+    client.put("/api/settings/targets", json={"targets": {"nes": "plain"}})
+    # Every zip now waits to be unpacked: out of 1G1R until converted (P10, Q3).
+    assert client.get("/api/folders/nes/games").json() == []
     plan = preview(client, rel_paths=["Contra (Japan).zip"])
     assert [c["output"] for c in plan["conversions"]] == ["Contra (Japan).nes"]
     client.post(
@@ -152,6 +154,7 @@ def test_unwrap_carries_the_identity_and_the_pick(setup, roms_root):  # noqa: F8
     assert wait_run(client)["status"] == "done"
     assert (roms_root / "NES Set" / "Contra (Japan).nes").read_bytes() == b"Contra (Japan)"
 
+    # The output carries the identity (no scan needed) and the pick.
     found = versions(client)
     assert "Contra (Japan).zip" not in found
     assert found["Contra (Japan).nes"]["game_name"] == "Contra (Japan)"

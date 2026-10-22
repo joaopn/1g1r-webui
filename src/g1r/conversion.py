@@ -86,6 +86,17 @@ class ConversionRow:
     card_image: str | None = None
 
 
+def waiting(rows: list[ConversionRow]) -> set[str]:
+    """The files a conversion is proposed for (and the tracks it takes along): they are
+    identified and ranked once converted (maintainer, 2026-10-21: conversion first)."""
+    return {
+        rel
+        for r in rows
+        if r.status in CONVERTING or r.status == PART
+        for rel in (r.rel_path, *r.parts)
+    }
+
+
 def container_of(rel_path: str, kind: str, disc_formats=()) -> str:
     suffix = PurePosixPath(rel_path).suffix.lower().lstrip(".")
     if kind == "archive":

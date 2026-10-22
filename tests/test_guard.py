@@ -25,15 +25,15 @@ def preview(client, path, **body):
 def test_move_unmatched_to_discarded_and_back(setup, roms_root):  # noqa: F811
     client, _, _ = setup
     scanned(client)
-    assert unmatched(client) == ["odd.nes"]
-    plan = preview(client, "unmatched", rel_paths=["odd.nes"])
+    assert unmatched(client) == ["stray.zip"]
+    plan = preview(client, "unmatched", rel_paths=["stray.zip"])
     assert plan["irreversible"] == 0 and plan["problems"] == []
-    assert plan["files"][0]["destination"] == str(roms_root / MANUAL / "odd.nes")
+    assert plan["files"][0]["destination"] == str(roms_root / MANUAL / "stray.zip")
 
-    body = {"rel_paths": ["odd.nes"], "token": plan["token"]}
+    body = {"rel_paths": ["stray.zip"], "token": plan["token"]}
     assert client.post("/api/folders/nes/unmatched", json=body).status_code == HTTPStatus.ACCEPTED
     assert wait_run(client)["message"] == "1 file moved to discarded/"
-    assert (roms_root / MANUAL / "odd.nes").exists() and unmatched(client) == []
+    assert (roms_root / MANUAL / "stray.zip").exists() and unmatched(client) == []
 
     listing = client.get("/api/folders/nes/discarded").json()
     moved = listing["reasons"][0]
@@ -42,23 +42,23 @@ def test_move_unmatched_to_discarded_and_back(setup, roms_root):  # noqa: F811
         "/api/folders/nes/restore", json={"operation_ids": [moved["files"][0]["operation_id"]]}
     )
     assert wait_run(client)["message"] == "1 file restored"
-    assert unmatched(client) == ["odd.nes"]
+    assert unmatched(client) == ["stray.zip"]
 
 
 def test_deleting_unmatched_needs_the_typed_label(setup, roms_root):  # noqa: F811
     client, _, _ = setup
     scanned(client)
-    plan = preview(client, "unmatched", rel_paths=["odd.nes"], delete=True)
+    plan = preview(client, "unmatched", rel_paths=["stray.zip"], delete=True)
     assert plan["irreversible"] == 1 and plan["files"][0]["destination"] is None
-    body = {"rel_paths": ["odd.nes"], "delete": True, "token": plan["token"]}
+    body = {"rel_paths": ["stray.zip"], "delete": True, "token": plan["token"]}
     refused = client.post("/api/folders/nes/unmatched", json=body)
     assert refused.status_code == HTTPStatus.CONFLICT
     assert "type the folder label" in refused.json()["detail"]["message"]
-    assert (roms_root / "NES Set" / "odd.nes").exists()
+    assert (roms_root / "NES Set" / "stray.zip").exists()
 
     client.post("/api/folders/nes/unmatched", json=body | {"confirm": "nes"})
     assert wait_run(client)["message"] == "1 file deleted"
-    assert not (roms_root / "NES Set" / "odd.nes").exists() and unmatched(client) == []
+    assert not (roms_root / "NES Set" / "stray.zip").exists() and unmatched(client) == []
 
 
 def test_only_unmatched_files_can_be_moved_out_this_way(setup):  # noqa: F811

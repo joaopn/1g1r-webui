@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from g1r import dashboard, db, igir
+from g1r import dashboard, db, igir, scanner
 from g1r.library import LibraryStore
 from g1r.web.api import suggest_label
 from g1r.web.app import create_app
@@ -32,7 +32,10 @@ def setup(make_settings, roms_root):
     folder.mkdir()
     for n in NAMES:
         write_zip(folder / f"{n}.zip", f"{n}.nes", n.encode())
+    # Loose: it waits to be zipped (the NES target), so it is neither identified nor unmatched.
     (folder / "odd.nes").write_bytes(b"?")
+    # Zipped, as the target wants it, and in no DAT: unmatched.
+    write_zip(folder / "stray.zip", "stray.nes", b"??")
     (folder / "metadata.txt").write_text("x")
     (roms_root / "gb").mkdir()
     (roms_root / "discarded").mkdir()
@@ -187,10 +190,13 @@ def test_dat_order_is_saved_per_platform(setup):
 def test_scan_and_folder_detail(setup):
     client, _, _ = setup
     scan = scanned(client)
-    assert scan["status"] == "done" and scan["message"] == "5 of 6 ROM files identified"
+    assert scan["status"] == "done" and scan["message"] == (
+        "5 of 6 ROM files identified; 1 wait for conversion (identified once converted)"
+    )
     detail = client.get("/api/folders/nes").json()
-    assert detail["summary"]["unmatched"] == 1
-    assert [f["rel_path"] for f in detail["unmatched"]] == ["odd.nes"]
+    assert (detail["summary"]["unmatched"], detail["summary"]["waiting"]) == (1, 1)
+    assert [f["rel_path"] for f in detail["unmatched"]] == ["stray.zip"]
+    assert [f["rel_path"] for f in detail["convert_first"]] == ["odd.nes"]
     assert [f["rel_path"] for f in detail["others"]] == ["metadata.txt"]
     assert client.get("/api/folders/missing").status_code == HTTPStatus.NOT_FOUND
 
@@ -238,9 +244,9 @@ def test_games_keep_leave_and_ranking(setup):
     assert store.load().folder("nes").ranking is None
     home = client.get("/api/folders").json()[0]
     assert home["counts"]["several"] == 2 and home["summary"]["identified"] == 5
-    # To process: the undecided game's two versions and odd.nes (unmatched, to wrap), which
-    # counts both to match and to convert.
-    assert home["progress"] == {"processed": 3, "to_process": 3, "to_match": 3, "to_convert": 1}
+    # To process: the undecided game's two versions and stray.zip (unmatched) to match, and
+    # odd.nes to wrap (waiting for it, not to match).
+    assert home["progress"] == {"processed": 3, "to_process": 4, "to_match": 3, "to_convert": 1}
 
 
 def test_healthz(setup):
@@ -299,23 +305,23 @@ def test_unmatched_assign_and_lookup_settings(setup):
     client, _, _ = setup
     scanned(client)
     (row,) = client.get("/api/folders/nes/unmatched").json()
-    assert row["rel_path"] == "odd.nes" and row["hasheous"]["status"] == "off"
+    assert row["rel_path"] == "stray.zip" and row["hasheous"]["status"] == "off"
     assert row["hash"]["crc32"]
     assert client.get("/api/folders/nes/dat-search", params={"q": "contra"}).json() == [
         "Contra (Japan)",
         "Contra (USA)",
     ]
-    bad = client.put("/api/folders/nes/assign", json={"rel_path": "odd.nes", "game_name": "Nope"})
+    bad = client.put("/api/folders/nes/assign", json={"rel_path": "stray.zip", "game_name": "Nope"})
     assert bad.status_code == HTTPStatus.BAD_REQUEST
     ok = client.put(
-        "/api/folders/nes/assign", json={"rel_path": "odd.nes", "game_name": "Solo (Japan)"}
+        "/api/folders/nes/assign", json={"rel_path": "stray.zip", "game_name": "Solo (Japan)"}
     )
     assert ok.status_code == HTTPStatus.OK
     assert client.get("/api/folders/nes/unmatched").json() == []
     versions = [v for g in client.get("/api/folders/nes/games").json() for v in g["versions"]]
-    assigned = next(v for v in versions if v["rel_path"] == "odd.nes")
+    assigned = next(v for v in versions if v["rel_path"] == "stray.zip")
     assert (assigned["method"], assigned["probability"]) == ("manual", 1)
-    client.put("/api/folders/nes/assign", json={"rel_path": "odd.nes", "game_name": None})
+    client.put("/api/folders/nes/assign", json={"rel_path": "stray.zip", "game_name": None})
     assert len(client.get("/api/folders/nes/unmatched").json()) == 1
 
     assert client.get("/api/settings").json()["lookups"] == {"hasheous": False}
@@ -367,16 +373,31 @@ def test_discarded_listing_and_home_warnings(setup, roms_root):
     assert card["needs_scan"] is True
 
 
-def test_a_set_needs_a_scan_until_one_succeeds_with_the_active_dat():
+def test_a_set_needs_a_check_then_a_scan_until_one_succeeds_with_the_active_dat():
     dat = {"sha1": "new"}
-    assert dashboard.needs_scan(None, dat)
-    assert dashboard.needs_scan({"status": "failed", "dat_sha1": None}, dat)  # a first scan
-    assert not dashboard.needs_scan({"status": "running", "dat_sha1": None}, dat)
-    assert not dashboard.needs_scan({"status": "done", "dat_sha1": "new"}, dat)
-    assert dashboard.needs_scan({"status": "done", "dat_sha1": "old"}, dat)
+
+    def run(kind, status, dat_sha1=None, started_at="2026-10-22T10:00:00Z"):
+        return {"kind": kind, "status": status, "dat_sha1": dat_sha1, "started_at": started_at}
+
+    check, scan = scanner.CHECK, scanner.IDENTIFY
+    assert dashboard.needs(None, None, dat, None) == check
+    assert dashboard.needs(run(check, "failed"), None, dat, None) == check
+    assert dashboard.needs(run(check, "running"), None, dat, None) is None
+    # Checked, never scanned; or the last scan failed (a first one included).
+    assert dashboard.needs(run(check, "done"), None, dat, None) == scan
+    failed = run(scan, "failed")
+    assert dashboard.needs(failed, failed, dat, None) == scan
+    done = run(scan, "done", "new")
+    assert dashboard.needs(done, done, dat, None) is None
+    assert dashboard.needs(run(check, "done"), done, dat, None) is None
+    old = run(scan, "done", "old")
+    assert dashboard.needs(old, old, dat, None) == scan
     # Scanned without a DAT (title IDs), or no DAT active: nothing to rescan for.
-    assert not dashboard.needs_scan({"status": "done", "dat_sha1": None}, dat)
-    assert not dashboard.needs_scan({"status": "done", "dat_sha1": "old"}, None)
+    assert dashboard.needs(run(scan, "done"), run(scan, "done"), dat, None) is None
+    assert dashboard.needs(old, old, None, None) is None
+    # A conversion ended after the scan: its outputs are identified by the next one.
+    assert dashboard.needs(done, done, dat, "2026-10-22T09:00:00Z") is None
+    assert dashboard.needs(done, done, dat, "2026-10-22T11:00:00Z") == scan
 
 
 def test_folder_card_offers_the_default_dat_until_one_is_active(setup):

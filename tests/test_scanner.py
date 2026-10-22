@@ -45,7 +45,8 @@ def env(make_settings, roms_root):
         "Reheadered (Japan).nes",
         bytes.fromhex("4e45531a") + b"\xff" * 12 + BODY[::-1],
     )
-    (folder / "sub" / "Loose (Europe).nes").write_bytes(b"unknown data")
+    # Zipped, as the NES target wants it: a loose file would wait for its conversion.
+    write_zip(folder / "sub" / "Loose (Europe).zip", "Loose (Europe).nes", b"unknown data")
     (folder / "metadata.txt").write_text("frontend file")
     (folder / "cover.png").write_bytes(b"png")
     settings = make_settings()
@@ -87,7 +88,7 @@ def test_inventory_kinds(env, roms_root):
         "Reheadered (Japan).zip": "archive",
         "cover.png": "other",
         "metadata.txt": "ignored",
-        "sub/Loose (Europe).nes": "rom",
+        "sub/Loose (Europe).zip": "archive",
     }
 
 
@@ -121,7 +122,7 @@ def test_scan_identifies_by_checksum_and_headerless(env, roms_root):
     on_disk = sum(p.stat().st_size for p in (roms_root / "nes").rglob("*") if p.is_file())
     assert summary["bytes"] == on_disk
     assert [r["rel_path"] for r in scanner.unmatched_files(conn, "nes")] == [
-        "sub/Loose (Europe).nes"
+        "sub/Loose (Europe).zip"
     ]
     assert {r["rel_path"] for r in scanner.other_files(conn, "nes")} == {
         "metadata.txt",
@@ -253,7 +254,7 @@ def test_a_quick_rescan_reads_no_unchanged_file(env, monkeypatch):
     assert scanner.latest_scan(conn, "nes")["status"] == "done"
     assert identities(conn) == first
     assert conn.execute("SELECT * FROM content_hash").fetchall() == hashes
-    assert conn.execute("SELECT COUNT(*) FROM archive_member").fetchone()[0] == 2
+    assert conn.execute("SELECT COUNT(*) FROM archive_member").fetchone()[0] == 3
 
 
 def test_a_changed_file_is_read_again_and_a_gone_one_forgotten(env, roms_root):
@@ -262,13 +263,13 @@ def test_a_changed_file_is_read_again_and_a_gone_one_forgotten(env, roms_root):
     folder = roms_root / "nes"
     # The unmatched file now holds the known game's data: same name, new size and mtime.
     write_zip(folder / "Reheadered (Japan).zip", "Reheadered (Japan).nes", BODY[::-1])
-    (folder / "sub" / "Loose (Europe).nes").unlink()
+    (folder / "sub" / "Loose (Europe).zip").unlink()
     folder_scanner.run(conn, folder_scanner.start(conn, "nes"), "nes")
     # Without its header the data is the DAT's "Reheadered (Japan)" as it is: igir's (fake)
     # report does not list it, so it is found by the header-stripped check no more.
     assert "Reheadered (Japan).zip" not in identities(conn)
     cached = {r[0] for r in conn.execute("SELECT rel_path FROM file_cache")}
-    assert "sub/Loose (Europe).nes" not in cached
+    assert "sub/Loose (Europe).zip" not in cached
     sizes = {
         r[0]
         for r in conn.execute(
@@ -301,7 +302,7 @@ def test_a_full_scan_reads_everything_and_igir_hashes_afresh(env, monkeypatch):
     folder_scanner.run(conn, folder_scanner.start(conn, "nes"), "nes")
     assert read == []
     folder_scanner.run(conn, folder_scanner.start(conn, "nes"), "nes", full=True)
-    assert sorted(read) == ["Known (USA).zip", "Reheadered (Japan).zip"]
+    assert sorted(read) == ["Known (USA).zip", "Loose (Europe).zip", "Reheadered (Japan).zip"]
     # igir keeps the folder's cache between scans; a full scan starts it again.
     assert [present for _, present in calls] == [False, True, False]
     assert all(options["cache"] == cache for options, _ in calls)
@@ -369,12 +370,12 @@ def test_each_dat_in_the_order_identifies_what_the_ones_before_it_missed(env, ro
         if dat_file.name == Path(first["file"]).name:
             return [
                 igir.ReportRow(
-                    "Loose (Europe)", "FOUND", (str(input_dir / "sub/Loose (Europe).nes"),)
+                    "Loose (Europe)", "FOUND", (str(input_dir / "sub/Loose (Europe).zip"),)
                 )
             ]
         return [
             igir.ReportRow("Known (USA)", "FOUND", (str(input_dir / "Known (USA).zip"),)),
-            igir.ReportRow("Loose (Europe)", "FOUND", (str(input_dir / "sub/Loose (Europe).nes"),)),
+            igir.ReportRow("Loose (Europe)", "FOUND", (str(input_dir / "sub/Loose (Europe).zip"),)),
         ]
 
     folder_scanner = scanner.Scanner(settings, store, registry, report)
@@ -385,7 +386,7 @@ def test_each_dat_in_the_order_identifies_what_the_ones_before_it_missed(env, ro
         for r in conn.execute("SELECT * FROM identity")
     }
     assert rows == {
-        "sub/Loose (Europe).nes": ("Loose (Europe)", "dat-checksum", first["sha1"]),
+        "sub/Loose (Europe).zip": ("Loose (Europe)", "dat-checksum", first["sha1"]),
         "Known (USA).zip": ("Known (USA)", "dat-checksum", second["sha1"]),
         "Reheadered (Japan).zip": ("Reheadered (Japan)", "dat-headerless", second["sha1"]),
     }

@@ -5,6 +5,8 @@ import sqlite3
 from g1r import journal
 
 SCAN = "scan"
+# A Check files run (scan.kind 'check'): listed as a scan, titled apart.
+CHECK = "check"
 RUN = "run"
 TABLES = {SCAN: "scan", RUN: "apply_run"}
 
@@ -13,6 +15,7 @@ CONVERSION = "conversion"
 APPLY_1G1R = "1g1r"
 TITLES = {
     SCAN: "Scan",
+    CHECK: "Check files",
     CONVERSION: "Conversion",
     APPLY_1G1R: "1G1R apply",
     journal.SCOPE_UNMATCHED: "Unmatched files",
@@ -36,7 +39,7 @@ def _scan_item(row: sqlite3.Row) -> dict:
     return {
         "id": f"{SCAN}-{row['id']}",
         "kind": SCAN,
-        "title": TITLES[SCAN],
+        "title": TITLES[CHECK if row["kind"] == CHECK else SCAN],
         "folder_label": row["folder_label"],
         "status": row["status"],
         "started_at": row["started_at"],

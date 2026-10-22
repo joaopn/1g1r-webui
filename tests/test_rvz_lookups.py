@@ -113,14 +113,12 @@ def test_an_rvz_is_looked_up_by_its_disc_never_by_its_own_hash(ngc):
     assert post.asked == [{"crc": DISC_HASH.crc32, "sha1": DISC_HASH.sha1}]
     method = conn.execute("SELECT method FROM identity WHERE rel_path = ?", (DISC,)).fetchone()
     assert method[0] == scanner.METHOD_HASHEOUS
-    reasons = {r["rel_path"]: r["hasheous"] for r in unmatched.rows(conn, "ngc", hasheous_on=True)}
-    assert reasons == {
-        BROKEN: {"status": hasheous.SKIPPED, "detail": "the disc could not be read"},
-        ZIPPED: {
-            "status": hasheous.SKIPPED,
-            "detail": "an RVZ inside an archive: convert it first",
-        },
-    }
+    # The zipped RVZ waits to be unpacked: identified (and looked up) once converted.
+    waiting = folder_scanner.waiting(conn, store.load(), store.load().folder("ngc"), folder)
+    assert waiting == {ZIPPED}
+    rows = unmatched.rows(conn, "ngc", hasheous_on=True, waiting=waiting)
+    reasons = {r["rel_path"]: r["hasheous"] for r in rows}
+    assert reasons == {BROKEN: {"status": hasheous.SKIPPED, "detail": "the disc could not be read"}}
 
 
 def test_an_rvz_has_no_size_cap_and_never_its_container_hash(make_settings, tmp_path):

@@ -21,6 +21,7 @@ from pathlib import Path, PurePosixPath
 from g1r import (
     archives,
     cards,
+    conversion,
     discs,
     fuzzy,
     hasheous,
@@ -50,7 +51,7 @@ from g1r.hashing import (
     rvz_identity,
     word_bytes,
 )
-from g1r.library import FolderEntry, LibraryStore
+from g1r.library import FolderEntry, Library, LibraryStore
 
 METHOD_CHECKSUM = "dat-checksum"
 METHOD_HEADERLESS = "dat-headerless"
@@ -357,6 +358,25 @@ def read_cards(
 # The scan ------------------------------------------------------------------------
 
 
+# A folder's runs (scan.kind): Check files reads what conversion needs and hashes nothing;
+# Scan does that, then identifies the files with nothing left to convert.
+CHECK = "check"
+IDENTIFY = "identify"
+# Per-file tables a check writes, and those identification writes (the rest of a file's
+# rows: folder_file and its cascade, and the file cache).
+INVENTORY_TABLES = ("archive_member", "archive_problem", "card_info", "file_note", "byte_order")
+IDENTIFICATION_TABLES = ("identity", "content_hash", "lookup_result", "payload_hash", "suggestion")
+
+
+@dataclass
+class Inventory:
+    library: Library
+    folder: FolderEntry
+    root: Path
+    files: list[InventoryFile]
+    found: "Found"
+
+
 # A suggestion from the card's product code ranks above every name-based one.
 SERIAL_SCORE = 1.0
 
@@ -384,12 +404,13 @@ class Scanner:
         self.read_rvz = read_rvz
         self.open_member = open_member
 
-    def start(self, conn: sqlite3.Connection, label: str) -> int:
+    def start(self, conn: sqlite3.Connection, label: str, kind: str = IDENTIFY) -> int:
         reason = journal.busy(conn, label)
         if reason:
             raise ScanError(reason)
         return conn.execute(
-            "INSERT INTO scan (folder_label, status) VALUES (?, 'running')", (label,)
+            "INSERT INTO scan (folder_label, status, kind) VALUES (?, 'running', ?)",
+            (label, kind),
         ).lastrowid
 
     def run(
@@ -399,12 +420,18 @@ class Scanner:
         label: str,
         refresh_lookups: bool = False,
         full: bool = False,
+        kind: str = IDENTIFY,
     ) -> None:
-        """`full`: read every file again, ignoring what earlier scans read (this app's cache
-        and igir's), for files changed in a way their size and mtime do not show."""
+        """`kind`: CHECK (what conversion needs, nothing hashed) or IDENTIFY (that, then the
+        identification of files with nothing left to convert). `full`: read every file again,
+        ignoring what earlier scans read (this app's cache and igir's), for files changed in a
+        way their size and mtime do not show."""
         progress = Progress(conn, scan_id, self.settings.jobs.progress_interval_seconds)
         try:
-            message = self._scan(conn, label, refresh_lookups, progress, full)
+            if kind == CHECK:
+                message = self._check(conn, label, progress)
+            else:
+                message = self._scan(conn, label, refresh_lookups, progress, full)
             self._finish(conn, scan_id, "done", message)
         except (ScanError, igir.IgirError, mounts.FolderPathError, OSError) as exc:
             self._finish(conn, scan_id, "failed", str(exc))
@@ -420,14 +447,9 @@ class Scanner:
             (status, message, scan_id),
         )
 
-    def _scan(
-        self,
-        conn: sqlite3.Connection,
-        label: str,
-        refresh_lookups: bool,
-        progress: Progress,
-        full: bool = False,
-    ) -> str:
+    def _inventory(self, conn, label: str, progress: Progress, full: bool) -> "Inventory":
+        """The folder's files and what conversion decides on: archive listings, byte orders,
+        card headers. Nothing is hashed."""
         library = self.store.load()
         folder: FolderEntry | None = library.folder(label)
         if folder is None:
@@ -440,16 +462,6 @@ class Scanner:
             self.settings, root, folder.platform, self.store.ignored_filenames(library)
         )
         cache = FileCache(conn, label, reuse=not full)
-        igir_cache = igir.cache_path(self.settings, label)
-        if full:
-            igir_cache.unlink(missing_ok=True)
-        run_igir = {
-            "cache": igir_cache,
-            "timeout": igir.time_limit(self.settings, sum(f.size for f in files)),
-            "threads": self.store.igir_threads(library),
-        }
-        if self.settings.platforms.profiles[folder.platform].excess_files:
-            run_igir["excess"] = True
         found = Found(*self._members(root, files, progress, cache), cache=cache)
         found.byte_orders = read_byte_orders(
             self.settings, folder.platform, root, files, found.members, progress, cache
@@ -464,27 +476,94 @@ class Scanner:
             cache,
             self.open_member,
         )
+        return Inventory(library, folder, root, files, found)
+
+    def waiting(self, conn, library: Library, folder: FolderEntry, root: Path | None) -> set[str]:
+        """The folder's files waiting for a conversion (as the Conversion page proposes)."""
+        target = self.settings.platforms.targets[self.store.target_for(library, folder.platform)]
+        rows = conversion.rows(
+            self.settings,
+            conn,
+            folder.label,
+            folder.platform,
+            target,
+            delete_originals=folder.delete_originals,
+            root=root,
+        )
+        return conversion.waiting(rows)
+
+    def _check(self, conn, label: str, progress: Progress) -> str:
+        """Check files: what conversion needs, stored; identification is left as it was."""
+        found_files = self._inventory(conn, label, progress, full=False)
+        progress.stage("Saving")
+        self._store_inventory(conn, label, found_files.files, found_files.found)
+        found_files.found.cache.save(conn, {f.rel_path for f in found_files.files})
+        waiting = self.waiting(conn, found_files.library, found_files.folder, found_files.root)
+        roms = [f for f in found_files.files if f.kind in ("rom", "archive")]
+        left = sum(1 for f in roms if f.rel_path in waiting)
+        return f"{len(roms)} ROM files checked; {left} to convert"
+
+    def _scan(
+        self,
+        conn: sqlite3.Connection,
+        label: str,
+        refresh_lookups: bool,
+        progress: Progress,
+        full: bool = False,
+    ) -> str:
+        """Scan: the check, then the identification of the files with nothing left to convert
+        (a file waiting for a conversion is identified once it is converted)."""
+        found_files = self._inventory(conn, label, progress, full)
+        library, folder, root, files, found = (
+            found_files.library,
+            found_files.folder,
+            found_files.root,
+            found_files.files,
+            found_files.found,
+        )
+        self._store_inventory(conn, label, files, found)
+        waiting = self.waiting(conn, library, folder, root)
+        candidates = [f for f in files if f.kind in ("rom", "archive")]
+        final = [f for f in files if f.rel_path not in waiting]
+        pending = sum(1 for f in candidates if f.rel_path in waiting)
+        igir_cache = igir.cache_path(self.settings, label)
+        if full:
+            igir_cache.unlink(missing_ok=True)
+        excluded = [str(root / rel) for rel in sorted(waiting)]
+        run_igir = {
+            "cache": igir_cache,
+            # The whole folder: past max_excluded_files igir reads every file.
+            "timeout": igir.time_limit(self.settings, sum(f.size for f in files)),
+            "threads": self.store.igir_threads(library),
+            # Beyond the limit igir reads them too; their matches are not used.
+            "exclude": excluded if len(excluded) <= self.settings.igir.max_excluded_files else [],
+        }
+        if self.settings.platforms.profiles[folder.platform].excess_files:
+            run_igir["excess"] = True
         if self.settings.platforms.profiles[folder.platform].title_ids:
-            self._title_ids(root, files, found, progress)
+            self._title_ids(root, final, found, progress)
+        waits = f"; {pending} wait for conversion (identified once converted)" if pending else ""
         entries = [e for e in self.registry.entries(conn, library, folder.platform) if e.on]
         dats = [(e, self.registry.load(e.version)) for e in entries if e.version is not None]
         if not dats and found.identified:
             # Title IDs identify without a DAT.
             progress.stage("Saving")
-            self._store(conn, label, files, found)
-            candidates = sum(1 for f in files if f.kind in ("rom", "archive"))
-            return f"{len(found.identified)} of {candidates} files identified by title ID"
+            self._store_identity(conn, label, final, found)
+            found.cache.save(conn, {f.rel_path for f in files})
+            identified = sum(1 for f in candidates if f.rel_path not in waiting)
+            return f"{len(found.identified)} of {identified} files identified by title ID{waits}"
         if not dats:
             progress.stage("Saving")
-            self._store(conn, label, files, found)
+            self._store_identity(conn, label, final, found)
+            found.cache.save(conn, {f.rel_path for f in files})
             return (
                 f"inventory only, {len(files)} files: this platform has no active DAT, so "
-                "nothing was identified (add one in Settings → DATs)"
+                f"nothing was identified (add one in Settings → DATs){waits}"
             )
         parts = {
             e.lower() for e in self.settings.platforms.profiles[folder.platform].part_extensions
         }
-        roms = [f for f in files if f.kind in ("rom", "archive")]
+        roms = [f for f in final if f.kind in ("rom", "archive")]
 
         def unmatched() -> list[InventoryFile]:
             # A cue sheet or track the DATs miss waits for conversion: not hashed, not looked
@@ -506,7 +585,7 @@ class Scanner:
         for entry in entries:
             if entry.lookup:
                 if not duplicates_checked:
-                    self._duplicates(root, folder.platform, files, found, progress)
+                    self._duplicates(root, folder.platform, final, found, progress)
                     duplicates_checked = True
                 notes += self._look_up(
                     conn,
@@ -527,19 +606,19 @@ class Scanner:
                 entry, dat, named, folder.platform, root, roms, unmatched, found, progress, run_igir
             )
         if not duplicates_checked:
-            self._duplicates(root, folder.platform, files, found, progress)
+            self._duplicates(root, folder.platform, final, found, progress)
         # Every file still unmatched shows its hashes in the table.
         self._hash(folder.platform, root, unmatched(), found, progress, "Hashing unmatched files")
         self._suggest(dat_of_name, [d for _, d in dats], unmatched(), found, progress)
         progress.stage("Saving")
-        self._apply_manual(conn, label, files, found, dat_of_name)
-        self._store(conn, label, files, found)
+        self._apply_manual(conn, label, final, found, dat_of_name)
+        self._store_identity(conn, label, final, found)
+        found.cache.save(conn, {f.rel_path for f in files})
         conn.execute(
             "UPDATE scan SET dat_sha1 = ? WHERE folder_label = ? AND status = 'running'",
             (dats[0][0].version["sha1"], label),
         )
-        candidates = sum(1 for f in files if f.kind in ("rom", "archive"))
-        summary = [f"{len(found.identified)} of {candidates} ROM files identified"]
+        summary = [f"{len(found.identified)} of {len(roms)} ROM files identified"]
         by_dat = Counter(found.dat_of[rel] for rel in found.identified if found.dat_of.get(rel))
         if len(by_dat) > 1:
             summary.append(
@@ -552,7 +631,7 @@ class Scanner:
         online = sum(1 for m in found.identified.values() if m == METHOD_HASHEOUS)
         if online:
             summary.append(f"{online} of them via Hasheous")
-        return "; ".join(summary + notes)
+        return "; ".join(summary + notes) + waits
 
     def _source_label(self, entry) -> str:
         source = self.settings.dats.sources.get(entry.id)
@@ -911,31 +990,50 @@ class Scanner:
             members += [(f.rel_path, archives.Member(*m)) for m in value["members"]]
         return members, problems
 
-    def _store(self, conn, label, files, found: "Found") -> None:
-        conn.execute("BEGIN")
+    def _store_inventory(self, conn, label, files, found: "Found") -> None:
+        """The folder's files and what a check read. A file unchanged since the last run keeps
+        its identification; a changed, new or vanished one loses it (the cascade)."""
+        listed = {f.rel_path: (f.size, f.mtime_ns, f.kind) for f in files}
+        # Taking the write lock first: a transaction that reads before it writes cannot wait
+        # for another scan's write and fails with "database is locked".
+        conn.execute("BEGIN IMMEDIATE")
         try:
+            stored = conn.execute(
+                "SELECT rel_path, size, mtime_ns, kind FROM folder_file "
+                "WHERE folder_label = ? AND place = 'folder'",
+                (label,),
+            ).fetchall()
+            kept = {
+                r["rel_path"]
+                for r in stored
+                if listed.get(r["rel_path"]) == (r["size"], r["mtime_ns"], r["kind"])
+            }
             # Files an apply moved to discarded/ keep their rows (and identities) so the table
             # still shows them; one that is back in the folder is scanned afresh instead.
-            conn.execute(
-                "DELETE FROM folder_file WHERE folder_label = ? AND place = 'folder'", (label,)
+            conn.executemany(
+                "DELETE FROM folder_file WHERE folder_label = ? AND rel_path = ? "
+                "AND place = 'folder'",
+                [(label, r["rel_path"]) for r in stored if r["rel_path"] not in kept],
             )
             conn.executemany(
-                "DELETE FROM folder_file WHERE folder_label = ? AND rel_path = ?",
-                [(label, f.rel_path) for f in files],
+                "DELETE FROM folder_file WHERE folder_label = ? AND rel_path = ? "
+                "AND place != 'folder'",
+                [(label, rel) for rel in listed],
             )
             conn.executemany(
                 "INSERT INTO folder_file (folder_label, rel_path, size, mtime_ns, kind) "
                 "VALUES (?, ?, ?, ?, ?)",
-                [(label, f.rel_path, f.size, f.mtime_ns, f.kind) for f in files],
-            )
-            conn.executemany(
-                "INSERT OR IGNORE INTO identity (folder_label, rel_path, game_name, method, "
-                "dat_sha1, score) VALUES (?, ?, ?, ?, ?, ?)",
                 [
-                    (label, rel, game, method, dat_sha1, score)
-                    for rel, game, method, score, dat_sha1 in found.identities
+                    (label, f.rel_path, f.size, f.mtime_ns, f.kind)
+                    for f in files
+                    if f.rel_path not in kept
                 ],
             )
+            for table in INVENTORY_TABLES:
+                conn.executemany(
+                    f"DELETE FROM {table} WHERE folder_label = ? AND rel_path = ?",
+                    [(label, rel) for rel in kept],
+                )
             conn.executemany(
                 "INSERT OR IGNORE INTO archive_member VALUES (?, ?, ?, ?, ?)",
                 [(label, rel, m.name, m.size, m.crc32) for rel, m in found.members],
@@ -943,25 +1041,6 @@ class Scanner:
             conn.executemany(
                 "INSERT INTO archive_problem VALUES (?, ?, ?)",
                 [(label, rel, message) for rel, message in found.problems],
-            )
-            conn.executemany(
-                "INSERT INTO content_hash VALUES (?, ?, ?, ?, ?, ?, ?)",
-                [
-                    (label, rel, h.variant, h.size, h.crc32, h.md5, h.sha1)
-                    for rel, hashes in found.hashes.items()
-                    for h in hashes
-                ],
-            )
-            conn.executemany(
-                "INSERT INTO lookup_result VALUES (?, ?, ?, ?, ?)",
-                [
-                    (label, rel, service, status, detail)
-                    for (rel, service), (status, detail) in found.lookups.items()
-                ],
-            )
-            conn.executemany(
-                "INSERT INTO payload_hash VALUES (?, ?, ?, ?)",
-                [(label, rel, size, sha1) for rel, (size, sha1) in found.payloads.items()],
             )
             conn.executemany(
                 "INSERT INTO card_info VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -991,7 +1070,48 @@ class Scanner:
                 "INSERT INTO byte_order VALUES (?, ?, ?)",
                 [(label, rel, word) for rel, word in found.byte_orders.items()],
             )
-            found.cache.save(conn, {f.rel_path for f in files})
+            conn.execute("COMMIT")
+        except sqlite3.Error:
+            conn.execute("ROLLBACK")
+            raise
+
+    def _store_identity(self, conn, label, files, found: "Found") -> None:
+        """What identification found for `files` (those with nothing left to convert),
+        replacing what an earlier scan found for them. Other files keep theirs."""
+        rels = [(label, f.rel_path) for f in files]
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            for table in IDENTIFICATION_TABLES:
+                conn.executemany(
+                    f"DELETE FROM {table} WHERE folder_label = ? AND rel_path = ?", rels
+                )
+            conn.executemany(
+                "INSERT OR IGNORE INTO identity (folder_label, rel_path, game_name, method, "
+                "dat_sha1, score) VALUES (?, ?, ?, ?, ?, ?)",
+                [
+                    (label, rel, game, method, dat_sha1, score)
+                    for rel, game, method, score, dat_sha1 in found.identities
+                ],
+            )
+            conn.executemany(
+                "INSERT INTO content_hash VALUES (?, ?, ?, ?, ?, ?, ?)",
+                [
+                    (label, rel, h.variant, h.size, h.crc32, h.md5, h.sha1)
+                    for rel, hashes in found.hashes.items()
+                    for h in hashes
+                ],
+            )
+            conn.executemany(
+                "INSERT INTO lookup_result VALUES (?, ?, ?, ?, ?)",
+                [
+                    (label, rel, service, status, detail)
+                    for (rel, service), (status, detail) in found.lookups.items()
+                ],
+            )
+            conn.executemany(
+                "INSERT INTO payload_hash VALUES (?, ?, ?, ?)",
+                [(label, rel, size, sha1) for rel, (size, sha1) in found.payloads.items()],
+            )
             conn.executemany(
                 "INSERT INTO suggestion VALUES (?, ?, ?, ?)",
                 [
@@ -1078,13 +1198,25 @@ def fail_interrupted(conn: sqlite3.Connection) -> None:
     )
 
 
-def latest_scan(conn: sqlite3.Connection, label: str) -> sqlite3.Row | None:
+def latest_scan(
+    conn: sqlite3.Connection, label: str, kind: str | None = None
+) -> sqlite3.Row | None:
+    """The folder's latest run, or its latest of one kind (CHECK or IDENTIFY)."""
+    if kind is None:
+        return conn.execute(
+            "SELECT * FROM scan WHERE folder_label = ? ORDER BY id DESC LIMIT 1", (label,)
+        ).fetchone()
     return conn.execute(
-        "SELECT * FROM scan WHERE folder_label = ? ORDER BY id DESC LIMIT 1", (label,)
+        "SELECT * FROM scan WHERE folder_label = ? AND kind = ? ORDER BY id DESC LIMIT 1",
+        (label, kind),
     ).fetchone()
 
 
-def folder_summary(conn: sqlite3.Connection, label: str, parts=frozenset()) -> dict:
+def folder_summary(
+    conn: sqlite3.Connection, label: str, parts=frozenset(), waiting=frozenset()
+) -> dict:
+    """The folder's counts. `waiting`: files a conversion is proposed for; with the cue
+    sheets and tracks (`parts`) they wait for conversion, neither identified nor unmatched."""
     counts = {
         row["kind"]: row["n"]
         for row in conn.execute(
@@ -1093,47 +1225,34 @@ def folder_summary(conn: sqlite3.Connection, label: str, parts=frozenset()) -> d
             (label,),
         )
     }
-    identified = conn.execute(
-        "SELECT COUNT(DISTINCT i.rel_path) FROM identity i JOIN folder_file f "
+    roms = rom_paths(conn, label)
+    held = {r for r in roms if r in waiting or _part(r, parts)}
+    methods: dict[str, int] = {}
+    known = set()
+    for rel, method in conn.execute(
+        "SELECT DISTINCT i.rel_path, i.method FROM identity i JOIN folder_file f "
         "USING (folder_label, rel_path) WHERE i.folder_label = ? AND f.place = 'folder'",
         (label,),
-    ).fetchone()[0]
-    methods = {
-        row["method"]: row["n"]
-        for row in conn.execute(
-            "SELECT i.method, COUNT(DISTINCT i.rel_path) AS n FROM identity i JOIN folder_file f "
-            "USING (folder_label, rel_path) WHERE i.folder_label = ? AND f.place = 'folder' "
-            "GROUP BY i.method",
-            (label,),
-        )
-    }
-    roms = counts.get("rom", 0) + counts.get("archive", 0)
+    ):
+        if rel in held:
+            continue
+        if rel not in known:
+            methods[method] = methods.get(method, 0) + 1
+        known.add(rel)
     size = conn.execute(
         "SELECT COALESCE(SUM(size), 0) FROM folder_file "
         "WHERE folder_label = ? AND place = 'folder'",
         (label,),
     ).fetchone()[0]
-    waiting = 0
-    unidentified_parts = 0
-    if parts:
-        for row in conn.execute(
-            "SELECT f.rel_path, EXISTS (SELECT 1 FROM identity i WHERE i.folder_label = "
-            "f.folder_label AND i.rel_path = f.rel_path) AS known FROM folder_file f "
-            "WHERE f.folder_label = ? AND f.kind = 'rom' AND f.place = 'folder'",
-            (label,),
-        ):
-            if _part(row["rel_path"], parts):
-                waiting += 1
-                unidentified_parts += not row["known"]
     return {
         "counts": counts,
-        "roms": roms,
+        "roms": len(roms),
         # Every file in the folder, as last scanned (ROMs, frontend files, the rest).
         "bytes": size,
-        "identified": identified,
-        "unmatched": roms - identified - unidentified_parts,
-        # Cue sheets and tracks: they become versions once converted to one file.
-        "waiting": waiting,
+        "identified": len(known),
+        "unmatched": len(roms) - len(known) - len(held),
+        # Waiting for a conversion (cue sheets and tracks included): identified once converted.
+        "waiting": len(held),
         "methods": methods,
     }
 
@@ -1154,8 +1273,11 @@ def rom_paths(conn: sqlite3.Connection, label: str) -> list[str]:
     ]
 
 
-def unmatched_files(conn: sqlite3.Connection, label: str, parts=frozenset()) -> list[sqlite3.Row]:
-    """Unidentified ROM files; parts of a game (cue sheets, tracks) wait for conversion."""
+def unmatched_files(
+    conn: sqlite3.Connection, label: str, parts=frozenset(), waiting=frozenset()
+) -> list[sqlite3.Row]:
+    """Unidentified ROM files; parts of a game (cue sheets, tracks) and files a conversion
+    is proposed for (`waiting`) wait for conversion instead."""
     found = conn.execute(
         """SELECT f.* FROM folder_file f
            WHERE f.folder_label = ? AND f.kind IN ('rom', 'archive') AND f.place = 'folder'
@@ -1164,7 +1286,7 @@ def unmatched_files(conn: sqlite3.Connection, label: str, parts=frozenset()) -> 
            ORDER BY f.rel_path""",
         (label,),
     ).fetchall()
-    return [r for r in found if not _part(r["rel_path"], parts)]
+    return [r for r in found if not _part(r["rel_path"], parts) and r["rel_path"] not in waiting]
 
 
 def other_files(conn: sqlite3.Connection, label: str) -> list[sqlite3.Row]:

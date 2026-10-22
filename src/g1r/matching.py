@@ -151,6 +151,9 @@ class FolderView:
     # Formats kept as they are (`keep_extensions`, Dreamcast .cdi): such a version is never
     # discarded on a name match or for a version in another format, nor the reason one is.
     keep: frozenset[str] = frozenset()
+    # Files a conversion is proposed for: not versions until converted (their identities
+    # are kept, and carried to the output).
+    waiting: frozenset[str] = frozenset()
 
 
 def is_part(rel_path: str, parts: frozenset[str]) -> bool:
@@ -203,7 +206,7 @@ def game_rows(
             "WHERE folder_label = ?",
             (label,),
         )
-        if not is_part(r["rel_path"], view.parts)
+        if not is_part(r["rel_path"], view.parts) and r["rel_path"] not in view.waiting
     ]
     if not identities:
         return []

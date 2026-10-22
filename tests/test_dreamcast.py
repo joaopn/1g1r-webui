@@ -75,9 +75,11 @@ def test_gdi_sets_loose_or_zipped_are_proposed_as_chds(dc, roms_root):
     assert {found[t.name]["status"] for t in tracks} == {"part"}
     b = found["B (USA).zip"]
     assert (b["status"], b["recipe"], b["output"]) == ("make chd", "archive-disc", "B.chd")
-    # Loose sheets and tracks are parts: not unmatched, not looked up (the zip is a file).
-    unmatched = [f["rel_path"] for f in client.get("/api/folders/dc/unmatched").json()]
-    assert unmatched == ["B (USA).zip"]
+    # Loose sheets and tracks are parts, and the zip waits for its CHD: none is unmatched or
+    # looked up; they are identified once converted.
+    assert client.get("/api/folders/dc/unmatched").json() == []
+    convert_first = [f["rel_path"] for f in client.get("/api/folders/dc").json()["convert_first"]]
+    assert convert_first == sorted(["A.gdi", "B (USA).zip", *(t.name for t in tracks)])
 
 
 @pytest.mark.skipif(not HAS_CHDMAN, reason="chdman is not installed (it is in the image)")
@@ -127,7 +129,7 @@ def test_cdi_images_are_kept_as_they_are_and_unpacked_from_archives(dc, roms_roo
     assert together["note"] == "2 ROM files kept together in one archive"
     assert client.get("/api/folders/dc").json()["unsupported"] == []
     unmatched = {f["rel_path"] for f in client.get("/api/folders/dc/unmatched").json()}
-    assert unmatched == {"Homebrew (2020)(Dev).cdi", "Indie [CDI].zip", "Two Discs [CDI].zip"}
+    assert unmatched == {"Homebrew (2020)(Dev).cdi", "Two Discs [CDI].zip"}
     plan = client.post("/api/folders/dc/convert/preview", json={}).json()
     assert [c["rel_path"] for c in plan["conversions"]] == ["Indie [CDI].zip"]
 
@@ -207,6 +209,13 @@ def zipped_gdi(path: Path, extra: dict[str, bytes] | None = None) -> list[tuple[
     return roms
 
 
+def chd(path: Path) -> list[tuple[str, bytes]]:
+    """A disc already in the target format (a stand-in file igir's fake report names); its
+    ROMs as the DAT lists them (a one-track .gdi set). A zipped set would wait for its CHD."""
+    path.write_bytes(path.name.encode())
+    return [("disc.gdi", GDI_SHEET), ("disc.bin", path.name.encode())]
+
+
 def cdi(path: Path, data: bytes) -> list[tuple[str, bytes]]:
     path.write_bytes(data)
     return [(path.name, data)]
@@ -215,8 +224,8 @@ def cdi(path: Path, data: bytes) -> list[tuple[str, bytes]]:
 def test_a_cdi_is_never_discarded_for_a_disc_nor_the_reason_one_is(identified):
     client, folder, found = identified
     entries = {
-        "Game (USA)": zipped_gdi(folder / "Game (USA).zip"),
-        "Game (Europe)": zipped_gdi(folder / "Game (Europe).zip"),
+        "Game (USA)": chd(folder / "Game (USA).chd"),
+        "Game (Europe)": chd(folder / "Game (Europe).chd"),
         "Game (Japan)": cdi(folder / "Game (Japan).cdi", b"rip"),
         "Other (USA)": cdi(folder / "Other (USA).cdi", b"usa"),
         "Other (Japan)": cdi(folder / "Other (Japan).cdi", b"jpn"),
@@ -224,7 +233,7 @@ def test_a_cdi_is_never_discarded_for_a_disc_nor_the_reason_one_is(identified):
     client.post("/api/dats/dc/upload", files={"file": ("dc.dat", dc_dat(entries))})
     found.update(
         {
-            f"{n}.cdi" if roms[0][0].endswith(".cdi") else f"{n}.zip": n
+            f"{n}.cdi" if roms[0][0].endswith(".cdi") else f"{n}.chd": n
             for n, roms in entries.items()
         }
     )
@@ -232,10 +241,10 @@ def test_a_cdi_is_never_discarded_for_a_disc_nor_the_reason_one_is(identified):
     by_name = games(client)
     # The discs are ranked among themselves; the CDI of the same game stays.
     game = by_name["Game"]
-    assert (game["status"], game["kept"]) == ("decided", "Game (USA).zip")
+    assert (game["status"], game["kept"]) == ("decided", "Game (USA).chd")
     assert proposed(game) == {
-        "Game (USA).zip": None,
-        "Game (Europe).zip": "1g1r",
+        "Game (USA).chd": None,
+        "Game (Europe).chd": "1g1r",
         "Game (Japan).cdi": None,
     }
     # CDIs identified by checksum, with no disc of their game: ranked like any version.
@@ -259,13 +268,22 @@ def test_a_cdi_matched_by_name_is_never_discarded(identified):
     assert proposed(other) == {"Other (USA).cdi": None, "my rip.cdi": None}
 
 
+def two_cdis(path: Path, extra: dict[str, bytes]) -> list[tuple[str, bytes]]:
+    """A game's two CDI discs in one archive, kept together as it is (B10), plus `extra`."""
+    roms = [(f"{path.stem} (Disc {n}).cdi", f"{path.stem} {n}".encode()) for n in (1, 2)]
+    with zipfile.ZipFile(path, "w") as z:
+        for name, data in [*roms, *extra.items()]:
+            z.writestr(name, data)
+    return roms
+
+
 def test_extra_files_in_an_archive_only_never_another_rom(identified):
     client, folder, found = identified
     readme = {"Game.url": b"[InternetShortcut]", "Game.nfo": b"scene"}
     entries = {
-        "Game (USA)": zipped_gdi(folder / "Game (USA).zip", readme),
-        # A second disc's ROM inside: the archive is not this one game.
-        "Game (Japan)": zipped_gdi(folder / "Game (Japan).zip", {"other.cdi": b"x"}),
+        "Game (USA)": two_cdis(folder / "Game (USA).zip", readme),
+        # Another ROM inside: the archive is not this one game.
+        "Game (Japan)": two_cdis(folder / "Game (Japan).zip", {"other.cdi": b"x"}),
     }
     client.post("/api/dats/dc/upload", files={"file": ("dc.dat", dc_dat(entries))})
     found.update({f"{n}.zip": n for n in entries})

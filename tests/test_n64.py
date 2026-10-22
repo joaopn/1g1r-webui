@@ -91,12 +91,19 @@ def test_swapped_dumps_match_the_dat_and_are_copies_of_each_other(n64):
     (folder / "mario le.n64").write_bytes(swap_words(mario, LITTLE))
     client.post("/api/dats/n64/upload", files={"file": ("n64.dat", dat({"Mario (USA)": mario}))})
     scan(client)
+    # Both wait to be rewritten in the native order: identified once converted (P10).
+    assert versions(client) == {}
+    assert {r["status"] for r in rows(client).values()} == {"byteswap"}
+    plan = client.post("/api/folders/n64/convert/preview", json={}).json()
+    client.post("/api/folders/n64/convert", json={"token": plan["token"]})
+    assert wait_run(client)["status"] == "done"
+    scan(client)
     found = versions(client)
     assert {(v["game_name"], v["method"]) for v in found.values()} == {
-        ("Mario (USA)", "dat-byteswapped")
+        ("Mario (USA)", "dat-checksum")
     }
-    # Both hold the same ROM in the native order: one is kept, the other is a duplicate.
-    assert found["mario.v64"]["identical"] == ["mario le.n64"]
+    # Both hold the same ROM: one is kept, the other is a duplicate.
+    assert found["mario.zip"]["identical"] == ["mario le.zip"]
     reasons = sorted(str(v["discard_reason"]) for v in found.values())
     assert reasons == ["None", "duplicates"]
 
@@ -186,10 +193,14 @@ def test_a_dat_listing_each_byte_order_as_a_rom_still_identifies_one_file(n64):
         "<?xml version='1.0'?><datafile><header><name>Nintendo - Nintendo 64</name></header>"
         f"{game}</datafile>"
     ).encode()
+    # Bare files are the plain target's; a swapped one waits for its byteswap, unless it
+    # cannot have one (its output would take its own name: flagged, so identified as it is).
+    client.put("/api/settings/targets", json={"targets": {"n64": "plain"}})
     (folder / "a.z64").write_bytes(mario)
     (folder / "b.v64").write_bytes(v64)
-    (folder / "c.n64").write_bytes(swap_words(mario, LITTLE))
+    (folder / "c.z64").write_bytes(swap_words(mario, LITTLE))
     client.post("/api/dats/n64/upload", files={"file": ("n64.dat", body)})
     scan(client)
+    assert rows(client)["c.z64"]["status"] == "flagged"
     found = {rel: v["method"] for rel, v in versions(client).items()}
-    assert found == {"a.z64": "dat-checksum", "b.v64": "dat-checksum", "c.n64": "dat-byteswapped"}
+    assert found == {"a.z64": "dat-checksum", "c.z64": "dat-byteswapped"}

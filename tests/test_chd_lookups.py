@@ -91,10 +91,13 @@ def test_a_chd_is_looked_up_by_its_data_track_never_by_its_own_hash(psx):
     assert not own & {a["sha1"] for a in post.asked}
     method = conn.execute("SELECT method FROM identity WHERE rel_path = ?", (DISC,)).fetchone()
     assert method[0] == scanner.METHOD_HASHEOUS
-    reasons = {r["rel_path"]: r["hasheous"] for r in unmatched.rows(conn, "psx", hasheous_on=True)}
+    # The ISO waits for its CHD: identified (and looked up) once converted.
+    waiting = folder_scanner.waiting(conn, store.load(), store.load().folder("psx"), folder)
+    assert waiting == {BIG}
+    rows = unmatched.rows(conn, "psx", hasheous_on=True, waiting=waiting)
+    reasons = {r["rel_path"]: r["hasheous"] for r in rows}
     assert reasons == {
         BROKEN: {"status": hasheous.SKIPPED, "detail": "the disc's tracks could not be read"},
-        BIG: {"status": hasheous.SKIPPED, "detail": "too large to hash for a lookup"},
     }
 
 

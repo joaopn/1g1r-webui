@@ -271,7 +271,14 @@ def build_router(
     def parts_of(folder: FolderEntry) -> frozenset[str]:
         return frozenset(e.lower() for e in platforms[folder.platform].part_extensions)
 
-    def produces(library: Library, folder: FolderEntry, conn) -> matching.FolderView:
+    def waiting_of(library: Library, folder: FolderEntry, conn) -> frozenset[str]:
+        """Files a conversion is proposed for: neither versions nor unmatched until converted
+        (maintainer, 2026-10-21: conversion first, then 1G1R)."""
+        return frozenset(conversion.waiting(conversion_rows(library, folder, conn)))
+
+    def produces(
+        library: Library, folder: FolderEntry, conn, waiting: frozenset[str] | None = None
+    ) -> matching.FolderView:
         """The folder's platform as the 1G1R table sees it; names read as its active DAT's."""
         dats = tuple(
             (v["sha1"], name_style(v))
@@ -286,6 +293,7 @@ def build_router(
             profile.title_ids,
             dats,
             frozenset(e.lower() for e in profile.keep_extensions),
+            waiting_of(library, folder, conn) if waiting is None else waiting,
         )
 
     def dat_names(conn) -> dict[str, dict]:
@@ -394,16 +402,23 @@ def build_router(
         result = []
         for folder in library.folders:
             ranking = store.ranking_for(folder)
+            converting = conversion_rows(library, folder, conn)
+            waiting = frozenset(conversion.waiting(converting))
             games = matching.game_rows(
-                settings, conn, folder.label, ranking, produces(library, folder, conn)
+                settings, conn, folder.label, ranking, produces(library, folder, conn, waiting)
             )
             table = matching.table(settings, conn, folder.label, ranking, games=games)
-            converting = conversion_rows(library, folder, conn)
             info = folder_info(library, folder)
             scan = scanner.latest_scan(conn, folder.label)
             dat = registry.active_version(conn, library, folder.platform)
             parts = parts_of(folder)
-            summary = scanner.folder_summary(conn, folder.label, parts)
+            summary = scanner.folder_summary(conn, folder.label, parts, waiting)
+            needed = dashboard.needs(
+                scan,
+                scanner.latest_scan(conn, folder.label, scanner.IDENTIFY),
+                dat,
+                journal.last_conversion_end(conn, folder.label),
+            )
             result.append(
                 {
                     **info,
@@ -412,7 +427,9 @@ def build_router(
                     "summary": summary,
                     "dat_download": default_download(folder.platform) if dat is None else None,
                     "needs_dat": dat is None and not title_ids(folder.platform),
-                    "needs_scan": dashboard.needs_scan(scan, dat),
+                    "needs_scan": needed is not None,
+                    # Which button: "check" (Check files) or "identify" (Scan).
+                    "needs": needed,
                     "counts": table.counts,
                     "reclaim_bytes": table.reclaim_bytes,
                     "conversion": conversion.counts(converting),
@@ -420,7 +437,10 @@ def build_router(
                         scanner.rom_paths(conn, folder.label),
                         games,
                         converting,
-                        (r["rel_path"] for r in scanner.unmatched_files(conn, folder.label, parts)),
+                        (
+                            r["rel_path"]
+                            for r in scanner.unmatched_files(conn, folder.label, parts, waiting)
+                        ),
                     ),
                     "discarded": discarded.totals(settings, folder.label),
                     "converting": journal.running_conversion(conn, folder.label),
@@ -731,14 +751,27 @@ def build_router(
     def folder_detail(label: str, conn: Conn):
         folder = folder_or_404(label)
         library = store.load()
+        waiting = waiting_of(library, folder, conn)
         return {
             **folder_info(library, folder),
             "dat": row_dict(registry.active_version(conn, library, folder.platform)),
             "dat_order": dat_order(conn, library, folder.platform),
             "dat_order_own": own_order(library, folder.platform),
             "scan": row_dict(scanner.latest_scan(conn, label)),
-            "summary": scanner.folder_summary(conn, label, parts_of(folder)),
-            "unmatched": [dict(r) for r in scanner.unmatched_files(conn, label, parts_of(folder))],
+            "summary": scanner.folder_summary(conn, label, parts_of(folder), waiting),
+            "unmatched": [
+                dict(r) for r in scanner.unmatched_files(conn, label, parts_of(folder), waiting)
+            ],
+            # ROM files a conversion is proposed for: identified once converted.
+            "convert_first": [
+                dict(r)
+                for r in conn.execute(
+                    "SELECT * FROM folder_file WHERE folder_label = ? AND place = 'folder' "
+                    "AND kind IN ('rom', 'archive') ORDER BY rel_path",
+                    (label,),
+                )
+                if r["rel_path"] in waiting
+            ],
             "others": [dict(r) for r in scanner.other_files(conn, label)],
             "unsupported": scanner.unsupported_files(
                 conn,
@@ -1131,7 +1164,9 @@ def build_router(
     def folder_unmatched(label: str, conn: Conn):
         folder = folder_or_404(label)
         lookups = store.load().lookups
-        return unmatched.rows(conn, label, lookups.hasheous, parts_of(folder))
+        return unmatched.rows(
+            conn, label, lookups.hasheous, parts_of(folder), waiting_of(store.load(), folder, conn)
+        )
 
     @router.put("/folders/{label}/assign")
     def assign(label: str, body: Assignment, conn: Conn):
@@ -1173,10 +1208,21 @@ def build_router(
         refresh_lookups: bool = False,
         full: bool = False,
     ):
-        """A quick scan reads only new and changed files; `full` reads every file again."""
+        """Check the files, then identify those with nothing left to convert. A quick scan
+        reads only new and changed files; `full` reads every file again."""
         folder_or_404(label)
         try:
             request.app.state.jobs.scan(conn, label, refresh_lookups, full)
+        except scanner.ScanError as exc:
+            raise HTTPException(status_code=HTTPStatus.CONFLICT, detail=str(exc)) from exc
+        return row_dict(scanner.latest_scan(conn, label))
+
+    @router.post("/folders/{label}/check", status_code=HTTPStatus.ACCEPTED)
+    def start_check(label: str, request: Request, conn: Conn):
+        """Check files: list the folder and read what conversion needs, hashing nothing."""
+        folder_or_404(label)
+        try:
+            request.app.state.jobs.scan(conn, label, kind=scanner.CHECK)
         except scanner.ScanError as exc:
             raise HTTPException(status_code=HTTPStatus.CONFLICT, detail=str(exc)) from exc
         return row_dict(scanner.latest_scan(conn, label))

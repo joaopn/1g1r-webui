@@ -15,7 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 from g1r import db, journal
 from g1r.config import Settings
 from g1r.converter import Converter
-from g1r.scanner import Scanner
+from g1r.scanner import IDENTIFY, Scanner
 
 
 class Jobs:
@@ -40,13 +40,21 @@ class Jobs:
     def _connect(self):
         return db.connect(self.settings.paths.database_path, self.settings.database.busy_timeout_ms)
 
-    def scan(self, conn, label: str, refresh_lookups: bool = False, full: bool = False) -> int:
+    def scan(
+        self,
+        conn,
+        label: str,
+        refresh_lookups: bool = False,
+        full: bool = False,
+        kind: str = IDENTIFY,
+    ) -> int:
+        """A Scan, or with kind CHECK a Check files run; both wait in the same queue."""
         # Queued and submitted in one order, so the scan first in line always has a thread.
         with self.starting:
-            scan_id = self.scanner.start(conn, label)
+            scan_id = self.scanner.start(conn, label, kind)
             with self.gate:
                 self.queued.append(scan_id)
-            self.scans.submit(self._run_scan, scan_id, label, refresh_lookups, full)
+            self.scans.submit(self._run_scan, scan_id, label, refresh_lookups, full, kind)
         return scan_id
 
     def scan_limit(self) -> int:
@@ -58,7 +66,9 @@ class Jobs:
         with self.gate:
             self.gate.notify_all()
 
-    def _run_scan(self, scan_id: int, label: str, refresh_lookups: bool, full: bool) -> None:
+    def _run_scan(
+        self, scan_id: int, label: str, refresh_lookups: bool, full: bool, kind: str
+    ) -> None:
         with self.gate:
             self.gate.wait_for(
                 lambda: self.queued[0] == scan_id and self.running < self.scan_limit()
@@ -68,7 +78,7 @@ class Jobs:
             self.gate.notify_all()
         conn = self._connect()
         try:
-            self.scanner.run(conn, scan_id, label, refresh_lookups, full)
+            self.scanner.run(conn, scan_id, label, refresh_lookups, full, kind)
         finally:
             conn.close()
             with self.gate:

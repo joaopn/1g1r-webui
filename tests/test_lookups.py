@@ -154,7 +154,7 @@ def scan(env, post=None, **settings_changes):  # noqa: F811
     return conn, scanner.latest_scan(conn, "nes")
 
 
-LOOSE = "sub/Loose (Europe).nes"
+LOOSE = "sub/Loose (Europe).zip"
 
 
 def loose_sha1(conn) -> str:
@@ -197,6 +197,21 @@ def test_an_archive_with_several_roms_is_not_looked_up(env):  # noqa: F811
         "detail": "several ROM files in one archive",
     }
     assert len(post.asked) == 1  # only the loose file
+
+
+def test_a_file_over_the_hash_cap_is_not_looked_up(env, make_settings):  # noqa: F811
+    _, store, registry, conn, _ = env
+    capped = make_settings({"lookups": {"max_hash_bytes": 4}})
+    post = FakeHasheous()
+    folder_scanner = scanner.Scanner(capped, store, registry, lambda *a, **_: [], lookup_post=post)
+    store.update(lambda lib: setattr(lib.lookups, "hasheous", True))
+    folder_scanner.run(conn, folder_scanner.start(conn, "nes"), "nes")
+    rows = {r["rel_path"]: r for r in unmatched.rows(conn, "nes", hasheous_on=True)}
+    assert rows[LOOSE]["hasheous"] == {
+        "status": hasheous.SKIPPED,
+        "detail": "too large to hash for a lookup",
+    }
+    assert post.asked == []
 
 
 def test_a_lookup_error_leaves_the_file_unmatched_and_says_so(env):  # noqa: F811
