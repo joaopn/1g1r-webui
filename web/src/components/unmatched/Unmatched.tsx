@@ -151,9 +151,9 @@ export function UnmatchedTools({
     <div className="space-y-2 rounded-md border border-border bg-card px-3 py-2">
       <div className="flex flex-wrap items-center gap-2">
         <p className="min-w-56 flex-1 text-muted-foreground text-xs">
-          Nothing identified these files, so they are kept as they are. Click rows to select them
-          (shift-click for a range) and match them to their 1st match, or open a row with its arrow
-          to pick another name or search the DAT. Your choice is kept across scans.
+          Nothing identified these files, so they are kept as they are. Select rows (shift-click for
+          a range) to match them to their 1st match; open a row with its arrow for other names or
+          the DAT search. Your choices are kept across scans.
         </p>
         <Button
           size="sm"

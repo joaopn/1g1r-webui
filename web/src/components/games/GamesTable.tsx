@@ -764,7 +764,13 @@ function GameRows({
             {columns.map((c) => gameCell(c.id))}
           </div>
         )}
-        <div className="sticky right-0 flex w-20 shrink-0 items-center justify-end gap-1 bg-card">
+        <div
+          className={cn(
+            "sticky right-0 flex w-20 shrink-0 items-center justify-end gap-1 bg-card",
+            // Opaque (it scrolls over the cells), in the selected row's tint.
+            selected && "bg-[color-mix(in_oklab,var(--color-primary)_10%,var(--color-card))]",
+          )}
+        >
           {game.waiting ? (
             <Button
               asChild
