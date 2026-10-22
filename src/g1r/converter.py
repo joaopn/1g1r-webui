@@ -200,21 +200,28 @@ class Converter:
                 listed = ((step.member_crc32 or "").lower(), step.member_size)
                 if crc_and_size(self.config.copy_chunk_bytes, source) != listed:
                     raise moves.MoveError(f"{step.member} did not extract as the archive lists it")
-            try:
-                decrypt.decrypt_cci(self.settings, source, temp)
-            except decrypt.DecryptError as exc:
-                temp.unlink(missing_ok=True)
-                raise moves.MoveError(str(exc)) from exc
-            _drop_unpacked(work)
             config = self.settings.card_images.get(step.card_image or "")
             if config is None:
                 raise moves.MoveError(f"no card image format to check {step.source.name} with")
             try:
+                decrypt.decrypt_cci(self.settings, config, source, temp)
+            except decrypt.DecryptError as exc:
+                temp.unlink(missing_ok=True)
+                raise moves.MoveError(str(exc)) from exc
+            _drop_unpacked(work)
+            name = Path(step.member or step.source.name).name
+            try:
                 cards.prove_decrypted(config, temp, stopping.check)
             except cards.ProofError as exc:
+                if exc.damaged:
+                    at = max(1, exc.offset // config.proof.report_unit_bytes)
+                    raise moves.MoveError(
+                        f"{name} is damaged about {at} {config.proof.report_unit} in: {exc},"
+                        " though the keys proved right"
+                        " (likely a bad dump); nothing was changed"
+                    ) from exc
                 raise moves.MoveError(
-                    f"the decrypted {Path(step.member or step.source.name).name} is not right "
-                    f"({exc}): nothing was changed"
+                    f"the decrypted {name} is not right ({exc}): nothing was changed"
                 ) from exc
         finally:
             shutil.rmtree(work, ignore_errors=True)

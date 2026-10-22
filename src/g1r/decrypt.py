@@ -5,8 +5,9 @@ data directory (`decryption.keys_dir`): the ARM9 BootROM's protected region (boo
 from their console) and, for titles encrypted with a seed, seeddb. The app ships none and
 derives none, and never sends or shows them. pyctr does the AES work: each NCCH partition
 is read through its crypto engine as the "full decrypted" stream, which also sets the NCCH
-flags to "no crypto" the way GodMode9 does; the card header and whatever lies between and
-after the partitions are copied as they are. Whether the result is right is not decided
+flags to "no crypto" the way GodMode9 does; the card header, whatever lies between and
+after the partitions, and a partition the dump left blank (`cards.is_blank`) are copied as
+they are. Whether the result is right is not decided
 here: the converter checks it against the hashes its partitions carry
 (`cards.prove_decrypted`).
 """
@@ -21,8 +22,8 @@ from pyctr.crypto.engine import BOOT9_PROT_HASH
 from pyctr.type.cci import CCIReader
 from pyctr.type.ncch import NCCHReader, NCCHSection, NCCHSeedError
 
-from g1r import stopping
-from g1r.config import Settings
+from g1r import cards, stopping
+from g1r.config import NcsdConfig, Settings
 from g1r.private_files import write_private
 
 BOOT9 = "boot9"
@@ -127,7 +128,7 @@ def key_status(settings: Settings) -> dict:
     return {BOOT9: boot9_path(settings) is not None, SEEDDB: count}
 
 
-def decrypt_cci(settings: Settings, source: Path, output: Path) -> None:
+def decrypt_cci(settings: Settings, config: NcsdConfig, source: Path, output: Path) -> None:
     """Write the decrypted image of `source` to `output` (a new file)."""
     boot9 = boot9_path(settings)
     if boot9 is None:
@@ -148,9 +149,17 @@ def decrypt_cci(settings: Settings, source: Path, output: Path) -> None:
             for region in partitions:
                 raw.seek(position)
                 out.write(raw.read(region.offset - position))
+                position = region.offset
+                raw.seek(position)
+                if region.section and cards.is_blank(raw.read(config.proof.ncch_header_bytes)):
+                    continue
                 ncch = NCCHReader(
                     cci.open_raw_section(region.section), crypto=CryptoEngine(boot9=str(boot9))
                 )
+                if not ncch.content_size:
+                    raise DecryptError(
+                        f"{source.name}: partition {region.section} has a header but no content"
+                    )
                 with ncch.open_raw_section(NCCHSection.FullDecrypted) as clear:
                     while block := clear.read(chunk):
                         stopping.check()

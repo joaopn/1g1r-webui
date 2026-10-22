@@ -501,6 +501,8 @@ class NcchProofConfig(_Strict):
     ivfc_level_size_offset: int = Field(ge=0)
     ivfc_level_block_offset: int = Field(ge=0)
     read_chunk_bytes: int = Field(gt=0)
+    report_unit: str
+    report_unit_bytes: int = Field(gt=0)
 
 
 class NcsdConfig(_Strict):

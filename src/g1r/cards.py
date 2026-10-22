@@ -154,7 +154,21 @@ def padded_crc(
 
 
 class ProofError(Exception):
-    """The image does not match its own hashes; the message names the first that failed."""
+    """The image does not match its own hashes; the message names the first that failed.
+    `damaged` is set when that region's own key had already been proven by an earlier hash
+    (a RomFS block after its header): the decryption was right and the data itself is bad.
+    `offset` is where the failed region starts in the image."""
+
+    def __init__(self, message: str, offset: int = 0, damaged: bool = False):
+        super().__init__(message)
+        self.offset = offset
+        self.damaged = damaged
+
+
+def is_blank(header: bytes) -> bool:
+    """A partition the dump left empty: its header is one byte value throughout (some
+    releases blank the update partition but keep its entry in the partition table)."""
+    return len(set(header)) == 1
 
 
 def _sha256(
@@ -188,10 +202,18 @@ class _Proof:
         self.tick = tick
         self.checked = 0
 
-    def same(self, what: str, offset: int, size: int, want: bytes, pad_to: int = 0) -> None:
+    def same(
+        self,
+        what: str,
+        offset: int,
+        size: int,
+        want: bytes,
+        pad_to: int = 0,
+        damaged: bool = False,
+    ) -> None:
         got = _sha256(self.handle, offset, size, self.p.read_chunk_bytes, self.tick, pad_to)
         if got != want:
-            raise ProofError(f"{what} does not match its hash")
+            raise ProofError(f"{what} does not match its hash", offset, damaged)
         self.checked += 1
 
     def read(self, offset: int, size: int) -> bytes:
@@ -290,6 +312,7 @@ class _Proof:
                     min(block, size - start),
                     parent[n * p.hash_bytes : (n + 1) * p.hash_bytes],
                     pad_to=block,
+                    damaged=True,
                 )
             parent = self.read(base + offsets[i], size)
 
@@ -297,7 +320,8 @@ class _Proof:
 def prove_decrypted(config: NcsdConfig, path: Path, tick: Callable[[], None]) -> int:
     """Check every NCCH partition of a decrypted card image against its own SHA-256s; return
     how many hashes matched. Raises ProofError at the first that does not (`tick` is called
-    between reads, so a stop can cut it short)."""
+    between reads, so a stop can cut it short). A blank partition other than the first (the
+    game) holds nothing to prove: the decryption copied it as it was."""
     with path.open("rb") as handle:
         proof = _Proof(config, handle, tick)
         header = proof.read(0, config.flags_offset + config.media_unit_flag + struct.calcsize(U8))
@@ -309,6 +333,8 @@ def prove_decrypted(config: NcsdConfig, path: Path, tick: Callable[[], None]) ->
         for i in range(config.partition_count):
             field = config.partition_table_offset + i * config.partition_entry_bytes
             offset, size = proof.region(header, field, unit)
+            if i and size and is_blank(proof.read(offset, config.proof.ncch_header_bytes)):
+                continue
             if size:
                 proof.ncch(offset, f"partition {i}")
                 partitions += 1

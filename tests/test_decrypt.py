@@ -1,3 +1,4 @@
+import functools
 import hashlib
 import io
 import re
@@ -6,9 +7,10 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
+from pyctr.crypto import engine as pyctr_engine
 
 from g1r import archives, cards, decrypt, scanner
-from tests.ncch_image import card, regions
+from tests.ncch_image import UNIT, card, regions
 
 TITLE = "0004000000031c00"
 
@@ -44,7 +46,7 @@ def fake_decrypt(monkeypatch):
     """Stands in for pyctr (which needs real console keys): writes the given image."""
     images: dict[str, bytes] = {}
 
-    def write(settings, source: Path, output: Path) -> None:
+    def write(settings, config, source: Path, output: Path) -> None:
         with output.open("xb") as out:
             out.write(images[source.name])
 
@@ -72,6 +74,62 @@ def test_a_decrypted_image_proves_itself_with_its_own_hashes(make_settings, tmp_
     path.write_bytes(b"\0" * len(image))
     with pytest.raises(cards.ProofError, match="not a 3DS card image"):
         cards.prove_decrypted(config, path, lambda: None)
+
+
+def test_damage_in_the_data_is_told_from_a_wrong_decryption(make_settings, tmp_path):
+    config = make_settings().card_images["ncsd"]
+    image = card(make_settings, encrypted=False)
+    path = tmp_path / "a.3ds"
+    for region, at in regions(config).items():
+        broken = bytearray(image)
+        broken[at] ^= 1
+        path.write_bytes(broken)
+        with pytest.raises(cards.ProofError) as failed:
+            cards.prove_decrypted(config, path, lambda: None)
+        # Only a RomFS block, checked after the RomFS header proved its key, is bad data.
+        assert failed.value.damaged == region.startswith("RomFS (level")
+        assert failed.value.offset <= at
+
+
+def test_a_blank_partition_is_left_out_of_the_proof(make_settings, tmp_path):
+    config = make_settings().card_images["ncsd"]
+    path = tmp_path / "a.3ds"
+    plain = card(make_settings, encrypted=False)
+    path.write_bytes(plain)
+    checked = cards.prove_decrypted(config, path, lambda: None)
+    for byte in (0, 255):
+        path.write_bytes(card(make_settings, encrypted=False, blank=7, blank_byte=byte))
+        assert cards.prove_decrypted(config, path, lambda: None) == checked
+    # Anything else in a partition slot must be a partition that proves itself.
+    junk = bytearray(card(make_settings, encrypted=False, blank=7))
+    junk[len(plain) - 2 * UNIT + 1] = 1  # inside the blank partition, after the game's
+    path.write_bytes(junk)
+    with pytest.raises(cards.ProofError, match="partition 7 is not an NCCH partition"):
+        cards.prove_decrypted(config, path, lambda: None)
+
+
+def test_a_blank_partition_is_copied_as_it_is(make_settings, keys_root, tmp_path, monkeypatch):
+    settings = make_settings()
+    config = settings.card_images["ncsd"]
+    (keys_root / settings.decryption.boot9_file).write_bytes(b"key")
+
+    # Stored decrypted already, so pyctr copies the game partition with no key work: its
+    # engine needs no real boot9, only a key X in the slot it sets up.
+    def engine(boot9):
+        crypto = pyctr_engine.CryptoEngine(setup_b9_keys=False)
+        crypto.set_keyslot("x", pyctr_engine.Keyslot.NCCH, bytes(16))
+        return crypto
+
+    monkeypatch.setattr(decrypt, "CryptoEngine", engine)
+    # The test RomFS is random bytes under a right hash tree, no file system to list.
+    monkeypatch.setattr(
+        decrypt, "NCCHReader", functools.partial(decrypt.NCCHReader, load_sections=False)
+    )
+    image = card(make_settings, encrypted=False, blank=7)
+    (tmp_path / "a.3ds").write_bytes(image)
+    decrypt.decrypt_cci(settings, config, tmp_path / "a.3ds", tmp_path / "b.3ds")
+    assert (tmp_path / "b.3ds").read_bytes() == image
+    assert cards.prove_decrypted(config, tmp_path / "b.3ds", lambda: None) > 0
 
 
 def test_the_header_tells_a_seed_and_the_program_id(make_settings, tmp_path):
@@ -133,7 +191,7 @@ def test_only_a_right_decryption_is_kept(n3ds, make_settings, keys_root, roms_ro
     broken[regions(make_settings().card_images["ncsd"])["RomFS (level 3"]] ^= 1
     fake_decrypt["P (USA).3ds"] = bytes(broken)
     run = convert(client)
-    assert run["status"] == "failed" and "is not right" in run["failed"][0]["error"]
+    assert run["status"] == "failed" and "is damaged about 1 MB in" in run["failed"][0]["error"]
     assert (folder / "P (USA).3ds").read_bytes() == locked
     assert sorted(p.name for p in folder.iterdir()) == ["P (USA).3ds"]
 
@@ -217,7 +275,10 @@ def test_a_7z_card_header_is_read_through_7zip(make_settings, tmp_path, monkeypa
 
 def test_missing_keys_are_reported(make_settings, tmp_path):
     with pytest.raises(decrypt.DecryptError, match="no boot9 has been added"):
-        decrypt.decrypt_cci(make_settings(), tmp_path / "a.3ds", tmp_path / "b.3ds")
+        settings = make_settings()
+        decrypt.decrypt_cci(
+            settings, settings.card_images["ncsd"], tmp_path / "a.3ds", tmp_path / "b.3ds"
+        )
 
 
 def boot9_like(protected: bytes) -> bytes:

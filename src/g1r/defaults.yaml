@@ -970,6 +970,9 @@ card_images:
       ivfc_level_size_offset: 8
       ivfc_level_block_offset: 16
       read_chunk_bytes: 4194304
+      # Where a damaged image fails, in messages: in these units.
+      report_unit: MB
+      report_unit_bytes: 1048576
 
 # Nintendo 3DS decryption (a conversion of encrypted card images). The keys are your own,
 # added on a 3DS folder's Conversion page and kept in the data directory: boot9 dumped from

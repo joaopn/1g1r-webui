@@ -15,6 +15,9 @@ ACCESS_DESC = 0x400
 EXEFS_FILE = 700
 ROMFS_DATA = 3000
 BLOCK_LOG2 = 9  # every IVFC level in 512-byte blocks
+BLANK_UNITS = 2  # a blank partition's size
+CONTENT_SIZE = 0x104  # in the NCCH header, in media units
+MEDIA_ID = 0x108  # in the card header; all zeros would make it a NAND to pyctr
 
 
 def _put(buf: bytearray, at: int, data: bytes) -> None:
@@ -66,6 +69,7 @@ def ncch(config, *, encrypted: bool, product: str, seed: bool, program_id: str) 
     image = bytearray(total * UNIT)
     header = bytearray(p.ncch_header_bytes)
     _put(header, config.ncch_magic_offset, config.ncch_magic.encode())
+    struct.pack_into("<I", header, CONTENT_SIZE, total)
     flags = 0 if encrypted else config.no_crypto_mask
     header[config.ncch_flags_offset + config.crypto_flag] = flags | (
         config.seed_mask if seed else 0
@@ -108,20 +112,34 @@ def card(
     seed: bool = False,
     program_id: str = "0004000000031c00",
     padding_units: int = 2,
+    blank: int | None = None,
+    blank_byte: int = 0,
 ) -> bytes:
-    """A full card image: NCSD header, the partition, then padding_units of card padding."""
+    """A full card image: NCSD header, the partition, then padding_units of card padding.
+    With `blank`, that slot of the partition table holds a partition of blank_byte only,
+    after the game's (as some releases leave the update partition)."""
     config = make_settings().card_images["ncsd"]
     partition = ncch(config, encrypted=encrypted, product=product, seed=seed, program_id=program_id)
+    if blank is not None:
+        partition += bytes([blank_byte]) * (BLANK_UNITS * UNIT)
     units = PARTITION_UNITS + len(partition) // UNIT + padding_units
     # Zeros up to the partition (unused partition-table slots are empty), card padding after.
     image = bytearray(PARTITION_UNITS * UNIT) + bytes.fromhex(config.padding_hex) * (
         (units - PARTITION_UNITS) * UNIT
     )
     _put(image, config.magic_offset, config.magic.encode())
+    _put(image, MEDIA_ID, bytes.fromhex(program_id)[::-1])
     struct.pack_into(cards.U32, image, config.image_size_offset, units)
-    struct.pack_into(
-        "<II", image, config.partition_table_offset, PARTITION_UNITS, len(partition) // UNIT
-    )
+    game_units = len(partition) // UNIT - (BLANK_UNITS if blank is not None else 0)
+    struct.pack_into("<II", image, config.partition_table_offset, PARTITION_UNITS, game_units)
+    if blank is not None:
+        struct.pack_into(
+            "<II",
+            image,
+            config.partition_table_offset + blank * config.partition_entry_bytes,
+            PARTITION_UNITS + game_units,
+            BLANK_UNITS,
+        )
     image[config.flags_offset + config.media_unit_flag] = 0
     _put(image, PARTITION_UNITS * UNIT, partition)
     return bytes(image)
