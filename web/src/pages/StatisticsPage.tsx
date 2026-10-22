@@ -14,7 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ApiError, api } from "@/lib/api";
-import { formatCount, formatWhen } from "@/lib/format";
+import { formatBytes, formatCount, formatWhen } from "@/lib/format";
 import { keys, queryClient, useMeta, useMissing, useStatistics } from "@/lib/queries";
 import type {
   Coverage,
@@ -154,7 +154,7 @@ function CoverageTable({
     () => [
       {
         id: "folder",
-        label: "Set",
+        label: "Romset",
         headerClassName: CENTRED,
         render: (f) => {
           const value = share(f.identified, f.roms);
@@ -177,6 +177,24 @@ function CoverageTable({
         sortValue: (f) => f.label,
         title: (f) =>
           `${formatCount(f.identified)} of ${formatCount(f.roms)} ROM files identified · computed ${formatWhen(f.computed_at)}${f.stale ? "; files, identities or DATs changed since: Refresh to recompute" : ""}`,
+      },
+      {
+        id: "size",
+        label: "Size",
+        headerClassName: CENTRED,
+        className: "text-right tabular-nums",
+        render: (f) => formatBytes(f.bytes, ui.byte_unit_base, ui.byte_units),
+        sortValue: (f) => f.bytes,
+        title: () => "The romset folder, as last scanned",
+      },
+      {
+        id: "discarded",
+        label: "Discarded",
+        headerClassName: CENTRED,
+        className: "text-right text-muted-foreground tabular-nums",
+        render: (f) => formatBytes(f.discarded_bytes, ui.byte_unit_base, ui.byte_units),
+        sortValue: (f) => f.discarded_bytes,
+        title: (f) => `In discarded/${f.label}/`,
       },
       {
         id: "platform",

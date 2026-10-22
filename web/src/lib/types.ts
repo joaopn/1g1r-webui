@@ -493,6 +493,9 @@ export type StatisticsFolder = {
   platform_short: string;
   roms: number;
   identified: number;
+  /** The folder's files as last scanned, and what is in its discarded/ folder (both live). */
+  bytes: number;
+  discarded_bytes: number;
   /** By DAT source; a source the folder's platform has no DAT of is absent. */
   coverage: Record<string, Coverage>;
   /** When the figures were computed (they are kept until Refresh). */

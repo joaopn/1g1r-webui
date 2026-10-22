@@ -509,6 +509,9 @@ def build_router(
             kept = statistics.keep(conn, statistics.KIND_FOLDER, folder.label, current, value)
         return kept.value | {
             "label": folder.label,
+            # Sizes are read live (cheap), not kept with the coverage figures.
+            "bytes": scanner.folder_bytes(conn, folder.label),
+            "discarded_bytes": discarded.totals(settings, folder.label)["bytes"],
             "platform": folder.platform,
             "platform_short": platforms[folder.platform].short,
             "computed_at": kept.computed_at,

@@ -1,7 +1,7 @@
 from contextlib import closing
 from pathlib import Path
 
-from g1r import db, statistics
+from g1r import db, discarded, statistics
 from g1r.dats import Dat, DatGame, DatHeader, DatRom
 from g1r.grouping import NOINTRO_STYLE, TOSEC_STYLE
 
@@ -108,6 +108,20 @@ def test_statistics_api(setup):  # noqa: F811
     missing = client.get(f"/api/statistics/nes/{source}/missing").json()
     assert missing["rows"] == []
     assert client.get("/api/statistics/nes/nope/missing").status_code == 404
+
+
+def test_statistics_show_the_set_and_discarded_sizes_live(setup):  # noqa: F811
+    client, _, settings = setup
+    scanned(client)
+    folder = client.get("/api/statistics").json()["folders"][0]
+    summary = client.get("/api/folders/nes").json()["summary"]
+    assert folder["bytes"] == summary["bytes"] > 0
+    assert folder["discarded_bytes"] == 0
+    trash = discarded.folder_root(settings, "nes") / "manual"
+    trash.mkdir(parents=True)
+    (trash / "old.zip").write_bytes(b"x" * 10)
+    # Not part of the kept figures: a new file in discarded/ shows without a refresh.
+    assert client.get("/api/statistics").json()["folders"][0]["discarded_bytes"] == 10
 
 
 def test_statistics_are_kept_until_refreshed(setup):  # noqa: F811

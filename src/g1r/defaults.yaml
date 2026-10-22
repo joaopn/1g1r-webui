@@ -100,9 +100,11 @@ ui:
   # min and max.
   statistics_columns:
     folder: {rem: 12, min: 6, max: 30}
+    size: {rem: 6, min: 4.5, max: 10}
+    discarded: {rem: 6.5, min: 4.5, max: 10}
     platform: {rem: 6, min: 4, max: 14}
     dats: {rem: 8, min: 8, max: 60}
-  statistics_columns_default: [folder, platform, dats]
+  statistics_columns_default: [folder, size, discarded, platform, dats]
   statistics_source_rem: 7
   statistics_source_gap_rem: 0.75
   # Its missing-games table.

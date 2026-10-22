@@ -33,6 +33,8 @@ const STATS: Statistics = {
       platform_short: "NES",
       roms: 10,
       identified: 8,
+      bytes: 3 * 1024 * 1024,
+      discarded_bytes: 512 * 1024,
       coverage: { nointro: { covered: 1, total: 3, dat: DAT } },
       computed_at: "2026-10-20T10:00:00Z",
       stale: true,
@@ -43,6 +45,8 @@ const STATS: Statistics = {
       platform_short: "NES",
       roms: 1000,
       identified: 999,
+      bytes: 0,
+      discarded_bytes: 0,
       coverage: { nointro: { covered: 999, total: 1000, dat: DAT } },
       computed_at: "2026-10-20T09:00:00Z",
       stale: false,
@@ -53,6 +57,8 @@ const STATS: Statistics = {
       platform_short: "GB",
       roms: 2,
       identified: 2,
+      bytes: 0,
+      discarded_bytes: 0,
       coverage: { redump: { covered: 2, total: 2, dat: { ...DAT, source: "redump" } } },
       computed_at: "2026-10-20T11:00:00Z",
       stale: false,
@@ -153,6 +159,10 @@ test("coverage per DAT source, empty cells, DAT info and the missing games", asy
   expect(screen.queryByTestId("header-identified")).toBeNull();
   expect(screen.queryByTestId("quick-views")).toBeNull();
   expect(screen.queryByTestId("filters-button")).toBeNull();
+  // The romset's size and its discarded/ folder's, next to the romset.
+  expect(screen.getByTestId("header-folder")).toHaveTextContent("Romset");
+  expect(within(nes).getByTitle("The romset folder, as last scanned")).toHaveTextContent("3.0 MiB");
+  expect(within(nes).getByTitle("In discarded/nes/")).toHaveTextContent("512.0 KiB");
   // One DATs column: per source a bar, then its name and percentage.
   expect(within(nes).getByTestId("coverage-nes-nointro")).toHaveTextContent("No-Intro33.3%");
   expect(screen.getByTestId("coverage-value-nes-nointro")).not.toHaveClass("text-status-good");

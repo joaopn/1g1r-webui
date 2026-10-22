@@ -1138,6 +1138,15 @@ def latest_scan(
     ).fetchone()
 
 
+def folder_bytes(conn: sqlite3.Connection, label: str) -> int:
+    """Every file in the folder, as last scanned (ROMs, frontend files, the rest)."""
+    return conn.execute(
+        "SELECT COALESCE(SUM(size), 0) FROM folder_file "
+        "WHERE folder_label = ? AND place = 'folder'",
+        (label,),
+    ).fetchone()[0]
+
+
 def folder_summary(
     conn: sqlite3.Connection, label: str, parts=frozenset(), waiting=frozenset()
 ) -> dict:
@@ -1165,11 +1174,7 @@ def folder_summary(
         if rel not in known:
             methods[method] = methods.get(method, 0) + 1
         known.add(rel)
-    size = conn.execute(
-        "SELECT COALESCE(SUM(size), 0) FROM folder_file "
-        "WHERE folder_label = ? AND place = 'folder'",
-        (label,),
-    ).fetchone()[0]
+    size = folder_bytes(conn, label)
     unscanned = len(unscanned_files(conn, label, parts, waiting))
     return {
         "counts": counts,
