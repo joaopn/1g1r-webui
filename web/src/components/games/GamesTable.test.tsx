@@ -97,7 +97,8 @@ test("the quick-view bar shows one-version or several-version games, with counts
   expect(within(bar).getByRole("radio", { name: /All/ })).toBeChecked();
   expect(within(bar).getByText("Several versions").parentElement).toHaveTextContent("2");
   await userEvent.click(within(bar).getByRole("radio", { name: /Several versions/ }));
-  expect(gameNames()).toEqual(["Contra", "Gradius"]);
+  // Sorted by status by default: the undecided game first.
+  expect(gameNames()).toEqual(["Gradius", "Contra"]);
   expect(screen.queryByText("Arkanoid")).not.toBeInTheDocument();
   await userEvent.click(within(bar).getByRole("radio", { name: /One version/ }));
   expect(screen.getByText("Arkanoid")).toBeInTheDocument();
@@ -244,4 +245,41 @@ test("a file waiting for its conversion is its own row, linking to the Conversio
   expect(screen.queryByText("Contra")).not.toBeInTheDocument();
   await userEvent.click(within(bar).getByRole("radio", { name: /One version/ }));
   expect(screen.queryByText("Wait (USA)")).not.toBeInTheDocument();
+});
+
+test("Several versions starts sorted by status, undecided first", () => {
+  render(
+    <MemoryRouter initialEntries={["/?view=several"]}>
+      <GamesTable label="nes" games={GAMES} meta={META} onKeep={vi.fn()} onLeave={vi.fn()} />
+    </MemoryRouter>,
+  );
+  expect(gameNames()).toEqual(["Gradius", "Contra"]);
+});
+
+test("a game's versions are listed by file name, revisions after the first release", () => {
+  const [, gradius] = GAMES;
+  const base = gradius.versions[0];
+  const named = (rel_path: string) => ({ ...base, rel_path });
+  const game: Game = {
+    ...gradius,
+    // The API lists versions in ranking order.
+    versions: [
+      named("Gradius (USA) (Rev 10).zip"),
+      named("Gradius (USA) (Rev 2).zip"),
+      named("Gradius (USA).zip"),
+    ],
+  };
+  render(
+    <MemoryRouter>
+      <GamesTable label="nes" games={[game]} meta={META} onKeep={vi.fn()} onLeave={vi.fn()} />
+    </MemoryRouter>,
+  );
+  const rows = screen
+    .getAllByTestId(/^version-/)
+    .map((el) => el.getAttribute("data-testid")?.replace("version-", ""));
+  expect(rows).toEqual([
+    "Gradius (USA).zip",
+    "Gradius (USA) (Rev 2).zip",
+    "Gradius (USA) (Rev 10).zip",
+  ]);
 });

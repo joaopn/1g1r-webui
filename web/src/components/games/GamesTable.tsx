@@ -47,6 +47,7 @@ import {
   type ColumnId,
   convertFirstRow,
   DEFAULT_VIEW,
+  defaultSort,
   filterGames,
   filterGamesExceptView,
   flagsOf,
@@ -66,6 +67,7 @@ import {
   sortGames,
   template,
   unmatchedRow,
+  versionsByFile,
   viewColumns,
   type Widths,
   widthOf,
@@ -152,7 +154,7 @@ export function GamesTable({
 }) {
   const [params, setParams] = useSearchParams();
   const filter = useMemo(() => readFilter(params), [params]);
-  const sort = (params.get("sort") as ColumnId | null) ?? null;
+  const sort = (params.get("sort") as ColumnId | null) ?? defaultSort(filter.view);
   const order = params.get("order") === "desc" ? "desc" : "asc";
   const [columnIds, setColumnIds] = useState<ColumnId[]>(() =>
     loadColumns(meta.ui.game_columns_default),
@@ -876,7 +878,7 @@ function GameRows({
         </div>
       ) : null}
       {!single && open
-        ? game.versions.map((version) => (
+        ? versionsByFile(game.versions).map((version) => (
             <VersionRow
               key={version.rel_path}
               game={game}

@@ -168,6 +168,22 @@ export function methodLabel(version: Version): { short: string; long: string } {
   };
 }
 
+/** File names compare without their extension and with numbers as numbers, so a game's
+ * first release comes before its revisions, and Rev 2 before Rev 10. */
+const FILE_ORDER = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
+const stem = (relPath: string) => relPath.replace(/\.[^./]+$/, "");
+
+/** A game's versions in file-name order (the API lists them in ranking order). */
+export function versionsByFile(versions: Version[]): Version[] {
+  return [...versions].sort((a, b) => FILE_ORDER.compare(stem(a.rel_path), stem(b.rel_path)));
+}
+
+/** The sort a view starts with when none is chosen: Several versions puts undecided games
+ * first. */
+export function defaultSort(view: string): ColumnId | null {
+  return view === "several" ? "status" : null;
+}
+
 /** Undecided first: those are the games that need you. */
 export const STATUS_ORDER: GameStatus[] = [
   "undecided",
