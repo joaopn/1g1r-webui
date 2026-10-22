@@ -16,6 +16,7 @@ const SET = {
   hidden: false,
   discarded: { files: 2, bytes: 2048 },
   converting: null,
+  running: false,
 };
 
 function renderPage() {
@@ -35,6 +36,7 @@ function renderPage() {
               hidden: true,
               discarded: { files: 0, bytes: 0 },
               converting: null,
+              running: false,
             },
           ]
         : {};

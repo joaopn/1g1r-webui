@@ -42,13 +42,13 @@ export const keys = {
 
 export const useMeta = () =>
   useQuery({ queryKey: keys.meta, queryFn: () => api<Meta>("/meta"), staleTime: Infinity });
-/** Every set; polled while one of them is scanning. */
+/** Every set; polled while one of them is scanning, converting, applying or restoring. */
 export const useFolders = () =>
   useQuery({
     queryKey: keys.folders,
     queryFn: () => api<FolderCard[]>("/folders"),
     refetchInterval: (query) =>
-      query.state.data?.some((f) => f.scan?.status === "running" || f.converting)
+      query.state.data?.some((f) => f.scan?.status === "running" || f.converting || f.running)
         ? (queryClient.getQueryData<Meta>(keys.meta)?.ui.poll_interval_ms ?? false)
         : false,
   });

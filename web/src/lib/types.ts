@@ -184,6 +184,8 @@ export type FolderCard = FolderInfo & {
     /** Not begun: the folder whose conversion it waits for ("" when about to begin). */
     waiting_for: string | null;
   } | null;
+  /** An apply or a restore (conversions included) runs in the folder. */
+  running: boolean;
   warnings: FolderWarning[];
 };
 

@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -45,6 +45,7 @@ const card = (label: string, platform: string, scan: Scan | null): FolderCard =>
   progress: { processed: 0, to_process: 0, to_match: 0, to_convert: 0 },
   discarded: { files: 0, bytes: 0 },
   converting: null,
+  running: false,
   warnings: [],
 });
 
@@ -524,4 +525,18 @@ test("warnings sit in a two-line slot, most severe first, in full on hover", asy
   expect(await screen.findByRole("tooltip")).toHaveTextContent(
     "The last scan failed: a long reason.Not NES ROMs or archives: 2 files.",
   );
+});
+
+test("Home keeps polling while an apply or a restore runs, and stops after", async () => {
+  const calls = renderPage([{ ...card("nes", "nes", SCAN), running: true }]);
+  const polls = () => calls.filter((c) => c.url.endsWith("/folders")).length;
+  await waitFor(() => expect(polls()).toBeGreaterThan(1), {
+    timeout: META.ui.poll_interval_ms * 3,
+  });
+
+  cleanup();
+  const idle = renderPage([card("gb", "gb", SCAN)]);
+  await screen.findByTestId("folder-card-gb");
+  await new Promise((resolve) => setTimeout(resolve, META.ui.poll_interval_ms * 2));
+  expect(idle.filter((c) => c.url.endsWith("/folders"))).toHaveLength(1);
 });
