@@ -42,9 +42,13 @@ test("moving and switching off entries saves the platform's order", async () => 
   );
   await userEvent.click(screen.getByTestId("dat-order-button"));
   await userEvent.click(screen.getByRole("button", { name: "Move Hasheous up" }));
-  await userEvent.click(
-    screen.getByRole("button", { name: "Switch off libretro-database mirror" }),
-  );
+  const libretro = screen.getByRole("checkbox", { name: "Use libretro-database mirror" });
+  // The text next to it is the entry's state, not the action.
+  expect(libretro).toBeChecked();
+  expect(libretro.parentElement).toHaveTextContent("on");
+  await userEvent.click(libretro);
+  expect(libretro).not.toBeChecked();
+  expect(libretro.parentElement).toHaveTextContent("off");
   await userEvent.click(screen.getByRole("button", { name: "Save order" }));
   await vi.waitFor(() =>
     expect(sent).toEqual([{ order: ["nointro", "hasheous", "libretro"], off: ["libretro"] }]),

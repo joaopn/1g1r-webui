@@ -117,14 +117,16 @@ export function DatOrderEditor({
               >
                 <ArrowDown aria-hidden="true" />
               </Button>
-              <Button
-                variant="ghost"
-                size="xs"
-                onClick={() => toggle(entry.id)}
-                aria-label={`${entry.on ? "Switch off" : "Switch on"} ${entry.label}`}
-              >
-                {entry.on ? "off" : "on"}
-              </Button>
+              <label className="flex w-10 shrink-0 items-center gap-1.5 text-xs">
+                <input
+                  type="checkbox"
+                  className="size-3.5 accent-primary"
+                  checked={entry.on}
+                  onChange={() => toggle(entry.id)}
+                  aria-label={`Use ${entry.label}`}
+                />
+                {entry.on ? "on" : "off"}
+              </label>
             </li>
           ))}
         </ol>
