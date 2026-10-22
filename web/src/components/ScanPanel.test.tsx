@@ -80,3 +80,26 @@ test("on the Matching page a check is not reported as the last scan", () => {
   expect(screen.getByText("Not scanned yet.")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: /Scan folder/ })).toBeInTheDocument();
 });
+
+test("a running scan fills the panel's background as it goes", () => {
+  const running = {
+    ...SCAN,
+    status: "running",
+    finished_at: null,
+    stage: "Matching checksums",
+    files_done: 30,
+    files_total: 120,
+  } as unknown as Scan;
+  renderPanel(running);
+  expect(screen.getByTestId("scan-progress")).toHaveStyle({ transform: "scaleX(0.25)" });
+});
+
+test("a scan of unknown length pulses", () => {
+  renderPanel({ ...SCAN, status: "running", finished_at: null, stage: "Listing" } as Scan);
+  expect(screen.getByTestId("scan-progress")).toHaveClass("animate-pulse");
+});
+
+test("a finished scan has no bar", () => {
+  renderPanel(SCAN);
+  expect(screen.queryByTestId("scan-progress")).toBeNull();
+});

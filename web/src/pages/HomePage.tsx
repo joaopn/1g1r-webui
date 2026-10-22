@@ -5,6 +5,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { StopButton } from "@/components/apply/RunPanel";
 import { PlatformIcon } from "@/components/PlatformIcon";
+import { ProgressFill } from "@/components/ProgressFill";
 import { type ChipTone, QuickViewBar } from "@/components/QuickViewBar";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -160,15 +161,10 @@ function CardProgress({ folder }: { folder: FolderCard }) {
   const progress = scan ?? converting;
   if (!progress) return null;
   return (
-    <div
-      aria-hidden="true"
-      data-testid={scan ? "scan-progress" : "conversion-progress"}
-      className={cn(
-        "pointer-events-none absolute inset-0 origin-left transition-transform duration-500",
-        scan ? "bg-primary/10" : "bg-status-convert/15",
-        progress.fraction === null && "animate-pulse",
-      )}
-      style={progress.fraction === null ? undefined : { transform: `scaleX(${progress.fraction})` }}
+    <ProgressFill
+      fraction={progress.fraction}
+      testId={scan ? "scan-progress" : "conversion-progress"}
+      className={scan ? "bg-primary/10" : "bg-status-convert/15"}
     />
   );
 }

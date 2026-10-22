@@ -1,6 +1,7 @@
 import { FileSearch, RefreshCw, ScanSearch } from "lucide-react";
 import { type ReactNode, useEffect, useRef } from "react";
 import { Box } from "@/components/Box";
+import { ProgressFill } from "@/components/ProgressFill";
 import { Button } from "@/components/ui/button";
 import { formatWhen } from "@/lib/format";
 import { invalidateFolder } from "@/lib/queries";
@@ -51,6 +52,15 @@ export function ScanPanel({
   return (
     <Box
       title={title}
+      background={
+        running && progress ? (
+          <ProgressFill
+            fraction={progress.fraction}
+            testId="scan-progress"
+            className="bg-primary/10"
+          />
+        ) : null
+      }
       actions={
         <>
           {actions}
