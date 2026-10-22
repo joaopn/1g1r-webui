@@ -13,7 +13,7 @@ RUN npx biome ci . && npx tsc --noEmit && npx vitest run && npm run build
 # --- Stage 2: tools and the Python app.
 FROM node:24-trixie-slim
 
-ARG IGIR_VERSION=5.7.2
+ARG IGIR_VERSION=5.8.0
 ARG DOLPHIN_TOOL_VERSION=0.2606.2
 ARG RETOOL_VERSION=v2.4.9
 ARG RETOOL_REPO=https://github.com/unexpectedpanda/retool.git

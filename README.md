@@ -88,7 +88,7 @@ The work is done by existing tools and databases.
 
 | | Used for |
 |---|---|
-| [igir](https://igir.io) 5.7.2 | checksum matching against DATs, reading archives and disc images |
+| [igir](https://igir.io) 5.8.0 | checksum matching against DATs, reading archives and disc images |
 | chdman (MAME) 0.276 | CHD creation and verification |
 | [dolphin-tool](https://github.com/emmercm/dolphin-tool-js) 0.2606.2 | RVZ conversion and verification |
 | 7-Zip 25.01 | unpacking archives |
