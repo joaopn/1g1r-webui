@@ -91,15 +91,18 @@ export function RankingEditor({
               >
                 <ArrowDown aria-hidden="true" />
               </Button>
-              <Button
-                variant="ghost"
-                size="xs"
-                onClick={() =>
-                  setDraft({ ...draft, criteria: draft.criteria.filter((x) => x !== c) })
-                }
-              >
-                off
-              </Button>
+              <label className="flex w-10 shrink-0 items-center gap-1.5 text-xs">
+                <input
+                  type="checkbox"
+                  className="size-3.5 accent-primary"
+                  checked
+                  onChange={() =>
+                    setDraft({ ...draft, criteria: draft.criteria.filter((x) => x !== c) })
+                  }
+                  aria-label={`Use ${labels[c]}`}
+                />
+                on
+              </label>
             </li>
           ))}
           {off.map((c) => (
@@ -111,13 +114,16 @@ export function RankingEditor({
             >
               <span className="w-4" />
               <span className="flex-1">{labels[c]}</span>
-              <Button
-                variant="ghost"
-                size="xs"
-                onClick={() => setDraft({ ...draft, criteria: [...draft.criteria, c] })}
-              >
-                on
-              </Button>
+              <label className="flex w-10 shrink-0 items-center gap-1.5 text-xs">
+                <input
+                  type="checkbox"
+                  className="size-3.5 accent-primary"
+                  checked={false}
+                  onChange={() => setDraft({ ...draft, criteria: [...draft.criteria, c] })}
+                  aria-label={`Use ${labels[c]}`}
+                />
+                off
+              </label>
             </li>
           ))}
         </ol>
