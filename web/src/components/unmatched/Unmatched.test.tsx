@@ -161,6 +161,20 @@ test("the chevron opens a row; a suggestion there assigns it", async () => {
   expect(screen.queryByText("Doraemon (Japan) (Rev 1)")).not.toBeInTheDocument();
 });
 
+test("a click on the file name copies it and selects nothing", async () => {
+  const user = userEvent.setup();
+  renderSection(true, UNMATCHED_VIEW);
+  await user.click(screen.getByRole("button", { name: 'Copy "Doraemon (Japan) (Rev 1)"' }));
+  expect(await navigator.clipboard.readText()).toBe("Doraemon (Japan) (Rev 1)");
+  expect(screen.getByRole("button", { name: "Select Doraemon (Japan) (Rev 1)" })).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  );
+  // The rest of the row still selects it.
+  await user.click(screen.getByRole("button", { name: "Select Doraemon (Japan) (Rev 1)" }));
+  expect(screen.getByText(/1 file selected/)).toBeInTheDocument();
+});
+
 test("match to 1st takes the selected rows only, and skips rows without a match", async () => {
   const calls = renderSection(true, UNMATCHED_VIEW);
   const match = screen.getByRole("button", { name: /to 1st/ });

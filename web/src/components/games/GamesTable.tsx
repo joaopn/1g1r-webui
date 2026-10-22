@@ -29,6 +29,7 @@ import {
   useState,
 } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { toast } from "sonner";
 import { Pager } from "@/components/Pager";
 import { QuickViewBar } from "@/components/QuickViewBar";
 import { ColumnChooser, HeaderCell } from "@/components/table/TableParts";
@@ -397,6 +398,19 @@ function Cell({
   );
 }
 
+/** An unmatched file's name, copied to search for it elsewhere. The clipboard needs a secure
+ * page (HTTPS or localhost). */
+function copyName(name: string) {
+  if (!navigator.clipboard) {
+    toast.error("Copying needs the page over HTTPS");
+    return;
+  }
+  navigator.clipboard.writeText(name).then(
+    () => toast.success(`Copied "${name}"`),
+    () => toast.error("Could not copy the name"),
+  );
+}
+
 const PERCENT = new Intl.NumberFormat("en-US", { style: "percent" });
 
 const METHOD_ICONS: Record<string, LucideIcon> = {
@@ -658,7 +672,18 @@ function GameRows({
                 )}
                 aria-hidden="true"
               />
-              <span className="min-w-0 truncate">{game.name}</span>
+              <button
+                type="button"
+                title={`Copy "${game.name}"`}
+                aria-label={`Copy "${game.name}"`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  copyName(game.name);
+                }}
+                className="min-w-0 cursor-copy truncate rounded-sm text-left hover:underline focus-visible:outline-2 focus-visible:outline-ring"
+              >
+                {game.name}
+              </button>
             </Cell>
           );
         }
