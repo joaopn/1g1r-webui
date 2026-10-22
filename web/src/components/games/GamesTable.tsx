@@ -15,10 +15,19 @@ import {
   RotateCcw,
   Search,
   Sparkles,
+  Square,
+  SquareCheck,
   Trash2,
   UserRound,
 } from "lucide-react";
-import { type CSSProperties, type KeyboardEvent, type ReactNode, useMemo, useState } from "react";
+import {
+  type CSSProperties,
+  type KeyboardEvent,
+  type ReactNode,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Pager } from "@/components/Pager";
 import { QuickViewBar } from "@/components/QuickViewBar";
@@ -27,7 +36,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { UnmatchedDetail } from "@/components/unmatched/Unmatched";
+import { FirstMatch, UnmatchedDetail } from "@/components/unmatched/Unmatched";
 import { formatBytes, formatCount, formatFiles } from "@/lib/format";
 import type { FileRow, Game, GameStatus, Meta, UnmatchedFile, Version } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -57,6 +66,7 @@ import {
   sortGames,
   template,
   unmatchedRow,
+  viewColumns,
   type Widths,
   widthOf,
 } from "./columns";
@@ -82,8 +92,11 @@ export type UnmatchedRows = {
   onAssign: (relPath: string, game: string) => void;
   /** Review moving the files to discarded/, or deleting them (remove). */
   onMove: (relPaths: string[], remove: boolean) => void;
-  /** Shown above the table in the Unmatched view, for the files it shows. */
-  tools: (files: UnmatchedFile[]) => ReactNode;
+  /**
+   * Shown above the table in the Unmatched view (or while rows are selected): the files it
+   * shows, the ones of those selected, and a way to clear the selection.
+   */
+  tools: (files: UnmatchedFile[], selected: UnmatchedFile[], clear: () => void) => ReactNode;
 };
 
 function readFilter(params: URLSearchParams): GameFilter {
@@ -145,11 +158,15 @@ export function GamesTable({
     loadColumns(meta.ui.game_columns_default),
   );
   const [widths, setWidths] = useState<Widths>(loadWidths);
-  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
-  const columns = useMemo(
-    () => COLUMNS.filter((c) => columnIds.includes(c.id)).filter(Boolean),
-    [columnIds],
-  );
+  // Rows opened or closed by hand: games start open, unmatched files start closed.
+  const [toggled, setToggled] = useState<Set<string>>(() => new Set());
+  // Unmatched files selected (by path), and the row a shift-click range starts from.
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const anchor = useRef<string | null>(null);
+  const columns = useMemo(() => {
+    const ids = viewColumns(columnIds, filter.view);
+    return COLUMNS.filter((c) => ids.includes(c.id));
+  }, [columnIds, filter.view]);
   const sizes = meta.ui.game_columns;
 
   const files = unmatched?.files;
@@ -169,6 +186,9 @@ export function GamesTable({
   const pages = Math.max(1, Math.ceil(sorted.length / pageSize));
   const page = Math.min(pages, Math.max(1, Math.trunc(Number(params.get("page") ?? "1")) || 1));
   const visible = sorted.slice((page - 1) * pageSize, page * pageSize);
+  // Only rows shown count as selected, so an action never reaches a file filtered out.
+  const shownFiles = useMemo(() => sorted.flatMap((row) => (row.file ? [row.file] : [])), [sorted]);
+  const selectedFiles = shownFiles.filter((f) => selected.has(f.rel_path));
   const moves = games.reduce((n, g) => n + g.versions.filter((v) => v.operation).length, 0);
   const reclaim = games.reduce(
     (n, g) => n + g.versions.reduce((m, v) => m + (v.operation ? (v.size ?? 0) : 0), 0),
@@ -204,8 +224,33 @@ export function GamesTable({
       return next;
     });
   };
+  const clearSelection = () => {
+    setSelected(new Set());
+    anchor.current = null;
+  };
+  /** Click selects or unselects one file; shift-click sets a range like the anchor's state. */
+  const select = (relPath: string, range: boolean) => {
+    const paths = shownFiles.map((f) => f.rel_path);
+    // Read now: the state update below runs after the anchor moves to this row.
+    const start = anchor.current;
+    const from = start === null ? -1 : paths.indexOf(start);
+    const to = paths.indexOf(relPath);
+    setSelected((current) => {
+      const next = new Set(current);
+      if (range && start !== null && from >= 0) {
+        const on = current.has(start);
+        for (const path of paths.slice(Math.min(from, to), Math.max(from, to) + 1)) {
+          if (on) next.add(path);
+          else next.delete(path);
+        }
+      } else if (next.has(relPath)) next.delete(relPath);
+      else next.add(relPath);
+      return next;
+    });
+    anchor.current = relPath;
+  };
   const toggleGame = (key: string) =>
-    setCollapsed((current) => {
+    setToggled((current) => {
       const next = new Set(current);
       if (next.has(key)) next.delete(key);
       else next.add(key);
@@ -280,8 +325,8 @@ export function GamesTable({
         · click a version to keep it · applying moves the others to discarded/{label}/1g1r/, and
         each move can be restored
       </p>
-      {unmatched && filter.view === "unmatched"
-        ? unmatched.tools(sorted.flatMap((row) => (row.file ? [row.file] : [])))
+      {unmatched && (filter.view === "unmatched" || selectedFiles.length > 0)
+        ? unmatched.tools(shownFiles, selectedFiles, clearSelection)
         : null}
 
       <div className="overflow-x-auto rounded-md border border-border bg-card">
@@ -314,8 +359,12 @@ export function GamesTable({
                 key={game.key}
                 game={game}
                 columns={columns}
-                open={!collapsed.has(game.key)}
+                open={game.file ? toggled.has(game.key) : !toggled.has(game.key)}
                 onToggle={() => toggleGame(game.key)}
+                selected={game.file ? selected.has(game.file.rel_path) : false}
+                onSelect={(range) => {
+                  if (game.file) select(game.file.rel_path, range);
+                }}
                 onKeep={onKeep}
                 onLeave={onLeave}
                 ctx={ctx}
@@ -525,6 +574,8 @@ function GameRows({
   columns,
   open,
   onToggle,
+  selected,
+  onSelect,
   onKeep,
   onLeave,
   ctx,
@@ -533,6 +584,9 @@ function GameRows({
   columns: Column[];
   open: boolean;
   onToggle: () => void;
+  /** Unmatched files only: whether the row is selected, and clicking it (shift: a range). */
+  selected: boolean;
+  onSelect: (range: boolean) => void;
   onKeep: (game: Game, relPath: string | null) => void;
   onLeave: (game: Game, left: boolean) => void;
   ctx: CellContext;
@@ -549,6 +603,32 @@ function GameRows({
       case "keep":
         // A file waiting for its conversion is no version yet: nothing is kept.
         if (game.waiting) return <Cell key={id} />;
+        if (file)
+          return (
+            <Cell key={id}>
+              <button
+                type="button"
+                aria-expanded={open}
+                aria-label={`${game.name}: ${open ? "collapse the details" : "show the details"}`}
+                title={
+                  open ? "Collapse the details" : "Show the details: other names, the DAT search"
+                }
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onToggle();
+                }}
+                className="flex rounded-sm p-0.5 hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
+              >
+                <ChevronRight
+                  className={cn(
+                    "size-4 text-muted-foreground transition-transform duration-200 motion-reduce:transition-none",
+                    open && "rotate-90",
+                  )}
+                  aria-hidden="true"
+                />
+              </button>
+            </Cell>
+          );
         return (
           <Cell key={id}>
             {!expandable ? (
@@ -565,11 +645,28 @@ function GameRows({
           </Cell>
         );
       case "game":
+        if (file) {
+          const Box = selected ? SquareCheck : Square;
+          return (
+            <Cell key={id} title={game.name} className="flex items-center gap-1.5 font-medium">
+              <Box
+                className={cn(
+                  "size-3.5 shrink-0",
+                  selected ? "text-primary" : "text-muted-foreground",
+                )}
+                aria-hidden="true"
+              />
+              <span className="min-w-0 truncate">{game.name}</span>
+            </Cell>
+          );
+        }
         return (
           <Cell key={id} title={game.name} className="font-medium">
             {game.name}
           </Cell>
         );
+      case "first":
+        return <Cell key={id}>{file ? <FirstMatch file={file} /> : null}</Cell>;
       case "status":
         return (
           <Cell key={id}>
@@ -615,25 +712,43 @@ function GameRows({
       )}
     >
       <div
-        className={cn("flex items-center px-3 py-1.5 text-sm", expandable && "hover:bg-accent/40")}
+        className={cn(
+          "flex items-center px-3 py-1.5 text-sm",
+          expandable && "hover:bg-accent/40",
+          selected && "bg-primary/10 hover:bg-primary/15",
+        )}
       >
         {!expandable ? (
           <div className={GRID}>{columns.map((c) => gameCell(c.id))}</div>
+        ) : file ? (
+          // biome-ignore lint/a11y/useSemanticElements: a grid row cannot be a <button> (it holds block cells and the chevron button); it is a keyboard-operable toggle.
+          <div
+            role="button"
+            tabIndex={0}
+            aria-pressed={selected}
+            aria-label={`Select ${game.name}`}
+            onClick={(event) => onSelect(event.shiftKey)}
+            onKeyDown={(event) => {
+              if (event.target !== event.currentTarget) return;
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onSelect(event.shiftKey);
+              }
+            }}
+            className={cn(
+              GRID,
+              "cursor-pointer select-none rounded-sm focus-visible:outline-2 focus-visible:outline-ring",
+            )}
+          >
+            {columns.map((c) => gameCell(c.id))}
+          </div>
         ) : (
           // biome-ignore lint/a11y/useSemanticElements: a grid row cannot be a <button> (it holds block cells); it is a keyboard-operable disclosure.
           <div
             role="button"
             tabIndex={0}
             aria-expanded={open}
-            aria-label={`${game.name}: ${
-              file
-                ? open
-                  ? "collapse the details"
-                  : "show the details"
-                : open
-                  ? "collapse to the kept version"
-                  : "show all versions"
-            }`}
+            aria-label={`${game.name}: ${open ? "collapse to the kept version" : "show all versions"}`}
             onClick={onToggle}
             onKeyDown={(event) => {
               if (event.key === "Enter" || event.key === " ") {

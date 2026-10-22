@@ -24,6 +24,7 @@ export const META: Meta = {
         "versions",
         "source",
         "file",
+        "first",
         "dat_name",
         "region",
         "languages",

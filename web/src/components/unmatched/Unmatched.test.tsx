@@ -3,7 +3,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { GamesTable } from "@/components/games/GamesTable";
-import { queryClient } from "@/lib/queries";
+import { queryClient, useUnmatched } from "@/lib/queries";
 import type { UnmatchedFile } from "@/lib/types";
 import { GAMES, META } from "@/test/fixtures";
 import { UnmatchedTools, useUnmatchedActions } from "./Unmatched";
@@ -16,20 +16,39 @@ const FILES: UnmatchedFile[] = [
     hasheous: { status: "not found", detail: "" },
     suggestions: [{ game_name: "Doraemon (Japan)", score: 0.84 }],
   },
+  {
+    rel_path: "Aa Harimanada.zip",
+    size: 131088,
+    hash: null,
+    hasheous: { status: "not found", detail: "" },
+    suggestions: [{ game_name: "Aa Harimanada (Japan)", score: 0.9 }],
+  },
+  {
+    rel_path: "mystery.zip",
+    size: 4096,
+    hash: null,
+    hasheous: { status: "not found", detail: "" },
+    suggestions: [],
+  },
 ];
 
-const PREVIEW = {
-  token: "t",
-  files: [{ rel_path: FILES[0].rel_path, size: FILES[0].size, destination: null }],
-  irreversible: 1,
-  bytes: FILES[0].size,
-  problems: [],
-  busy: null,
-};
+/** The review of the files asked about. */
+function preview(relPaths: string[]) {
+  const files = FILES.filter((f) => relPaths.includes(f.rel_path));
+  return {
+    token: "t",
+    files: files.map((f) => ({ rel_path: f.rel_path, size: f.size, destination: null })),
+    irreversible: files.length,
+    bytes: files.reduce((n, f) => n + f.size, 0),
+    problems: [],
+    busy: null,
+  };
+}
 
 /** The Matching page's table, with its unmatched files as rows. */
 function Table({ lookupsOn }: { lookupsOn: boolean }) {
   const actions = useUnmatchedActions("nes", META);
+  const files = useUnmatched("nes").data ?? FILES;
   return (
     <>
       <GamesTable
@@ -39,17 +58,20 @@ function Table({ lookupsOn }: { lookupsOn: boolean }) {
         onKeep={vi.fn()}
         onLeave={vi.fn()}
         unmatched={{
-          files: FILES,
+          files,
           busy: false,
           onAssign: actions.assign,
           onMove: actions.move,
-          tools: (files) => (
+          tools: (files, selected, clear) => (
             <UnmatchedTools
               label="nes"
               files={files}
+              selected={selected}
               lookupsOn={lookupsOn}
               scanning={false}
               onMove={actions.move}
+              onMatchFirst={actions.matchFirst}
+              onClearSelection={clear}
             />
           ),
         }}
@@ -61,12 +83,19 @@ function Table({ lookupsOn }: { lookupsOn: boolean }) {
 
 function renderSection(lookupsOn: boolean, path = "/folders/nes/matching") {
   const calls: { url: string; init?: RequestInit }[] = [];
+  let files = FILES;
   vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
     calls.push({ url, init });
+    if (url.endsWith("/assign-many")) {
+      const done = new Set(
+        JSON.parse(String(init?.body)).assignments.map((a: { rel_path: string }) => a.rel_path),
+      );
+      files = files.filter((f) => !done.has(f.rel_path));
+    }
     const body = url.endsWith("/unmatched/preview")
-      ? PREVIEW
+      ? preview(JSON.parse(String(init?.body)).rel_paths)
       : url.endsWith("/unmatched")
-        ? FILES
+        ? files
         : {};
     return new Response(JSON.stringify(body), { status: 200 });
   });
@@ -89,7 +118,7 @@ test("unmatched files are rows of the table, with a quick view of their own", as
   renderSection(true);
   const bar = screen.getByTestId("quick-views");
   const single = GAMES.filter((g) => g.versions.length === 1).length;
-  expect(within(bar).getByText("Unmatched")).toHaveTextContent(/^Unmatched1$/);
+  expect(within(bar).getByText("Unmatched")).toHaveTextContent(/^Unmatched3$/);
   // "One version" is for games: a file nothing identified is not one.
   expect(within(bar).getByText("One version")).toHaveTextContent(`One version${single}`);
   expect(screen.getByText("Doraemon (Japan) (Rev 1)")).toBeInTheDocument();
@@ -101,17 +130,65 @@ test("unmatched files are rows of the table, with a quick view of their own", as
   expect(screen.getByRole("button", { name: /Look up again/ })).toBeInTheDocument();
 });
 
-test("an unmatched row shows what Hasheous said, and a suggestion assigns it", async () => {
+test("the Unmatched view shows each file's 1st match, rows closed", async () => {
+  renderSection(true, UNMATCHED_VIEW);
+  expect(screen.getByText("1st match")).toBeInTheDocument();
+  expect(screen.getByText("Doraemon (Japan)")).toBeInTheDocument();
+  expect(screen.getByText("84%")).toBeInTheDocument();
+  expect(screen.getByText("no close name")).toBeInTheDocument();
+  // Closed: the details (and their suggestion buttons) wait for the chevron.
+  expect(screen.queryByText("Hasheous: not found online")).not.toBeInTheDocument();
+});
+
+test("the chevron opens a row; a suggestion there assigns it", async () => {
   const calls = renderSection(true, UNMATCHED_VIEW);
-  const suggestion = await screen.findByRole("button", { name: /^Doraemon \(Japan\) .*%$/ });
+  await userEvent.click(
+    screen.getByRole("button", { name: "Doraemon (Japan) (Rev 1): show the details" }),
+  );
   expect(screen.getByText("Hasheous: not found online")).toBeInTheDocument();
-  expect(screen.getByText(/84%/)).toBeInTheDocument();
+  // Opening is not selecting.
+  expect(screen.getByRole("button", { name: "Select Doraemon (Japan) (Rev 1)" })).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  );
+  const suggestion = await screen.findByRole("button", { name: /^Doraemon \(Japan\) .*%$/ });
   await userEvent.click(suggestion);
-  const put = calls.find((c) => c.url.endsWith("/assign"));
+  const put = calls.find((c) => c.url.endsWith("/assign-many"));
   expect(JSON.parse(String(put?.init?.body))).toEqual({
-    rel_path: "Doraemon (Japan) (Rev 1).zip",
-    game_name: "Doraemon (Japan)",
+    assignments: [{ rel_path: "Doraemon (Japan) (Rev 1).zip", game_name: "Doraemon (Japan)" }],
   });
+  // The row leaves the table without waiting for the refetch.
+  expect(screen.queryByText("Doraemon (Japan) (Rev 1)")).not.toBeInTheDocument();
+});
+
+test("match to 1st takes the selected rows only, and skips rows without a match", async () => {
+  const calls = renderSection(true, UNMATCHED_VIEW);
+  const match = screen.getByRole("button", { name: /to 1st/ });
+  expect(match).toBeDisabled();
+  await userEvent.click(screen.getByRole("button", { name: "Select Doraemon (Japan) (Rev 1)" }));
+  await userEvent.click(screen.getByRole("button", { name: "Select mystery" }));
+  expect(screen.getByText(/2 files selected/)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /Move 2 files to discarded/ })).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: /Match 1 file to 1st/ }));
+  const put = calls.find((c) => c.url.endsWith("/assign-many"));
+  expect(JSON.parse(String(put?.init?.body))).toEqual({
+    assignments: [{ rel_path: "Doraemon (Japan) (Rev 1).zip", game_name: "Doraemon (Japan)" }],
+  });
+  expect(screen.queryByText(/selected/)).not.toBeInTheDocument();
+});
+
+test("shift-click selects a range", async () => {
+  renderSection(true, UNMATCHED_VIEW);
+  const rows = screen
+    .getAllByRole("button", { name: /^Select / })
+    .map((row) => row.getAttribute("aria-label"));
+  await userEvent.click(screen.getByRole("button", { name: rows[0] ?? "" }));
+  const user = userEvent.setup();
+  await user.keyboard("{Shift>}");
+  await user.click(screen.getByRole("button", { name: rows[rows.length - 1] ?? "" }));
+  await user.keyboard("{/Shift}");
+  expect(screen.getByText(/3 files selected/)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /Match 2 files to 1st/ })).toBeEnabled();
 });
 
 test("with lookups off it links to the settings instead of offering a retry", async () => {
@@ -120,24 +197,12 @@ test("with lookups off it links to the settings instead of offering a retry", as
   expect(screen.queryByRole("button", { name: /Look up again/ })).not.toBeInTheDocument();
 });
 
-test("the row is collapsible to the file alone", async () => {
-  renderSection(true, UNMATCHED_VIEW);
-  expect(screen.getByText("Hasheous: not found online")).toBeInTheDocument();
-  await userEvent.click(
-    screen.getByRole("button", { name: "Doraemon (Japan) (Rev 1): collapse the details" }),
-  );
-  expect(screen.queryByText("Hasheous: not found online")).not.toBeInTheDocument();
-});
-
 test("moving every file shown reviews them all", async () => {
   const calls = renderSection(true, UNMATCHED_VIEW);
-  await userEvent.click(screen.getByRole("button", { name: /Move 1 file to discarded/ }));
-  await screen.findByRole("button", { name: "Move 1 file" });
+  await userEvent.click(screen.getByRole("button", { name: /Move 3 files to discarded/ }));
+  await screen.findByRole("button", { name: "Move 3 files" });
   const preview = calls.find((c) => c.url.endsWith("/unmatched/preview"));
-  expect(JSON.parse(String(preview?.init?.body))).toMatchObject({
-    rel_paths: ["Doraemon (Japan) (Rev 1).zip"],
-    delete: false,
-  });
+  expect(JSON.parse(String(preview?.init?.body)).rel_paths).toHaveLength(FILES.length);
 });
 
 test("deleting a file asks for the folder label first", async () => {

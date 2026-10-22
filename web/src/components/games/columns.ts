@@ -23,6 +23,7 @@ export type ColumnId =
   | "versions"
   | "source"
   | "file"
+  | "first"
   | "dat_name"
   | "region"
   | "languages"
@@ -42,6 +43,7 @@ export const COLUMNS: Column[] = [
   { id: "versions", label: "Versions", sortable: true, level: "game" },
   { id: "source", label: "Grouped by", sortable: true, level: "game" },
   { id: "file", label: "File", sortable: true, level: "version" },
+  { id: "first", label: "1st match", sortable: true, level: "version" },
   { id: "dat_name", label: "DAT name", sortable: true, level: "version" },
   { id: "region", label: "Region", sortable: true, level: "version" },
   { id: "languages", label: "Languages", sortable: true, level: "version" },
@@ -203,6 +205,11 @@ export function saveWidths(widths: Widths): void {
   PREFS.saveWidths(widths);
 }
 
+/** The Unmatched view always shows the 1st match column: choosing by it is what the view is for. */
+export function viewColumns(ids: ColumnId[], view: string): ColumnId[] {
+  return view === "unmatched" && !ids.includes("first") ? [...ids, "first"] : ids;
+}
+
 /** Visible columns in their canonical order; never empty. */
 export function visibleColumns(ids: ColumnId[]): Column[] {
   const wanted = new Set(ids);
@@ -238,7 +245,7 @@ export function flagsOf(version: Version): string[] {
 type SortValue = string | number;
 
 /** What a game sorts by in a column. Version columns use the representative version. */
-export function sortValue(game: Game, id: ColumnId): SortValue {
+export function sortValue(game: Row, id: ColumnId): SortValue {
   const version = representative(game) ?? game.versions[0];
   switch (id) {
     case "game":
@@ -251,6 +258,9 @@ export function sortValue(game: Game, id: ColumnId): SortValue {
       return SOURCE_LABELS[game.source] ?? game.source;
     case "file":
       return version.rel_path.toLowerCase();
+    case "first":
+      // Best first when sorted descending; rows without a suggestion go last.
+      return game.file?.suggestions[0]?.score ?? -1;
     case "dat_name":
       return version.title.toLowerCase();
     case "region":

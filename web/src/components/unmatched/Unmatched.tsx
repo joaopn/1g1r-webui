@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Archive, Globe, RefreshCw, Search, Trash2 } from "lucide-react";
+import { Archive, Globe, ListChecks, RefreshCw, Search, Trash2, X } from "lucide-react";
 import { type CSSProperties, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ApiError, api, json } from "@/lib/api";
 import { formatFiles } from "@/lib/format";
-import { invalidateFolder } from "@/lib/queries";
+import { invalidateFolder, keys, queryClient } from "@/lib/queries";
 import type { LookupStatus, Meta, UnmatchedFile } from "@/lib/types";
 
 const PERCENT = new Intl.NumberFormat("en-US", { style: "percent" });
@@ -44,14 +44,30 @@ const errorText = (err: unknown) => (err instanceof ApiError ? err.message : Str
 export function useUnmatchedActions(label: string, meta: Meta | undefined) {
   // The files under review and whether they are deleted (guarded) or moved to discarded/.
   const [acting, setActing] = useState<{ relPaths: string[]; remove: boolean } | null>(null);
+  // The assigned rows leave the table at once; the refetch afterwards brings them back as games.
   const assign = useMutation({
-    mutationFn: ({ relPath, game }: { relPath: string; game: string }) =>
-      api(`/folders/${label}/assign`, json("PUT", { rel_path: relPath, game_name: game })),
-    onSuccess: (_, { game }) => {
-      toast.success(`Assigned to ${game}`);
-      return invalidateFolder(label);
+    mutationFn: (pairs: { relPath: string; game: string }[]) =>
+      api(
+        `/folders/${label}/assign-many`,
+        json("PUT", {
+          assignments: pairs.map((p) => ({ rel_path: p.relPath, game_name: p.game })),
+        }),
+      ),
+    onMutate: (pairs) => {
+      const gone = new Set(pairs.map((p) => p.relPath));
+      queryClient.setQueryData<UnmatchedFile[]>(keys.unmatched(label), (files) =>
+        files?.filter((f) => !gone.has(f.rel_path)),
+      );
+    },
+    onSuccess: (_, pairs) => {
+      toast.success(
+        pairs.length === 1
+          ? `Assigned to ${pairs[0].game}`
+          : `Assigned ${formatFiles(pairs.length)}`,
+      );
     },
     onError: (err) => toast.error(errorText(err)),
+    onSettled: () => invalidateFolder(label),
   });
   const named = (relPaths: string[]) =>
     relPaths.length === 1 ? relPaths[0] : formatFiles(relPaths.length);
@@ -80,62 +96,100 @@ export function useUnmatchedActions(label: string, meta: Meta | undefined) {
       />
     ) : null;
   return {
-    assign: (relPath: string, game: string) => assign.mutate({ relPath, game }),
-    assigning: assign.isPending,
+    assign: (relPath: string, game: string) => assign.mutate([{ relPath, game }]),
+    /** Assign each file to its first suggestion; files without one are left as they are. */
+    matchFirst: (files: UnmatchedFile[]) => {
+      const pairs = firstMatches(files);
+      if (pairs.length > 0) assign.mutate(pairs);
+    },
     /** Review moving the files to discarded/, or deleting them (remove). */
     move: (relPaths: string[], remove: boolean) => setActing({ relPaths, remove }),
     dialog,
   };
 }
 
-/** Above the table in the Unmatched view: what these files are, and actions on all shown. */
+function firstMatches(files: UnmatchedFile[]) {
+  return files.flatMap((f) =>
+    f.suggestions.length > 0 ? [{ relPath: f.rel_path, game: f.suggestions[0].game_name }] : [],
+  );
+}
+
+/**
+ * Above the table in the Unmatched view: what these files are, and actions on the selected
+ * rows, or on every row shown when none is selected. Match to 1st takes selected rows only.
+ */
 export function UnmatchedTools({
   label,
   files,
+  selected,
   lookupsOn,
   scanning,
   onMove,
+  onMatchFirst,
+  onClearSelection,
 }: {
   label: string;
   /** The unmatched files the table shows. */
   files: UnmatchedFile[];
+  /** The ones of those the user selected. */
+  selected: UnmatchedFile[];
   lookupsOn: boolean;
   scanning: boolean;
   onMove: (relPaths: string[], remove: boolean) => void;
+  onMatchFirst: (files: UnmatchedFile[]) => void;
+  onClearSelection: () => void;
 }) {
   const retry = useMutation({
     mutationFn: () => api(`/folders/${label}/scan?refresh_lookups=true`, { method: "POST" }),
     onSuccess: () => invalidateFolder(label),
     onError: (err) => toast.error(errorText(err)),
   });
-  const relPaths = files.map((f) => f.rel_path);
+  const target = selected.length > 0 ? selected : files;
+  const relPaths = target.map((f) => f.rel_path);
+  const matchable = firstMatches(selected).length;
   return (
     <div className="space-y-2 rounded-md border border-border bg-card px-3 py-2">
       <div className="flex flex-wrap items-center gap-2">
         <p className="min-w-56 flex-1 text-muted-foreground text-xs">
-          Nothing identified these files, so they are kept as they are. Open a row and click a
-          suggestion, or search the DAT, to tell the app what the file is; your choice is kept
-          across scans.
+          Nothing identified these files, so they are kept as they are. Click rows to select them
+          (shift-click for a range) and match them to their 1st match, or open a row with its arrow
+          to pick another name or search the DAT. Your choice is kept across scans.
         </p>
+        <Button
+          size="sm"
+          disabled={scanning || matchable === 0}
+          onClick={() => {
+            onMatchFirst(selected);
+            onClearSelection();
+          }}
+          title={
+            selected.length === 0
+              ? "Select rows first"
+              : "Assign each selected file to its 1st match (rows without one stay)"
+          }
+        >
+          <ListChecks className="size-3.5" aria-hidden="true" /> Match{" "}
+          {matchable > 0 ? `${formatFiles(matchable)} ` : ""}to 1st
+        </Button>
         <Button
           variant="outline"
           size="sm"
-          disabled={scanning || files.length === 0}
+          disabled={scanning || target.length === 0}
           onClick={() => onMove(relPaths, false)}
-          title="Review, then move the files shown to discarded/ (can be restored)"
+          title={`Review, then move the files ${selected.length > 0 ? "selected" : "shown"} to discarded/ (can be restored)`}
         >
-          <Archive className="size-3.5" aria-hidden="true" /> Move {formatFiles(files.length)} to
+          <Archive className="size-3.5" aria-hidden="true" /> Move {formatFiles(target.length)} to
           discarded/
         </Button>
         <Button
           variant="outline"
           size="sm"
-          disabled={scanning || files.length === 0}
+          disabled={scanning || target.length === 0}
           className="text-status-bad"
           onClick={() => onMove(relPaths, true)}
-          title="Review, then delete the files shown for good"
+          title={`Review, then delete the files ${selected.length > 0 ? "selected" : "shown"} for good`}
         >
-          <Trash2 className="size-3.5" aria-hidden="true" /> Delete {formatFiles(files.length)}
+          <Trash2 className="size-3.5" aria-hidden="true" /> Delete {formatFiles(target.length)}
         </Button>
         {lookupsOn ? (
           <Button
@@ -156,6 +210,14 @@ export function UnmatchedTools({
           </Link>
         )}
       </div>
+      {selected.length > 0 ? (
+        <p className="flex items-center gap-2 text-xs">
+          {formatFiles(selected.length)} selected
+          <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={onClearSelection}>
+            <X className="size-3" aria-hidden="true" /> Clear selection
+          </Button>
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -280,5 +342,28 @@ function DatSearch({
         </ul>
       </PopoverContent>
     </Popover>
+  );
+}
+
+/** An unmatched row's 1st match cell: the closest DAT name and how close it is. */
+export function FirstMatch({ file }: { file: UnmatchedFile }) {
+  const first = file.suggestions[0];
+  if (!first) return <span className="text-muted-foreground text-xs">no close name</span>;
+  return (
+    <span
+      className="flex min-w-0 items-center gap-1.5"
+      title={`${first.game_name} (${PERCENT.format(first.score)})`}
+    >
+      <span className="min-w-0 truncate">{first.game_name}</span>
+      <span className="h-1.5 w-8 shrink-0 overflow-hidden rounded-full bg-muted" aria-hidden="true">
+        <span
+          className="block h-full w-[calc(var(--p)*100%)] rounded-full bg-primary"
+          style={{ "--p": first.score } as CSSProperties}
+        />
+      </span>
+      <span className="shrink-0 text-muted-foreground text-xs tabular-nums">
+        {PERCENT.format(first.score)}
+      </span>
+    </span>
   );
 }

@@ -262,16 +262,19 @@ export function FolderMatchingPage() {
               unmatchedFiles.data
                 ? {
                     files: unmatchedFiles.data,
-                    busy: unmatchedActions.assigning || scanning,
+                    busy: scanning,
                     onAssign: unmatchedActions.assign,
                     onMove: unmatchedActions.move,
-                    tools: (files) => (
+                    tools: (files, selected, clear) => (
                       <UnmatchedTools
                         label={label}
                         files={files}
+                        selected={selected}
                         lookupsOn={lookupsOn}
                         scanning={scanning}
                         onMove={unmatchedActions.move}
+                        onMatchFirst={unmatchedActions.matchFirst}
+                        onClearSelection={clear}
                       />
                     ),
                   }
