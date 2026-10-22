@@ -895,8 +895,9 @@ title_ids:
 # little-endian u32 counts of media units of media_unit_bytes << flags[media_unit_flag]; the
 # first partition is an NCCH, encrypted unless its flags[crypto_flag] has no_crypto_mask.
 # A trimmed image (shorter than its size) is padded with padding_hex to compare with the DAT.
-# The NCCH's product code is plain text: an encrypted image (which never has the DAT's hash,
-# the DAT listing decrypted images) is suggested the DAT entries with that serial.
+# The NCCH's product code is plain text: an encrypted image that cannot be decrypted (which
+# never has the DAT's hash, the DAT listing decrypted images) is suggested the DAT entries
+# with that serial.
 card_images:
   ncsd:
     magic: NCSD
@@ -914,13 +915,59 @@ card_images:
     padding_hex: ff
     product_code_offset: 336
     product_code_bytes: 16
+    # The partition table: partition_count entries (offset, size: u32 media units each).
+    partition_count: 8
+    partition_entry_bytes: 8
+    # A title encrypted with a seed (digital releases) has seed_mask in flags[crypto_flag];
+    # its seed is looked up in seeddb by the NCCH's program ID (little-endian u64).
+    seed_mask: 32
+    program_id_offset: 280
+    program_id_bytes: 8
+    # A decrypted image proves itself with its own SHA-256s (P10, prototype checked on a
+    # retail card): per NCCH partition the extended header, the logo, the ExeFS superblock and
+    # each ExeFS file, the RomFS superblock and every block of its IVFC hash tree. Offsets are
+    # from the partition's start (header fields) or the region's start; regions are in media
+    # units. Values from 3dbrew (hex in the comments).
+    proof:
+      hash_bytes: 32
+      ncch_header_bytes: 512                # 0x200, the extended header follows it
+      exheader_hash_offset: 352             # 0x160
+      exheader_size_offset: 384             # 0x180
+      exheader_hashed_bytes: 1024           # 0x400
+      logo_hash_offset: 304                 # 0x130
+      logo_region_offset: 408               # 0x198, then its size (u32 each)
+      exefs_region_offset: 416              # 0x1A0, then its size
+      exefs_hash_region_offset: 424         # 0x1A8, media units hashed for the superblock
+      exefs_hash_offset: 448                # 0x1C0
+      romfs_region_offset: 432              # 0x1B0, then its size
+      romfs_hash_region_offset: 440         # 0x1B8
+      romfs_hash_offset: 480                # 0x1E0
+      # ExeFS header: exefs_files entries (name, offset, size), the files' hashes stored
+      # from its end backwards (file i's hash ends hash_bytes * i before the end).
+      exefs_header_bytes: 512
+      exefs_files: 10
+      exefs_entry_bytes: 16
+      exefs_name_bytes: 8
+      # RomFS IVFC header: master hash size, then ivfc_levels entries of (logical offset u64,
+      # size u64, log2 block size u32, reserved). The master hash follows the header; in the
+      # file come the last level (the data) aligned to its block size, then the others in
+      # order. Each level's blocks, zero-padded to the block size, are hashed by the level
+      # before it (the first by the master hash).
+      ivfc_magic: IVFC
+      ivfc_header_bytes: 96                 # 0x60
+      ivfc_master_size_offset: 8
+      ivfc_levels_offset: 12
+      ivfc_levels: 3
+      ivfc_level_bytes: 24
+      ivfc_level_size_offset: 8
+      ivfc_level_block_offset: 16
+      read_chunk_bytes: 4194304
 
 # Nintendo 3DS decryption (a conversion of encrypted card images). The keys are your own,
 # added on a 3DS folder's Conversion page and kept in the data directory: boot9 dumped from
 # your console (GodMode9 saves boot9.bin, or boot9_prot.bin, its protected half), and seeddb
-# for seed-encrypted titles. The app ships none. The decrypted image must have the SHA1 of
-# a DAT entry with the card's product code (the DAT lists decrypted images), or nothing
-# changes.
+# for seed-encrypted titles. The app ships none. The decrypted image must match its own
+# hashes (card_images.ncsd.proof), or nothing changes; no DAT is needed.
 decryption:
   keys_dir: keys
   boot9_file: boot9_prot.bin
@@ -930,6 +977,8 @@ decryption:
   seeddb_header_bytes: 16
   seeddb_count_bytes: 4
   seeddb_entry_bytes: 32
+  # Each entry starts with the title's ID (little-endian u64), then its seed.
+  seeddb_title_id_bytes: 8
   max_upload_bytes: 16777216
   # Octal: only the app's user may read the stored keys.
   file_mode: 0600

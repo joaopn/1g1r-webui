@@ -1,15 +1,19 @@
 """Listing what an archive holds: member names, sizes and CRC32s.
 
 Zip archives are read with Python's zipfile; 7z archives are listed by 7-Zip
-(`7z l -slt`), whose technical listing is one `Key = value` block per member.
+(`7z l -slt`), whose technical listing is one `Key = value` block per member. A 7z
+member's first bytes (a card header) are streamed from `7z e -so`.
 """
 
 import subprocess
+import threading
 import zipfile
 import zlib
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from typing import BinaryIO
 
 from g1r.config import Settings
 
@@ -47,6 +51,29 @@ def run_seven_zip(settings: Settings, path: Path) -> str:
         detail = (result.stderr or result.stdout).strip().splitlines()
         raise ArchiveError(detail[-1] if detail else f"7-Zip exited with {result.returncode}")
     return result.stdout
+
+
+# Streams one member of a 7z archive, read forward only: (settings, archive, member).
+MemberOpener = Callable[[Settings, Path, str], AbstractContextManager[BinaryIO]]
+
+
+@contextmanager
+def open_seven_zip_member(settings: Settings, path: Path, member: str) -> Iterator[BinaryIO]:
+    """The member's bytes as 7-Zip extracts them; 7-Zip is stopped once the reader is done
+    (only the start is read), or after archives.list_timeout_seconds."""
+    command = [settings.archives.seven_zip_binary, "e", "-so", "-spd", "--", str(path), member]
+    try:
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    except OSError as exc:
+        raise ArchiveError(f"7-Zip could not run: {exc}") from exc
+    timer = threading.Timer(settings.archives.list_timeout_seconds, process.kill)
+    timer.start()
+    try:
+        yield process.stdout  # type: ignore[misc]
+    finally:
+        timer.cancel()
+        process.kill()
+        process.wait()
 
 
 # A folder's Windows attribute letter. Zips also get `Folder = +`; a .7z marks a folder only

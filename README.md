@@ -79,7 +79,7 @@ Files are read bare or inside `.zip`/`.7z`. Files in other formats are listed an
 
 The target can be changed per platform in Settings.
 
-- 3DS: encrypted images are decrypted with your own console's keys (`boot9.bin`, `seeddb.bin`), added in the UI. No keys are included.
+- 3DS: encrypted images are decrypted with your own console's keys (`boot9.bin`, `seeddb.bin`), added in the UI. No keys are included. A decrypted image is kept only if it matches the hashes its partitions carry; no DAT is needed.
 - Switch: no public DAT exists, so files are identified by title ID. DLC are kept; updates can be discarded.
 
 ## Backend

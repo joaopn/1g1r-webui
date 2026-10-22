@@ -469,6 +469,38 @@ class ByteOrderConfig(_Strict):
         return self
 
 
+class NcchProofConfig(_Strict):
+    """Where an NCCH partition keeps the SHA-256s that prove its decrypted data (defaults.yaml
+    explains each field)."""
+
+    hash_bytes: int = Field(gt=0)
+    ncch_header_bytes: int = Field(gt=0)
+    exheader_hash_offset: int = Field(ge=0)
+    exheader_size_offset: int = Field(ge=0)
+    exheader_hashed_bytes: int = Field(gt=0)
+    logo_hash_offset: int = Field(ge=0)
+    logo_region_offset: int = Field(ge=0)
+    exefs_region_offset: int = Field(ge=0)
+    exefs_hash_region_offset: int = Field(ge=0)
+    exefs_hash_offset: int = Field(ge=0)
+    romfs_region_offset: int = Field(ge=0)
+    romfs_hash_region_offset: int = Field(ge=0)
+    romfs_hash_offset: int = Field(ge=0)
+    exefs_header_bytes: int = Field(gt=0)
+    exefs_files: int = Field(gt=0)
+    exefs_entry_bytes: int = Field(gt=0)
+    exefs_name_bytes: int = Field(gt=0)
+    ivfc_magic: str
+    ivfc_header_bytes: int = Field(gt=0)
+    ivfc_master_size_offset: int = Field(ge=0)
+    ivfc_levels_offset: int = Field(ge=0)
+    ivfc_levels: int = Field(gt=0)
+    ivfc_level_bytes: int = Field(gt=0)
+    ivfc_level_size_offset: int = Field(ge=0)
+    ivfc_level_block_offset: int = Field(ge=0)
+    read_chunk_bytes: int = Field(gt=0)
+
+
 class NcsdConfig(_Strict):
     magic: str
     magic_offset: int = Field(ge=0)
@@ -486,6 +518,13 @@ class NcsdConfig(_Strict):
     # The NCCH's product code ("CTR-P-AWAE"), NUL-padded, readable without keys.
     product_code_offset: int = Field(ge=0)
     product_code_bytes: int = Field(gt=0)
+    partition_count: int = Field(gt=0)
+    partition_entry_bytes: int = Field(gt=0)
+    # A title encrypted with a seed: its seed is found in seeddb by program ID.
+    seed_mask: int = Field(gt=0)
+    program_id_offset: int = Field(ge=0)
+    program_id_bytes: int = Field(gt=0)
+    proof: NcchProofConfig
 
 
 class DecryptionConfig(_Strict):
@@ -502,6 +541,7 @@ class DecryptionConfig(_Strict):
     seeddb_header_bytes: int = Field(gt=0)
     seeddb_count_bytes: int = Field(gt=0)
     seeddb_entry_bytes: int = Field(gt=0)
+    seeddb_title_id_bytes: int = Field(gt=0)
     max_upload_bytes: int = Field(gt=0)
     # The stored keys' permission bits (only the app's user may read them).
     file_mode: int = Field(gt=0)

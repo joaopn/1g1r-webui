@@ -7,7 +7,8 @@ derives none, and never sends or shows them. pyctr does the AES work: each NCCH 
 is read through its crypto engine as the "full decrypted" stream, which also sets the NCCH
 flags to "no crypto" the way GodMode9 does; the card header and whatever lies between and
 after the partitions are copied as they are. Whether the result is right is not decided
-here: the converter compares its SHA1 with the DAT (which lists decrypted images).
+here: the converter checks it against the hashes its partitions carry
+(`cards.prove_decrypted`).
 """
 
 import hashlib
@@ -66,6 +67,24 @@ def _seed_count(settings: Settings, data: bytes) -> int | None:
     if len(data) != config.seeddb_header_bytes + count * config.seeddb_entry_bytes:
         return None
     return count
+
+
+def seed_ids(settings: Settings) -> set[str] | None:
+    """The titles (program IDs, as `cards.CardInfo.program_id` writes them) whose seed the
+    stored seeddb holds, or None without a seeddb."""
+    path = seeddb_path(settings)
+    if path is None:
+        return None
+    config = settings.decryption
+    data = path.read_bytes()
+    count = _seed_count(settings, data)
+    if count is None:
+        return None
+    first = config.seeddb_header_bytes
+    return {
+        data[at : at + config.seeddb_title_id_bytes][::-1].hex()
+        for at in range(first, first + count * config.seeddb_entry_bytes, config.seeddb_entry_bytes)
+    }
 
 
 def _write_private(settings: Settings, path: Path, data: bytes) -> None:

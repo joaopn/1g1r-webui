@@ -66,6 +66,7 @@ CARRIED = (
     "manual_identity",
     "payload_hash",
     "file_note",
+    "card_info",
 )
 
 
@@ -93,7 +94,7 @@ class Move:
     action: str = MOVE
     # Convert: the output's path in the folder. Remove: the original's, which gets its rows back.
     paired_rel: str | None = None
-    # Unwrap only: the archive member taken out, as the scan listed it.
+    # Unwrap, and a byteswap or decryption from an archive: the member read, as listed.
     member: str | None = None
     member_size: int | None = None
     member_crc32: str | None = None
@@ -117,10 +118,8 @@ class Move:
     # output zip (None: the output is the bare ROM).
     word_bytes: int | None = None
     output_member: str | None = None
-    # Decrypt only: the SHA1s the output may have, and the size it is padded to to compare.
-    expect_sha1: tuple = ()
-    image_size: int | None = None
-    padding_hex: str | None = None
+    # Decrypt only: the card image format whose hashes prove the output.
+    card_image: str | None = None
 
 
 def token(plan: list[Move]) -> str:
@@ -205,10 +204,11 @@ def plan_conversions(
             (m for m in row.members if PurePosixPath(m["name"]).name == Path(row.output).name),
             None,
         )
-        if row.recipe == conversion.RECIPE_BYTESWAP:
+        if row.recipe in (conversion.RECIPE_BYTESWAP, conversion.RECIPE_DECRYPT):
             member = row.source_member
-        # Unwrap, and a byteswap from an archive, read one member as the scan listed it.
-        reads = (conversion.RECIPE_UNWRAP, conversion.RECIPE_BYTESWAP)
+        # Unwrap, and a byteswap or decryption from an archive, read one member as the scan
+        # listed it.
+        reads = (conversion.RECIPE_UNWRAP, conversion.RECIPE_BYTESWAP, conversion.RECIPE_DECRYPT)
         unwrap = member is not None and row.recipe in reads
         sources = [f, *parts]
         plan.append(
@@ -235,9 +235,7 @@ def plan_conversions(
                 space=_conversion_space(row, sources, member),
                 word_bytes=row.word_bytes,
                 output_member=row.output_member,
-                expect_sha1=tuple(row.expect_sha1),
-                image_size=row.image_size,
-                padding_hex=row.padding_hex,
+                card_image=row.card_image,
             )
         )
         for source in sources:
@@ -260,6 +258,9 @@ def _conversion_space(row: conversion.ConversionRow, sources, member) -> int:
     total = sum(s["size"] for s in sources)
     if row.recipe in (conversion.RECIPE_UNWRAP, conversion.RECIPE_BYTESWAP) and member:
         return member["size"]
+    if row.recipe == conversion.RECIPE_DECRYPT and member:
+        # The unpacked copy and the output.
+        return member["size"] + member["size"]
     if row.recipe == conversion.RECIPE_ARCHIVE_DISC:
         # The unpacked copy and the output, then the output and the tracks extracted back.
         unpacked = sum(m.get("size") or 0 for m in row.members)
@@ -650,6 +651,11 @@ def _settle(conn, kind: str, label: str, op_id: int, m: Move, moved) -> None:
                 conn.execute(
                     "DELETE FROM file_note WHERE folder_label = ? AND rel_path = ? AND note = ?",
                     (label, m.paired_rel, cards.ENCRYPTED),
+                )
+                conn.execute(
+                    "UPDATE card_info SET encrypted = 0, seed = 0 "
+                    "WHERE folder_label = ? AND rel_path = ?",
+                    (label, m.paired_rel),
                 )
         elif m.action == DELETE and m.in_discarded:
             # Gone from discarded/: the table stops showing it as a discarded version.

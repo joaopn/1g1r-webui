@@ -341,15 +341,6 @@ def build_router(
             target,
             delete_originals=folder.delete_originals,
             root=root if root is not None and root.is_dir() else None,
-            # Only a card image's decryption needs the DATs here (they prove the result).
-            dats=(
-                [
-                    (entry_label(version["source"]), dat)
-                    for version, dat in registry.load_all(conn, library, folder.platform)
-                ]
-                if platforms[folder.platform].card_image
-                else ()
-            ),
         )
 
     # Meta ------------------------------------------------------------------------

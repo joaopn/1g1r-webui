@@ -17,7 +17,7 @@ import zlib
 from collections.abc import Callable
 from pathlib import Path, PurePosixPath
 
-from g1r import conversion, cso, decrypt, discs, hashing, moves, stopping
+from g1r import cards, conversion, cso, decrypt, discs, hashing, moves, stopping
 from g1r.config import Settings
 
 CRC_FORMAT = "08x"
@@ -181,28 +181,43 @@ class Converter:
             raise moves.MoveError(f"the rewritten {step.source.name} does not hold the same ROM")
 
     def _decrypt(self, step, temp: Path) -> None:
-        """Decrypt the card image with the user's keys; the result, padded back to the card's
-        size when trimmed, must have the SHA1 of one of the DAT entries the plan named."""
+        """Decrypt the card image with the user's keys (from an archive: its one ROM, unpacked
+        to a work folder first and checked against the listing); the result must match the
+        hashes its partitions carry (`cards.prove_decrypted`)."""
+        source = step.source
+        work = moves.work_path(self.config, step.destination)
         try:
-            decrypt.decrypt_cci(self.settings, step.source, temp)
-        except decrypt.DecryptError as exc:
-            temp.unlink(missing_ok=True)
-            raise moves.MoveError(str(exc)) from exc
-        digest = hashlib.sha1(usedforsecurity=False)
-        size = 0
-        with temp.open("rb") as handle:
-            while chunk := handle.read(self.config.copy_chunk_bytes):
-                digest.update(chunk)
-                size += len(chunk)
-        padding = bytes.fromhex(step.padding_hex or "")
-        while padding and step.image_size and size < step.image_size:
-            count = min(self.config.copy_chunk_bytes, step.image_size - size)
-            digest.update(padding * count)
-            size += count
-        if digest.hexdigest() not in step.expect_sha1:
-            raise moves.MoveError(
-                f"the decrypted {step.source.name} is not the DAT's image: nothing was changed"
-            )
+            if step.member is not None:
+                try:
+                    work.mkdir()
+                except FileExistsError as exc:
+                    raise moves.MoveError(
+                        f"{work} already exists (left by an interrupted run?)"
+                    ) from exc
+                source = work / UNPACKED / PurePosixPath(step.member).name
+                source.parent.mkdir()
+                self.extract(self.settings, step.source, step.member, source)
+                listed = ((step.member_crc32 or "").lower(), step.member_size)
+                if crc_and_size(self.config.copy_chunk_bytes, source) != listed:
+                    raise moves.MoveError(f"{step.member} did not extract as the archive lists it")
+            try:
+                decrypt.decrypt_cci(self.settings, source, temp)
+            except decrypt.DecryptError as exc:
+                temp.unlink(missing_ok=True)
+                raise moves.MoveError(str(exc)) from exc
+            _drop_unpacked(work)
+            config = self.settings.card_images.get(step.card_image or "")
+            if config is None:
+                raise moves.MoveError(f"no card image format to check {step.source.name} with")
+            try:
+                cards.prove_decrypted(config, temp, stopping.check)
+            except cards.ProofError as exc:
+                raise moves.MoveError(
+                    f"the decrypted {Path(step.member or step.source.name).name} is not right "
+                    f"({exc}): nothing was changed"
+                ) from exc
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
 
     def _disc(self, step, temp: Path) -> None:
         """chdman makes the CHD; it must pass `verify`, and its tracks extracted back must

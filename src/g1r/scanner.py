@@ -298,10 +298,17 @@ def read_byte_orders(
 
 
 def read_cards(
-    settings: Settings, platform: str, root: Path, files, members, progress=None, cache=None
+    settings: Settings,
+    platform: str,
+    root: Path,
+    files,
+    members,
+    progress=None,
+    cache=None,
+    open_member: archives.MemberOpener = archives.open_seven_zip_member,
 ) -> dict:
-    """rel_path -> (CardInfo, zip member or None) for each card image the platform's header
-    format recognises: a bare file, or a zip's one ROM member."""
+    """rel_path -> (CardInfo, archive member or None) for each card image the platform's
+    header format recognises: a bare file, or a zip's or 7z's one ROM member."""
     profile = settings.platforms.profiles[platform]
     config = settings.card_images.get(profile.card_image or "")
     if config is None:
@@ -314,17 +321,30 @@ def read_cards(
     cache = cache or FileCache(None, "")
     name = step("card", config, sorted(exts))
 
+    def stream(path: Path, member: str):
+        return open_member(settings, path, member)
+
     def read(f: InventoryFile, member: str | None, size: int) -> list | None:
-        info = cards.read_ncsd(config, root / f.rel_path, member, size)
+        try:
+            info = cards.read_ncsd(config, root / f.rel_path, member, size, stream)
+        except archives.ArchiveError:
+            return None
         if info is None:
             return None
-        return [info.image_size, info.data_size, info.encrypted, info.product_code]
+        return [
+            info.image_size,
+            info.data_size,
+            info.encrypted,
+            info.product_code,
+            info.seed,
+            info.program_id,
+        ]
 
     found = {}
     for f in (progress or Progress()).each("Reading card headers", files):
         if f.kind == "rom":
             member, size = None, f.size
-        elif f.rel_path.lower().endswith(ZIP_SUFFIX) and len(inside.get(f.rel_path, [])) == 1:
+        elif f.kind == "archive" and len(inside.get(f.rel_path, [])) == 1:
             member, size = inside[f.rel_path][0].name, inside[f.rel_path][0].size
         else:
             continue
@@ -352,6 +372,7 @@ class Scanner:
         lookup_post: hasheous.Post = hasheous.http_post,
         read_chd: hashing.ChdReader = hashing.chd_track_hashes,
         read_rvz: hashing.RvzReader = hashing.rvz_disc_hash,
+        open_member: archives.MemberOpener = archives.open_seven_zip_member,
     ):
         self.settings = settings
         self.store = store
@@ -361,6 +382,7 @@ class Scanner:
         self.lookup_post = lookup_post
         self.read_chd = read_chd
         self.read_rvz = read_rvz
+        self.open_member = open_member
 
     def start(self, conn: sqlite3.Connection, label: str) -> int:
         reason = journal.busy(conn, label)
@@ -433,7 +455,14 @@ class Scanner:
             self.settings, folder.platform, root, files, found.members, progress, cache
         )
         found.cards = read_cards(
-            self.settings, folder.platform, root, files, found.members, progress, cache
+            self.settings,
+            folder.platform,
+            root,
+            files,
+            found.members,
+            progress,
+            cache,
+            self.open_member,
         )
         if self.settings.platforms.profiles[folder.platform].title_ids:
             self._title_ids(root, files, found, progress)
@@ -933,6 +962,22 @@ class Scanner:
             conn.executemany(
                 "INSERT INTO payload_hash VALUES (?, ?, ?, ?)",
                 [(label, rel, size, sha1) for rel, (size, sha1) in found.payloads.items()],
+            )
+            conn.executemany(
+                "INSERT INTO card_info VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                [
+                    (
+                        label,
+                        rel,
+                        info.image_size,
+                        info.data_size,
+                        info.encrypted,
+                        info.seed,
+                        info.product_code,
+                        info.program_id,
+                    )
+                    for rel, (info, _) in found.cards.items()
+                ],
             )
             conn.executemany(
                 "INSERT INTO file_note VALUES (?, ?, ?)",
