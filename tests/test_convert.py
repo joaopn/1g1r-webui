@@ -365,7 +365,9 @@ def test_a_failed_conversion_keeps_its_original_and_the_run_goes_on(
     journal.run(CONFIG, conn, run_id, "f", plan, convert, workers=1 + 1)
     run = journal.progress(conn, run_id)
     assert (run["status"], run["message"]) == ("failed", "3 files converted; 1 failed")
-    assert run["failed"] == [{"rel_path": "b.nes", "error": "chdman exited with 1"}]
+    assert run["failed"] == [
+        {"rel_path": "b.nes", "error": "chdman exited with 1", "action": "convert"}
+    ]
     assert sorted(started) == ["a.nes", "b.nes", "c.nes", "d.nes"]
     for name in ("a", "c", "d"):
         assert (folder / f"{name}.zip").exists() and not (folder / f"{name}.nes").exists()

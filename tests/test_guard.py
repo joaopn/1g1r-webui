@@ -196,7 +196,7 @@ def test_set_aside_moves_flagged_and_unsupported_files_and_restores_them(folder_
     assert all((manual / rel).exists() and not (folder / rel).exists() for rel in wanted)
     assert client.get("/api/folders/amiga").json()["unsupported"] == []
     feed = client.get("/api/notifications").json()
-    assert "Flagged and unsupported files" in {i["title"] for i in feed}
+    assert "Moved to discarded/" in {i["title"] for i in feed}
 
     listing = client.get("/api/folders/amiga/discarded").json()
     ids = [f["operation_id"] for f in listing["reasons"][0]["files"]]

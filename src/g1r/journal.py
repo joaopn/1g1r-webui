@@ -338,7 +338,8 @@ def plan_set_aside(
     rel_paths: list[str],
     eligible: set[str],
 ) -> list[Move]:
-    """Move flagged or unsupported files (`eligible`) to discarded/<label>/manual/."""
+    """Move flagged or unsupported files, or files a conversion failed on (`eligible`), to
+    discarded/<label>/manual/."""
     scanned = {
         r["rel_path"]: r
         for r in conn.execute(
@@ -349,8 +350,8 @@ def plan_set_aside(
     missing = [rel for rel in rel_paths if rel not in eligible or rel not in scanned]
     if missing:
         raise PlanError(
-            "these files are not flagged or unsupported (rescan?)",
-            [(m, "not flagged or unsupported") for m in missing],
+            "these files are not flagged, unsupported or failed to convert (rescan?)",
+            [(m, "not flagged, unsupported or failed to convert") for m in missing],
         )
     plan = []
     for rel in sorted(set(rel_paths)):
@@ -893,7 +894,8 @@ def progress(conn: sqlite3.Connection, run_id: int) -> dict | None:
         ).fetchall()
     )
     failed = conn.execute(
-        "SELECT rel_path, error FROM operation WHERE run_id = ? AND state = ?", (run_id, FAILED)
+        "SELECT rel_path, error, action FROM operation WHERE run_id = ? AND state = ?",
+        (run_id, FAILED),
     ).fetchall()
     return {
         **dict(run_row),
@@ -935,6 +937,18 @@ def last_conversion_end(conn: sqlite3.Connection, label: str) -> str | None:
         (label, APPLY, CONVERT),
     ).fetchone()
     return row["finished_at"] if row else None
+
+
+def failed_conversions(conn: sqlite3.Connection, label: str) -> set[str]:
+    """The files the folder's latest finished conversion could not convert (they may be set
+    aside to discarded/)."""
+    rows = conn.execute(
+        "SELECT o.rel_path FROM operation o WHERE o.action = ? AND o.state = ? AND o.run_id = "
+        "(SELECT id FROM apply_run WHERE folder_label = ? AND kind = ? AND scope = ? "
+        "AND finished_at IS NOT NULL ORDER BY id DESC LIMIT 1)",
+        (CONVERT, FAILED, label, APPLY, CONVERT),
+    )
+    return {r["rel_path"] for r in rows}
 
 
 def running_conversion(conn: sqlite3.Connection, label: str) -> dict | None:

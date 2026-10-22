@@ -20,7 +20,7 @@ TITLES = {
     APPLY_1G1R: "1G1R apply",
     journal.SCOPE_UNMATCHED: "Unmatched files",
     journal.SCOPE_EMPTY: "Empty discarded/",
-    journal.SCOPE_SET_ASIDE: "Flagged and unsupported files",
+    journal.SCOPE_SET_ASIDE: "Moved to discarded/",
     journal.RESTORE: "Restore",
 }
 

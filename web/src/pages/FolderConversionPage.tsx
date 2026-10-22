@@ -118,7 +118,7 @@ export function FolderConversionPage() {
         )}
       </section>
 
-      <RunPanel label={label} meta={meta.data} />
+      <RunPanel label={label} meta={meta.data} onMove={setAside.move} />
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="mr-auto font-semibold text-lg">Files</h2>

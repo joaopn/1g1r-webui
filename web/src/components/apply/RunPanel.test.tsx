@@ -22,7 +22,7 @@ const RUN: Run = {
   waiting_for: null,
 };
 
-function renderPanel(run: Run) {
+function renderPanel(run: Run, onMove?: (relPaths: string[]) => void) {
   const calls: { url: string; init?: RequestInit }[] = [];
   vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
     calls.push({ url, init });
@@ -31,7 +31,7 @@ function renderPanel(run: Run) {
   queryClient.clear();
   render(
     <QueryClientProvider client={queryClient}>
-      <RunPanel label="psx" meta={META} />
+      <RunPanel label="psx" meta={META} onMove={onMove} />
     </QueryClientProvider>,
   );
   return calls;
@@ -62,4 +62,32 @@ test("a conversion waiting for another folder's says which, and can still be sto
   expect(await screen.findByText("Waiting for the conversion of 3ds")).toBeInTheDocument();
   expect(screen.queryByText(/Conversion running/)).toBeNull();
   expect(screen.getByRole("button", { name: "Stop the conversion of psx" })).toBeEnabled();
+});
+
+test("a finished conversion offers to move the files it could not convert", async () => {
+  const moved: string[][] = [];
+  renderPanel(
+    {
+      ...RUN,
+      status: "failed",
+      finished_at: "2026-10-21T11:00:00Z",
+      message: "1 file converted; 2 failed",
+      failed: [
+        { rel_path: "a.3ds", error: "a.3ds is cut short", action: "convert" },
+        { rel_path: "b.3ds", error: "b.3ds is damaged", action: "convert" },
+        { rel_path: "c.3ds", error: "kept", action: "delete" },
+      ],
+    },
+    (relPaths) => moved.push(relPaths),
+  );
+  await userEvent.click(
+    await screen.findByRole("button", { name: "Move failed to discarded/ (2 files)" }),
+  );
+  expect(moved).toEqual([["a.3ds", "b.3ds"]]);
+});
+
+test("a running conversion offers no move yet", async () => {
+  renderPanel({ ...RUN, failed: [{ rel_path: "a.3ds", error: "x", action: "convert" }] }, () => {});
+  expect(await screen.findByText(/Conversion running/)).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /Move failed/ })).toBeNull();
 });

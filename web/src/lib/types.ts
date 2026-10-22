@@ -342,7 +342,8 @@ export type Run = {
   message: string;
   started_at: string;
   finished_at: string | null;
-  failed: { rel_path: string; error: string }[];
+  /** Steps that failed; `action` "convert" is a file a conversion could not convert. */
+  failed: { rel_path: string; error: string; action: string }[];
   /** A conversion not begun yet: the folder whose conversion it waits for ("" when about to
    * begin); null otherwise. */
   waiting_for: string | null;

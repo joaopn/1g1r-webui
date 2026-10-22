@@ -3,7 +3,8 @@ import { GuardedDialog } from "@/components/apply/GuardedDialog";
 import { formatFiles } from "@/lib/format";
 import type { Meta } from "@/lib/types";
 
-/** Review, then move flagged or unsupported files to discarded/<label>/manual/ (restorable). */
+/** Review, then move flagged or unsupported files, or files a conversion failed on, to
+ * discarded/<label>/manual/ (restorable). */
 export function useSetAside(label: string, meta: Meta | undefined) {
   const [relPaths, setRelPaths] = useState<string[] | null>(null);
   const dialog =

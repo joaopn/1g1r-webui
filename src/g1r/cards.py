@@ -190,6 +190,22 @@ def _sha256(
     return digest.digest()
 
 
+def trailing_fill(stream: BinaryIO, chunk: int, tick: Callable[[], None]) -> tuple[int, int]:
+    """Where the run of one byte value that ends the stream starts, and that value. An image
+    copied or downloaded only in part and filled up to its size ends in a run that reaches
+    back into the data; on a whole card the run is only the padding after the partitions."""
+    position = start = 0
+    value = -1
+    while block := stream.read(chunk):
+        tick()
+        last = block[-1]
+        kept = len(block.rstrip(bytes([last])))
+        if kept or last != value:
+            start, value = position + kept, last
+        position += len(block)
+    return start, value
+
+
 def _align(value: int, block: int) -> int:
     return -(-value // block) * block
 

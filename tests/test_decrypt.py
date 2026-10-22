@@ -211,6 +211,49 @@ def test_only_a_right_decryption_is_kept(n3ds, make_settings, keys_root, roms_ro
     assert sorted(p.name for p in folder.iterdir()) == ["P (USA).3ds"]
 
 
+def test_an_image_filled_up_after_a_cut_says_where_the_data_ends(
+    n3ds, make_settings, keys_root, roms_root, fake_decrypt
+):
+    client, folder = n3ds
+    (keys_root / "boot9_prot.bin").write_bytes(b"key")
+    config = make_settings().card_images["ncsd"]
+    # Only the start of the game data arrived; the rest of the file is zeros up to its size.
+    cut = regions(config)["RomFS (level 3"] + 10
+    locked = card(make_settings, encrypted=True)
+    locked = locked[:cut] + bytes(len(locked) - cut)
+    (folder / "P (USA).3ds").write_bytes(locked)
+    scan(client)
+    clear = card(make_settings, encrypted=False)
+    fake_decrypt["P (USA).3ds"] = clear[:cut] + bytes(len(clear) - cut)
+    run = convert(client)
+    error = run["failed"][0]["error"]
+    assert "is cut short: from about 1 MB to its end it holds only 00 bytes" in error, error
+    assert (folder / "P (USA).3ds").read_bytes() == locked
+
+    # The failed file can then be moved to discarded/ like a flagged one.
+    body = {"rel_paths": ["P (USA).3ds"]}
+    plan = client.post("/api/folders/3ds/set-aside/preview", json=body).json()
+    assert plan["problems"] == [] and len(plan["files"]) == 1
+    client.post("/api/folders/3ds/set-aside", json={**body, "token": plan["token"]})
+    for _ in range(5000):
+        if client.get("/api/folders/3ds/run").json()["status"] != "running":
+            break
+    assert (roms_root / "discarded/3ds/manual/P (USA).3ds").read_bytes() == locked
+    assert not (folder / "P (USA).3ds").exists()
+
+
+def test_the_fill_that_ends_a_file_is_found():
+    for data, want in (
+        (b"abc" + b"\0" * 9, (3, 0)),
+        (b"abc\xff", (3, 255)),
+        (b"\0" * 5, (0, 0)),
+        (b"ab" + b"\0" * 3 + b"\xff" * 4, (5, 255)),
+        (b"a" * 4 + b"b" * 4, (4, ord("b"))),
+    ):
+        for chunk in (1, 2, 3, 4, 64):
+            assert cards.trailing_fill(io.BytesIO(data), chunk, lambda: None) == want, (data, chunk)
+
+
 def test_a_trimmed_image_stays_trimmed(n3ds, make_settings, keys_root, fake_decrypt):
     # Trimming cuts the card's padding, which no hash covers.
     client, folder = n3ds

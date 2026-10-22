@@ -214,17 +214,36 @@ class Converter:
                 cards.prove_decrypted(config, temp, stopping.check)
             except cards.ProofError as exc:
                 if exc.damaged:
-                    at = max(1, exc.offset // config.proof.report_unit_bytes)
+                    unit, unit_bytes = config.proof.report_unit, config.proof.report_unit_bytes
+                    if (found := self._trailing_fill(step)) and found[0] <= exc.offset:
+                        fill, value = found
+                        raise moves.MoveError(
+                            f"{name} is cut short: from about {max(1, fill // unit_bytes)} {unit}"
+                            f" to its end it holds only {value:02x} bytes where data belongs"
+                            f" (likely an incomplete copy or download; {exc}); nothing was"
+                            " changed"
+                        ) from exc
                     raise moves.MoveError(
-                        f"{name} is damaged about {at} {config.proof.report_unit} in: {exc},"
-                        " though the keys proved right"
-                        " (likely a bad dump); nothing was changed"
+                        f"{name} is damaged about {max(1, exc.offset // unit_bytes)} {unit} in:"
+                        f" {exc}, though the keys proved right (likely a bad dump); nothing was"
+                        " changed"
                     ) from exc
                 raise moves.MoveError(
                     f"the decrypted {name} is not right ({exc}): nothing was changed"
                 ) from exc
         finally:
             shutil.rmtree(work, ignore_errors=True)
+
+    def _trailing_fill(self, step) -> tuple[int, int] | None:
+        """`cards.trailing_fill` of the original, read again (an unpacked copy is gone): a
+        file or a zip member. None for a 7z member, which 7-Zip streams only for a while."""
+        if step.member is not None and step.source.suffix.lower() != conversion.ZIP_SUFFIX:
+            return None
+        try:
+            with cards.open_payload(step.source, step.member) as stream:
+                return cards.trailing_fill(stream, self.config.copy_chunk_bytes, stopping.check)
+        except (OSError, zipfile.BadZipFile, KeyError) as exc:
+            raise moves.MoveError(f"cannot read {step.source.name} again: {exc}") from exc
 
     def _disc(self, step, temp: Path) -> None:
         """chdman makes the CHD; it must pass `verify`, and its tracks extracted back must

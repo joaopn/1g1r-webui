@@ -1016,6 +1016,7 @@ def build_router(
             f["rel_path"]
             for f in scanner.unsupported_files(conn, label, profile.rom_extensions, profile.romsets)
         }
+        eligible |= journal.failed_conversions(conn, label)
         try:
             plan = journal.plan_set_aside(conn, label, root, gone, body.rel_paths, eligible)
         except journal.PlanError as exc:

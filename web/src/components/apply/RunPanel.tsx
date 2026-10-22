@@ -1,8 +1,8 @@
-import { Square } from "lucide-react";
+import { Archive, Square } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { useStopConversion, waitingText } from "@/lib/conversion";
-import { formatCount, formatWhen } from "@/lib/format";
+import { formatCount, formatFiles, formatWhen } from "@/lib/format";
 import { invalidateFolder, useRun } from "@/lib/queries";
 import type { Meta } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -13,8 +13,18 @@ const SCOPE_VERBS: Record<string, string> = {
   empty: "Emptying discarded/",
 };
 
-/** The folder's latest apply or restore: progress while it runs, its outcome after. */
-export function RunPanel({ label, meta }: { label: string; meta: Meta }) {
+/** The folder's latest apply or restore: progress while it runs, its outcome after. With
+ * `onMove`, a finished conversion offers to move the files it could not convert to
+ * discarded/. */
+export function RunPanel({
+  label,
+  meta,
+  onMove,
+}: {
+  label: string;
+  meta: Meta;
+  onMove?: (relPaths: string[]) => void;
+}) {
   const run = useRun(label, meta.ui.poll_interval_ms).data;
   const stop = useStopConversion(label);
   const running = run?.status === "running";
@@ -26,6 +36,10 @@ export function RunPanel({ label, meta }: { label: string; meta: Meta }) {
   }, [running, label]);
   if (!run) return null;
   const verb = run.kind === "restore" ? "Restore" : (SCOPE_VERBS[run.scope] ?? "Apply");
+  const unconverted =
+    !running && run.kind === "apply" && run.scope === "convert"
+      ? run.failed.filter((f) => f.action === "convert").map((f) => f.rel_path)
+      : [];
   return (
     <section
       data-testid="run-panel"
@@ -65,6 +79,18 @@ export function RunPanel({ label, meta }: { label: string; meta: Meta }) {
             </li>
           ))}
         </ul>
+      ) : null}
+      {onMove && unconverted.length > 0 ? (
+        <Button
+          size="sm"
+          variant="outline"
+          className="mt-2"
+          title="Review, then move the files that could not be converted to discarded/ (can be restored)"
+          onClick={() => onMove(unconverted)}
+        >
+          <Archive className="size-3.5" aria-hidden="true" />
+          Move failed to discarded/ ({formatFiles(unconverted.length)})
+        </Button>
       ) : null}
     </section>
   );
