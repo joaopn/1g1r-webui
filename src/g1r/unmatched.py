@@ -62,7 +62,7 @@ def assign(
 ) -> None:
     """Link a file to a DAT entry by hand (or undo that); it applies now and on every scan.
     `dat_sha1`: the DAT the name is read with (the first of the platform's to list it)."""
-    conn.execute("BEGIN")
+    conn.execute("BEGIN IMMEDIATE")
     try:
         conn.execute(
             "DELETE FROM manual_identity WHERE folder_label = ? AND rel_path = ?",

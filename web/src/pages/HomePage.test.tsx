@@ -105,7 +105,7 @@ test("a running conversion fills the card by steps finished, with the files fail
   renderPage([
     {
       ...card("psx", "psx", SCAN),
-      converting: { done: 30, total: 40, failed: 2, stopping: false },
+      converting: { done: 30, total: 40, failed: 2, stopping: false, waiting_for: null },
     },
   ]);
   expect(await screen.findByTestId("conversion-status-psx")).toHaveTextContent(
@@ -116,8 +116,20 @@ test("a running conversion fills the card by steps finished, with the files fail
   expect(screen.getByRole("button", { name: "Scan psx" })).toBeDisabled();
 });
 
+test("a conversion waiting for another set's says which on the card", async () => {
+  renderPage([
+    {
+      ...card("psx", "psx", SCAN),
+      converting: { done: 0, total: 4, failed: 0, stopping: false, waiting_for: "3ds" },
+    },
+  ]);
+  expect(await screen.findByTestId("conversion-status-psx")).toHaveTextContent(
+    /^Waiting for the conversion of 3ds$/,
+  );
+});
+
 test("Stop on the card stops the set's conversion; a stopping one says so", async () => {
-  const converting = { done: 1, total: 4, failed: 0, stopping: false };
+  const converting = { done: 1, total: 4, failed: 0, stopping: false, waiting_for: null };
   const calls = renderPage([
     { ...card("psx", "psx", SCAN), converting },
     { ...card("gb", "gb", SCAN), converting: { ...converting, stopping: true } },
@@ -137,7 +149,7 @@ test("Simplified: a running conversion leads the warnings block", async () => {
   renderPage([
     {
       ...filled(card("psx", "psx", SCAN)),
-      converting: { done: 0, total: 4, failed: 0, stopping: false },
+      converting: { done: 0, total: 4, failed: 0, stopping: false, waiting_for: null },
     },
   ]);
   expect(await screen.findByTestId("warnings-psx")).toContainElement(

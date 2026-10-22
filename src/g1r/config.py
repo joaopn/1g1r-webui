@@ -385,7 +385,8 @@ class ArchivesConfig(_Strict):
 class JobsConfig(_Strict):
     scan_workers: int = Field(gt=0)
     max_scan_workers: int = Field(gt=0)
-    apply_workers: int = Field(gt=0)
+    conversion_runs: int = Field(gt=0)
+    other_runs: int = Field(gt=0)
     conversion_workers: int = Field(gt=0)
     max_conversion_workers: int = Field(gt=0)
 

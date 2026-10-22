@@ -1,7 +1,7 @@
 import { Square } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { useStopConversion } from "@/lib/conversion";
+import { useStopConversion, waitingText } from "@/lib/conversion";
 import { formatCount, formatWhen } from "@/lib/format";
 import { invalidateFolder, useRun } from "@/lib/queries";
 import type { Meta } from "@/lib/types";
@@ -37,8 +37,12 @@ export function RunPanel({ label, meta }: { label: string; meta: Meta }) {
       {running ? (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <p>
-            {verb} {run.stopping ? "stopping" : "running"}: {formatCount(run.done)} of{" "}
-            {formatCount(run.total)} steps…
+            {waitingText(run.waiting_for) ?? (
+              <>
+                {verb} {run.stopping ? "stopping" : "running"}: {formatCount(run.done)} of{" "}
+                {formatCount(run.total)} steps…
+              </>
+            )}
           </p>
           {run.kind === "apply" && run.scope === "convert" ? (
             <StopButton

@@ -816,10 +816,14 @@ jobs:
   # set in Settings -> Advanced, up to max_scan_workers.
   scan_workers: 4
   max_scan_workers: 16
-  # Apply runs (moves, conversions, restores) run one at a time, apart from scans, so an
-  # apply never waits behind a long scan; one at a time keeps each run's free-space check
-  # true while it runs.
-  apply_workers: 1
+  # Runs that change files run apart from scans, so none waits behind a long scan.
+  # Conversion runs go one at a time across every folder: each run's free-space check stays
+  # true while it runs, and they are the heavy disk and CPU work. A conversion waiting for
+  # another folder's says which one it waits for.
+  conversion_runs: 1
+  # Every other run (1G1R apply, moving or deleting files, emptying discarded/, restore) needs
+  # no free space and starts at once, one per folder; at most this many at a time.
+  other_runs: 16
   # Inside a conversion run, this many files convert at a time, each through its whole
   # pipeline (unpack, convert, verify, move or delete the original), unless set in
   # Settings -> Advanced, up to max_conversion_workers.

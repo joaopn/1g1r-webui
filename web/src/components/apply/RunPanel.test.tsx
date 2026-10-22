@@ -19,6 +19,7 @@ const RUN: Run = {
   started_at: "2026-10-21T10:00:00Z",
   finished_at: null,
   failed: [],
+  waiting_for: null,
 };
 
 function renderPanel(run: Run) {
@@ -54,4 +55,11 @@ test("other runs have no Stop button", async () => {
   renderPanel({ ...RUN, scope: "" });
   expect(await screen.findByText(/Apply running/)).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: /Stop/ })).toBeNull();
+});
+
+test("a conversion waiting for another folder's says which, and can still be stopped", async () => {
+  renderPanel({ ...RUN, done: 0, waiting_for: "3ds" });
+  expect(await screen.findByText("Waiting for the conversion of 3ds")).toBeInTheDocument();
+  expect(screen.queryByText(/Conversion running/)).toBeNull();
+  expect(screen.getByRole("button", { name: "Stop the conversion of psx" })).toBeEnabled();
 });

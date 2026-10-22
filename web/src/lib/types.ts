@@ -176,7 +176,14 @@ export type FolderCard = FolderInfo & {
   discarded: { files: number; bytes: number };
   /** The conversion running in the folder: steps finished of the planned total, files failed,
    * and whether a stop was asked for. */
-  converting: { done: number; total: number; failed: number; stopping: boolean } | null;
+  converting: {
+    done: number;
+    total: number;
+    failed: number;
+    stopping: boolean;
+    /** Not begun: the folder whose conversion it waits for ("" when about to begin). */
+    waiting_for: string | null;
+  } | null;
   warnings: FolderWarning[];
 };
 
@@ -336,6 +343,9 @@ export type Run = {
   started_at: string;
   finished_at: string | null;
   failed: { rel_path: string; error: string }[];
+  /** A conversion not begun yet: the folder whose conversion it waits for ("" when about to
+   * begin); null otherwise. */
+  waiting_for: string | null;
 };
 
 export type Game = {

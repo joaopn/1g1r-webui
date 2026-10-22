@@ -547,11 +547,25 @@ def preflight(
 # Running --------------------------------------------------------------------------
 
 
+def is_conversion(kind: str, scope: str) -> bool:
+    """A conversion run: one at a time across folders (the others start at once)."""
+    return kind == APPLY and scope == CONVERT
+
+
 def start_run(conn: sqlite3.Connection, label: str, kind: str, scope: str, total: int) -> int:
     return conn.execute(
         "INSERT INTO apply_run (folder_label, kind, scope, status, total) VALUES (?, ?, ?, ?, ?)",
         (label, kind, scope, RUNNING, total),
     ).lastrowid
+
+
+def begin_run(conn: sqlite3.Connection, run_id: int) -> None:
+    """The run's turn has come: it works on its files from now on (until then a conversion
+    waits for another folder's)."""
+    conn.execute(
+        "UPDATE apply_run SET began_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?",
+        (run_id,),
+    )
 
 
 def _finish_run(conn: sqlite3.Connection, run_id: int, status: str, message: str) -> None:
@@ -635,7 +649,8 @@ def _wrapped_members(m: Move) -> list[tuple]:
 def _settle(conn, kind: str, label: str, op_id: int, m: Move, moved) -> None:
     """The step is done: record it and update where the table finds the files."""
     members = _wrapped_members(m) if m.action == CONVERT else []
-    conn.execute("BEGIN")
+    # Write lock first: runs of other folders write at the same time.
+    conn.execute("BEGIN IMMEDIATE")
     try:
         _set_state(conn, op_id, DONE, moved=moved)
         if m.action == MOVE:
@@ -885,7 +900,23 @@ def progress(conn: sqlite3.Connection, run_id: int) -> dict | None:
         "stopping": bool(run_row["stopping"]),
         "done": states.get(DONE, 0) + states.get(RESTORED, 0),
         "failed": [dict(r) for r in failed],
+        "waiting_for": waiting_for(conn, run_row),
     }
+
+
+def waiting_for(conn: sqlite3.Connection, run_row: sqlite3.Row) -> str | None:
+    """For a conversion not begun yet: the folder whose conversion it waits for ("" when that
+    one has just ended and this one is about to begin). None for any other run."""
+    if run_row["status"] != RUNNING or run_row["began_at"] is not None:
+        return None
+    if not is_conversion(run_row["kind"], run_row["scope"]):
+        return None
+    ahead = conn.execute(
+        "SELECT folder_label FROM apply_run WHERE status = ? AND kind = ? AND scope = ? "
+        "AND began_at IS NOT NULL AND id != ? ORDER BY id LIMIT 1",
+        (RUNNING, APPLY, CONVERT, run_row["id"]),
+    ).fetchone()
+    return ahead["folder_label"] if ahead else ""
 
 
 def latest_run(conn: sqlite3.Connection, label: str) -> dict | None:
@@ -908,10 +939,11 @@ def last_conversion_end(conn: sqlite3.Connection, label: str) -> str | None:
 
 def running_conversion(conn: sqlite3.Connection, label: str) -> dict | None:
     """The folder's conversion while it runs: steps finished (failed ones too) of the
-    planned total, how many files failed so far, and whether a stop was asked for. None when
-    no conversion runs."""
+    planned total, how many files failed so far, whether a stop was asked for, and the folder
+    whose conversion it waits for while not begun (`waiting_for`). None when no conversion
+    runs."""
     run_row = conn.execute(
-        "SELECT id, total, stopping FROM apply_run WHERE folder_label = ? AND kind = ? "
+        "SELECT * FROM apply_run WHERE folder_label = ? AND kind = ? "
         "AND scope = ? AND status = ? ORDER BY id DESC LIMIT 1",
         (label, APPLY, CONVERT, RUNNING),
     ).fetchone()
@@ -927,6 +959,7 @@ def running_conversion(conn: sqlite3.Connection, label: str) -> dict | None:
         "total": run_row["total"],
         "failed": failed,
         "stopping": bool(run_row["stopping"]),
+        "waiting_for": waiting_for(conn, run_row),
     }
 
 

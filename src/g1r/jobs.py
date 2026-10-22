@@ -2,10 +2,11 @@
 
 Scans of different folders run side by side, as many as the library's limit allows (read
 again whenever a scan waits, so a new limit applies at once); queued scans start in order.
-Applies run apart from them, so an apply never waits behind a long scan; a conversion run
-converts several files at a time, as many as the library's limit allows when it starts. Each
-job opens its own connection. Starting a job goes through one lock, so a scan and an apply can
-never both start on a folder.
+Runs that change files run apart from them, so none waits behind a long scan. Conversion runs
+go one at a time across folders (each one's free-space check holds while it runs); a
+conversion run converts several files at a time, as many as the library's limit allows when it
+starts. Every other run starts at once, one per folder. Each job opens its own connection.
+Starting a job goes through one lock, so a scan and a run can never both start on a folder.
 """
 
 import threading
@@ -30,8 +31,11 @@ class Jobs:
         self.gate = threading.Condition()
         self.queued: deque[int] = deque()
         self.running = 0
+        self.conversions = ThreadPoolExecutor(
+            max_workers=settings.jobs.conversion_runs, thread_name_prefix="g1r-convert"
+        )
         self.applies = ThreadPoolExecutor(
-            max_workers=settings.jobs.apply_workers, thread_name_prefix="g1r-apply"
+            max_workers=settings.jobs.other_runs, thread_name_prefix="g1r-apply"
         )
         self.starting = threading.Lock()
         # The stop event of each apply run under way, by run id.
@@ -97,13 +101,15 @@ class Jobs:
             workers = store.parallel_conversions(store.load())
             run_id = journal.start_run(conn, label, kind, scope, len(plan))
             self.stops[run_id] = threading.Event()
-        self.applies.submit(self._run_apply, run_id, label, plan, workers, after)
+        pool = self.conversions if journal.is_conversion(kind, scope) else self.applies
+        pool.submit(self._run_apply, run_id, label, plan, workers, after)
         return run_id
 
     def _run_apply(self, run_id: int, label: str, plan, workers: int, after=None) -> None:
         conn = self._connect()
         stop = self.stops[run_id]
         try:
+            journal.begin_run(conn, run_id)
             journal.run(
                 self.settings.apply, conn, run_id, label, plan, self.converter, workers, stop
             )
@@ -125,5 +131,5 @@ class Jobs:
         return True
 
     def shutdown(self) -> None:
-        for pool in (self.scans, self.applies):
+        for pool in (self.scans, self.conversions, self.applies):
             pool.shutdown(wait=True, cancel_futures=True)

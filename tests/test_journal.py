@@ -229,6 +229,7 @@ def test_running_conversion_counts_finished_steps_and_failed_files(tmp_path):
     assert journal.running_conversion(conn, "f") is None  # a 1G1R apply is not a conversion
     conn.execute("UPDATE apply_run SET status = 'done' WHERE id = ?", (moves_run,))
     run_id = journal.start_run(conn, "f", journal.APPLY, journal.CONVERT, 1 + 1 + 1 + 1)
+    journal.begin_run(conn, run_id)
     for state, action in (
         ("done", journal.CONVERT),
         ("done", journal.DELETE),
@@ -246,6 +247,7 @@ def test_running_conversion_counts_finished_steps_and_failed_files(tmp_path):
         "total": 1 + 1 + 1 + 1,
         "failed": 1,
         "stopping": False,
+        "waiting_for": None,
     }
     assert journal.running_conversion(conn, "other") is None
     conn.execute("UPDATE apply_run SET status = 'failed' WHERE id = ?", (run_id,))

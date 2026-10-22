@@ -9,7 +9,7 @@ import { type ChipTone, QuickViewBar } from "@/components/QuickViewBar";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ApiError, api } from "@/lib/api";
-import { useStopConversion } from "@/lib/conversion";
+import { useStopConversion, waitingText } from "@/lib/conversion";
 import { formatBytes, formatCount, formatFiles, formatWhen } from "@/lib/format";
 import { foldersByName } from "@/lib/platforms";
 import { invalidateFolder, useFolders, useMeta } from "@/lib/queries";
@@ -139,7 +139,11 @@ function conversionProgress(folder: FolderCard): { fraction: number; text: React
     fraction,
     text: (
       <>
-        {run.stopping ? "Stopping" : "Converting"}: {PERCENT.format(fraction)}
+        {waitingText(run.waiting_for) ?? (
+          <>
+            {run.stopping ? "Stopping" : "Converting"}: {PERCENT.format(fraction)}
+          </>
+        )}
         {run.failed > 0 ? (
           <span className="text-status-bad"> · {formatFiles(run.failed)} failed</span>
         ) : null}
