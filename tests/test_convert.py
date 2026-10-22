@@ -1,3 +1,4 @@
+import os
 import subprocess
 import threading
 import time
@@ -594,3 +595,30 @@ def test_a_repack_refuses_links(make_settings, tmp_path):
     with pytest.raises(moves.MoveError, match="link"):
         convert(step(archive, here / "L.zip", recipe=conversion.RECIPE_REPACK))
     assert sorted(p.name for p in here.iterdir()) == ["L.7z"]
+
+
+@pytest.mark.parametrize(
+    ("same_bytes", "carried"),
+    [(True, 1), (False, 0)],
+)
+def test_an_output_with_other_bytes_does_not_inherit_hashes(tmp_path, same_bytes, carried):
+    """A decryption or a byteswap writes other bytes: its output keeps the identity, never
+    the original's hashes (shown for unmatched files, used for identical copies)."""
+    conn = db.connect(tmp_path / "state.db", 1000)
+    db.migrate(conn)
+    conn.execute(
+        "INSERT INTO folder_file (folder_label, rel_path, size, mtime_ns, kind) "
+        "VALUES ('f', 'a.v64', 4, 1, 'rom')"
+    )
+    conn.execute(
+        "INSERT INTO identity (folder_label, rel_path, game_name, method, dat_sha1) "
+        "VALUES ('f', 'a.v64', 'A', 'dat-checksum', 's')"
+    )
+    conn.execute("INSERT INTO payload_hash VALUES ('f', 'a.v64', 4, 'old')")
+    conn.execute("INSERT INTO content_hash VALUES ('f', 'a.v64', 'full', 4, 'c', 'm', 'old')")
+    moved = os.stat(tmp_path / "state.db")
+    journal.carry_over(conn, "f", "a.v64", "a.z64", moved, [], same_bytes)
+    count = "SELECT COUNT(*) FROM {} WHERE rel_path = 'a.z64'"
+    assert conn.execute(count.format("identity")).fetchone()[0] == 1
+    assert conn.execute(count.format("payload_hash")).fetchone()[0] == carried
+    assert conn.execute(count.format("content_hash")).fetchone()[0] == carried

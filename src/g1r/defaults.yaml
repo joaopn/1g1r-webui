@@ -736,6 +736,9 @@ igir:
 # this many bytes at a time, whatever the file's size.
 hashing:
   chunk_bytes: 1048576
+  # Looking for identical copies first compares the SHA1 of each file's first bytes (this
+  # many): only files whose size and first bytes are equal are read whole.
+  probe_bytes: 1048576
 
 # Online identification for files the local DAT misses. Off until switched on in
 # Settings -> Online lookups; only content hashes (CRC32, MD5, SHA1) are sent.

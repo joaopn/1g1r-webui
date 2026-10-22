@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from g1r import hashing
+
 from .test_api import scanned, setup  # noqa: F401  (fixture)
 from .test_journal import versions, wait_run
 from .test_scanner import write_zip
@@ -77,3 +79,29 @@ def test_different_data_of_the_same_size_is_not_a_duplicate(setup, roms_root):  
     assert "solo-ish.zip" not in versions(client)
     unmatched = [f["rel_path"] for f in client.get("/api/folders/nes/unmatched").json()]
     assert "solo-ish.zip" in unmatched
+
+
+def test_same_size_files_whose_start_differs_are_never_read_whole(
+    setup,  # noqa: F811
+    roms_root,
+    monkeypatch,
+):
+    """Copies are found by size, then by the SHA1 of their first bytes, then by their full
+    SHA1: an identified file the same size as an unmatched one, but starting differently,
+    is never hashed whole."""
+    client, _, _ = setup
+    write_zip(roms_root / "NES Set" / "solo-ish.zip", "s.nes", b"Xolo (Japan)")
+    whole = []
+    payloads = hashing.payloads
+
+    def recorded(settings, path, *args, limit=None, **kwargs):
+        if limit is None:
+            whole.append(path.name)
+        return payloads(settings, path, *args, limit=limit, **kwargs)
+
+    monkeypatch.setattr(hashing, "payloads", recorded)
+    scanned(client)
+    assert "Solo (Japan).zip" not in whole
+    assert "solo-ish.zip" in {
+        f["rel_path"] for f in client.get("/api/folders/nes/unmatched").json()
+    }

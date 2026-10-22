@@ -21,7 +21,6 @@ from g1r import (
     archives,
     cards,
     conversion,
-    discs,
     fuzzy,
     hasheous,
     hashing,
@@ -43,8 +42,8 @@ from g1r.hashing import (
     content_hashes,
     magic_length,
     payload_count,
-    payload_sha1,
     payloads,
+    probe_sha1,
     rvz_identity,
     word_bytes,
 )
@@ -684,24 +683,26 @@ class Scanner:
                 found.identify(f.rel_path, native - as_is, METHOD_BYTESWAPPED, dat=sha1)
         self._untrimmed(platform, root, unmatched(), dat, found, progress, sha1, named)
 
-    def _hash(self, platform, root, files, found: "Found", progress, stage: str) -> None:
-        """CRC32, MD5 and SHA1 of each file's ROM data, for lookups and the table."""
-        profile = self.settings.platforms.profiles[platform]
-        name = step(
-            "content-hashes",
-            profile.rom_extensions,
-            self.settings.headers.get(platform, []),
-            self.settings.byte_orders.get(platform),
-            self.settings.lookups.chd,
-            self.settings.dolphin,
-        )
-        for f in progress.each(stage, [f for f in files if f.rel_path not in found.hashes]):
+    def _content_hashes(self, platform, root, f: InventoryFile, found: "Found") -> list:
+        """A file's hashes (CRC32, MD5, SHA1 of each ROM payload, header-stripped too; a
+        CHD's data track, an RVZ's disc): read once, then from the scan cache while the file
+        is unchanged. Every step that needs a file's hashes asks here."""
+        if f.rel_path not in found.hashes:
+            profile = self.settings.platforms.profiles[platform]
+            name = step(
+                "content-hashes",
+                profile.rom_extensions,
+                self.settings.headers.get(platform, []),
+                self.settings.byte_orders.get(platform),
+                self.settings.lookups.chd,
+                self.settings.dolphin,
+            )
             found.hashes[f.rel_path] = [
                 ContentHash(**h)
                 for h in found.cache.get(
                     f,
                     name,
-                    lambda f=f: [
+                    lambda: [
                         asdict(h)
                         for h in content_hashes(
                             self.settings,
@@ -713,6 +714,12 @@ class Scanner:
                     ],
                 )
             ]
+        return found.hashes[f.rel_path]
+
+    def _hash(self, platform, root, files, found: "Found", progress, stage: str) -> None:
+        """CRC32, MD5 and SHA1 of each file's ROM data, for lookups and the table."""
+        for f in progress.each(stage, [f for f in files if f.rel_path not in found.hashes]):
+            self._content_hashes(platform, root, f, found)
 
     def _why_no_hashes(self, f: InventoryFile, found: "Found") -> str:
         """Why an unmatched file has nothing to look up."""
@@ -810,16 +817,30 @@ class Scanner:
             for f, size in identified
             if size in unmatched_sizes or any(per_game[(g, size)] > 1 for g in games[f.rel_path])
         ] + [(f, size) for f, size in unmatched if size in identified_sizes]
-        byte_order = self.settings.byte_orders.get(platform)
-        name = step("payload-sha1", sorted(rom_extensions), byte_order)
-        for f, size in progress.each("Looking for duplicates", wanted):
-            sha1 = found.cache.get(
-                f,
-                name,
-                lambda f=f: payload_sha1(
-                    self.settings, root / f.rel_path, rom_extensions, self._rvz_sha1, byte_order
-                ),
+        # Identical copies have equal sizes, then equal first bytes (the probe), then equal
+        # SHA1s: only files whose size and probe are shared are read whole.
+        probe = step("probe", sorted(rom_extensions), self.settings.hashing.probe_bytes)
+        keys: dict[str, tuple] = {}
+        for f, size in progress.each("Comparing the start of possible duplicates", wanted):
+            if f.rel_path.lower().endswith((CHD_SUFFIX, RVZ_SUFFIX)):
+                # Their key names the disc already (a CHD's is its header's SHA1).
+                keys[f.rel_path] = (size, "")
+                continue
+            start = found.cache.get(
+                f, probe, lambda f=f: probe_sha1(self.settings, root / f.rel_path, rom_extensions)
             )
+            if start is not None:
+                keys[f.rel_path] = (size, start)
+        shared = Counter(keys.values())
+        alike = [(f, size) for f, size in wanted if shared[keys.get(f.rel_path)] > 1]
+        for f, size in progress.each("Looking for duplicates", alike):
+            if f.rel_path.lower().endswith(CHD_SUFFIX):
+                identity = chd_identity(root / f.rel_path)
+                sha1 = identity[1] if identity else None
+            else:
+                hashes = self._content_hashes(platform, root, f, found)
+                full = [h for h in hashes if h.variant == hashing.FULL]
+                sha1 = full[0].sha1 if payload_count(hashes) == 1 and full else None
             if sha1 is not None:
                 # An RVZ's key starts with the disc's size, which is what is stored.
                 stored = int(size.split(":")[0]) if isinstance(size, str) else size
@@ -892,13 +913,6 @@ class Scanner:
             found.identify(
                 f.rel_path, index.get((crc, info.image_size), set()), METHOD_UNTRIMMED, dat=sha1
             )
-
-    def _rvz_sha1(self, path: Path) -> str | None:
-        dolphin = self.settings.dolphin
-        try:
-            return discs.rvz_sha1(dolphin, self.settings.paths.data_dir / dolphin.user_dir, path)
-        except discs.DiscError:
-            return None
 
     def _suggest(
         self, dat_of_name, dats: list[Dat], unmatched: list[InventoryFile], found: "Found", progress

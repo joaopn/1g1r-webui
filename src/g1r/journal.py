@@ -70,6 +70,13 @@ CARRIED = (
 )
 
 
+# The hash rows of those: carried only by conversions that keep the ROM's bytes (a zip made
+# or unmade, an archive repacked); a disc, a decryption or a byteswap writes other bytes,
+# hashed again by the next scan.
+HASH_ROWS = ("content_hash", "payload_hash")
+SAME_BYTES = (conversion.RECIPE_WRAP, conversion.RECIPE_UNWRAP, conversion.RECIPE_REPACK)
+
+
 class PlanError(RuntimeError):
     """The plan cannot run; the message (and per-file problems) are shown to the user."""
 
@@ -593,8 +600,11 @@ def _set_state(conn, op_id: int, state: str, error: str = "", moved=None) -> Non
     )
 
 
-def carry_over(conn, label: str, old: str, new: str, moved, members: list[tuple]) -> None:
-    """Give a conversion's output (`new`) the scan rows of its original (`old`)."""
+def carry_over(
+    conn, label: str, old: str, new: str, moved, members: list[tuple], same_bytes: bool = True
+) -> None:
+    """Give a conversion's output (`new`) the scan rows of its original (`old`); its hash
+    rows only when it holds the same ROM bytes (`same_bytes`)."""
     kind = "archive" if members else "rom"
     # A file of that name in discarded/ (an earlier conversion's original) loses its row, as
     # a rescan does when its path reappears: it is still listed in discarded/, and restoring
@@ -609,6 +619,8 @@ def carry_over(conn, label: str, old: str, new: str, moved, members: list[tuple]
         (label, new, moved.st_size, moved.st_mtime_ns, kind),
     )
     for table in CARRIED:
+        if table in HASH_ROWS and not same_bytes:
+            continue
         columns = [
             c[1]
             for c in conn.execute(f"PRAGMA table_info({table})")
@@ -669,7 +681,9 @@ def _settle(conn, kind: str, label: str, op_id: int, m: Move, moved) -> None:
                 (place, label, m.rel_path),
             )
         elif m.action == CONVERT:
-            carry_over(conn, label, m.rel_path, m.paired_rel, moved, members)
+            carry_over(
+                conn, label, m.rel_path, m.paired_rel, moved, members, m.recipe in SAME_BYTES
+            )
             if m.recipe == conversion.RECIPE_DECRYPT:
                 # The output is the decrypted image: only "trimmed" still holds for it.
                 conn.execute(
