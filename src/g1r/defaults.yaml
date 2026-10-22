@@ -740,6 +740,9 @@ hashing:
   # Looking for identical copies first compares the SHA1 of each file's first bytes (this
   # many): only files whose size and first bytes are equal are read whole.
   probe_bytes: 1048576
+  # Files hashed at the same time (each read once, by one thread). Reading waits on the
+  # disk more than on the CPU, so a few run side by side even on a small machine.
+  workers: 4
 
 # Online identification for files the local DAT misses. Off until switched on in
 # Settings -> Online lookups; only content hashes (CRC32, MD5, SHA1) are sent.

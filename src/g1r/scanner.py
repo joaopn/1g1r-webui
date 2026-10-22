@@ -14,6 +14,7 @@ import time
 import zipfile
 from collections import Counter
 from collections.abc import Callable, Iterable, Iterator
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
 from pathlib import Path, PurePosixPath
 
@@ -605,6 +606,7 @@ class Scanner:
         if self.settings.headers.get(platform):
             # igir matches a headered file, but not a headered ROM inside a zip.
             index = _crc_index(dat)
+            self._hash(platform, root, unmatched(), found, progress, f"Hashing{named}")
             for f in progress.each(f"Checking header-stripped data{named}", unmatched()):
                 keys = [
                     [h.crc32, h.size]
@@ -618,37 +620,50 @@ class Scanner:
         CHD's data track, an RVZ's disc): read once, then from the scan cache while the file
         is unchanged. Every step that needs a file's hashes asks here."""
         if f.rel_path not in found.hashes:
-            profile = self.settings.platforms.profiles[platform]
-            name = step(
-                "content-hashes",
-                profile.rom_extensions,
-                self.settings.headers.get(platform, []),
-                self.settings.lookups.chd,
-                self.settings.dolphin,
-            )
-            found.hashes[f.rel_path] = [
-                ContentHash(**h)
-                for h in found.cache.get(
-                    f,
-                    name,
-                    lambda: [
-                        asdict(h)
-                        for h in content_hashes(
-                            self.settings,
-                            platform,
-                            root / f.rel_path,
-                            self.read_chd,
-                            self.read_rvz,
-                        )
-                    ],
-                )
-            ]
+            found.hashes[f.rel_path] = self._read_hashes(platform, root, f, found)
         return found.hashes[f.rel_path]
 
+    def _read_hashes(self, platform, root, f: InventoryFile, found: "Found") -> list:
+        """`_content_hashes` without storing the result: safe to run for several files at
+        once (each touches only its own cache entry)."""
+        profile = self.settings.platforms.profiles[platform]
+        name = step(
+            "content-hashes",
+            profile.rom_extensions,
+            self.settings.headers.get(platform, []),
+            self.settings.lookups.chd,
+            self.settings.dolphin,
+        )
+        return [
+            ContentHash(**h)
+            for h in found.cache.get(
+                f,
+                name,
+                lambda: [
+                    asdict(h)
+                    for h in content_hashes(
+                        self.settings,
+                        platform,
+                        root / f.rel_path,
+                        self.read_chd,
+                        self.read_rvz,
+                    )
+                ],
+            )
+        ]
+
     def _hash(self, platform, root, files, found: "Found", progress, stage: str) -> None:
-        """CRC32, MD5 and SHA1 of each file's ROM data, for lookups and the table."""
-        for f in progress.each(stage, [f for f in files if f.rel_path not in found.hashes]):
-            self._content_hashes(platform, root, f, found)
+        """CRC32, MD5 and SHA1 of each file's ROM data, `hashing.workers` files at a time.
+        Later steps then read them from `found.hashes`."""
+        todo = [f for f in files if f.rel_path not in found.hashes]
+        pool = ThreadPoolExecutor(max_workers=self.settings.hashing.workers)
+        try:
+            jobs = [(f, pool.submit(self._read_hashes, platform, root, f, found)) for f in todo]
+            for f, job in progress.each(stage, jobs):
+                found.hashes[f.rel_path] = job.result()
+        finally:
+            # A failure stops the files not started yet instead of hashing them for nothing.
+            pool.shutdown(cancel_futures=True)
 
     def _why_no_hashes(self, f: InventoryFile, found: "Found") -> str:
         """Why an unmatched file has nothing to look up."""
@@ -762,6 +777,14 @@ class Scanner:
                 keys[f.rel_path] = (size, start)
         shared = Counter(keys.values())
         alike = [(f, size) for f, size in wanted if shared[keys.get(f.rel_path)] > 1]
+        self._hash(
+            platform,
+            root,
+            [f for f, _ in alike if not f.rel_path.lower().endswith(CHD_SUFFIX)],
+            found,
+            progress,
+            "Hashing possible duplicates",
+        )
         for f, size in progress.each("Looking for duplicates", alike):
             if f.rel_path.lower().endswith(CHD_SUFFIX):
                 identity = chd_identity(root / f.rel_path)

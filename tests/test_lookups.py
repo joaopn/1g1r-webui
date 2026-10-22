@@ -1,5 +1,6 @@
 import hashlib
 import json
+import threading
 import zipfile
 import zlib
 from http import HTTPStatus
@@ -294,3 +295,33 @@ def test_unmatched_files_are_hashed_only_for_lookups(env, make_settings):  # noq
     )
     folder_scanner.run(conn, folder_scanner.start(conn, "nes"), "nes")
     assert conn.execute(count, (LOOSE,)).fetchone()[0] > 0
+
+
+def test_files_are_hashed_several_at_a_time(env, monkeypatch):  # noqa: F811
+    """Hashing waits on the disk: one file at a time left every other core idle."""
+    settings, store, registry, *_ = env
+    running, most = 0, 0
+    lock = threading.Lock()
+    both = threading.Barrier(2, timeout=5)
+
+    def slow(*_args, **_kwargs):
+        nonlocal running, most
+        with lock:
+            running += 1
+            most = max(most, running)
+        try:
+            both.wait()  # passes only when two files are hashed at once
+        except threading.BrokenBarrierError:
+            pass
+        with lock:
+            running -= 1
+        return []
+
+    monkeypatch.setattr(scanner, "content_hashes", slow)
+    root = settings.paths.roms_root / "nes"
+    files = [scanner.InventoryFile(f"{n}.nes", 1, 1, "rom") for n in ("a", "b")]
+    found = scanner.Found(members=[], problems=[])
+    folder_scanner = scanner.Scanner(settings, store, registry)
+    folder_scanner._hash("nes", root, files, found, scanner.Progress(), "Hashing")
+    assert most == 2
+    assert set(found.hashes) == {"a.nes", "b.nes"}

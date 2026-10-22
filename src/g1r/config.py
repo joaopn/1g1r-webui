@@ -353,6 +353,7 @@ class ChdLookupConfig(_Strict):
 class HashingConfig(_Strict):
     chunk_bytes: int = Field(gt=0)
     probe_bytes: int = Field(gt=0)
+    workers: int = Field(gt=0)
 
 
 class LookupsConfig(_Strict):
