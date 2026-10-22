@@ -25,7 +25,17 @@ def test_feed_names_each_run_and_puts_the_newest_first(make_settings):
         "INSERT INTO scan (folder_label, status, started_at, message) "
         "VALUES ('c', 'done', '2026-10-21T10:00:07Z', '3 files identified')"
     )
+    insert_run(conn, "c", journal.APPLY, journal.SCOPE_SET_ASIDE, "done", "2026-10-21T10:00:08Z")
+    conn.execute(
+        "INSERT INTO scan (folder_label, kind, status, started_at, message) "
+        "VALUES ('c', 'check', 'done', '2026-10-21T10:00:09Z', '3 files checked')"
+    )
     items = notifications.feed(conn, 10)
+    assert [(i["kind"], i["title"]) for i in items[:2]] == [
+        (notifications.CHECK, "Check files"),
+        (journal.SCOPE_SET_ASIDE, "Moved to discarded/"),
+    ]
+    items = items[2:]
     assert [i["kind"] for i in items] == [
         notifications.SCAN,
         journal.RESTORE,

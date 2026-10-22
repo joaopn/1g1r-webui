@@ -140,3 +140,28 @@ test("nothing to show", async () => {
   expect(await screen.findByText("No notifications.")).toBeInTheDocument();
   expect(screen.getByTestId("notifications-clear")).toBeDisabled();
 });
+
+test("each item opens the page of its set where that work shows", async () => {
+  setup([
+    item({ id: "scan-9", kind: "check", title: "Check files", message: "3 files checked" }),
+    item({ id: "scan-8", kind: "scan", title: "Scan", message: "3 files identified" }),
+    item({ id: "run-7", kind: "set-aside", title: "Moved to discarded/" }),
+    item({ id: "run-6", kind: "restore", title: "Restore" }),
+  ]);
+  await userEvent.click(await screen.findByTestId("notifications"));
+  const pages = ["scan-9", "scan-8", "run-7", "run-6"].map((id) =>
+    within(screen.getByTestId(`notification-${id}`))
+      .getByRole("link", { name: "nes" })
+      .getAttribute("href"),
+  );
+  expect(pages).toEqual([
+    "/folders/nes/conversion",
+    "/folders/nes/matching",
+    "/folders/nes/discarded",
+    "/folders/nes/discarded",
+  ]);
+  // The link stretches over the whole item, so a click anywhere on it opens the set.
+  expect(within(screen.getByTestId("notification-scan-9")).getByRole("link")).toHaveClass(
+    "after:inset-0",
+  );
+});

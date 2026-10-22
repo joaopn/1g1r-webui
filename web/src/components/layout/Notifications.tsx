@@ -14,6 +14,7 @@ import {
 import { ApiError, api } from "@/lib/api";
 import { formatCount, formatWhen } from "@/lib/format";
 import { keys, queryClient, useFolders, useNotifications } from "@/lib/queries";
+import { type SectionId, sectionPath } from "@/lib/sections";
 import { isStringArray, readJson, writeJson } from "@/lib/storage";
 import type { Notification } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -22,18 +23,20 @@ import { cn } from "@/lib/utils";
  * first visit everything already listed counts as seen. */
 const SEEN_KEY = "g1r.notifications.seen.v1";
 
-/** Which folder page an item opens. */
-const PAGES: Record<Notification["kind"], string> = {
+/** Which page of its set an item opens (a click anywhere on it). */
+const PAGES: Record<Notification["kind"], SectionId> = {
   scan: "matching",
+  check: "conversion",
   conversion: "conversion",
   "1g1r": "matching",
   unmatched: "matching",
+  "set-aside": "discarded",
   empty: "discarded",
   restore: "discarded",
 };
 
 function progressText(item: Notification): string {
-  if (item.kind === "scan") {
+  if (item.kind === "scan" || item.kind === "check") {
     if (!item.stage) return "Waiting to start…";
     if (item.done === null || item.total === null) return `${item.stage}…`;
     return `${item.stage}: ${formatCount(item.done)} / ${formatCount(item.total)} files`;
@@ -83,6 +86,7 @@ function Item({
       className={cn(
         "group relative flex gap-3 rounded-md border border-border p-3 text-sm",
         unread && "bg-accent/50",
+        known && "hover:border-primary/50 hover:bg-accent/30",
       )}
     >
       <StatusIcon status={item.status} />
@@ -90,10 +94,11 @@ function Item({
         <div className="flex items-baseline gap-2">
           <span className="font-medium">{item.title}</span>
           {known ? (
+            // The link covers the whole item (::after); the dismiss button sits above it.
             <Link
-              to={`/folders/${item.folder_label}/${PAGES[item.kind]}`}
+              to={sectionPath(item.folder_label, PAGES[item.kind])}
               onClick={onOpen}
-              className="truncate text-muted-foreground text-xs underline-offset-2 hover:underline"
+              className="truncate text-muted-foreground text-xs underline-offset-2 after:absolute after:inset-0 after:rounded-md after:content-[''] hover:underline"
             >
               {item.folder_label}
             </Link>
@@ -136,7 +141,7 @@ function Item({
           type="button"
           aria-label={`Dismiss ${item.title} ${item.folder_label}`}
           onClick={() => dismiss(item.id)}
-          className="absolute top-2 right-2 rounded p-0.5 text-muted-foreground opacity-0 hover:bg-accent hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
+          className="absolute top-2 right-2 z-10 rounded p-0.5 text-muted-foreground opacity-0 hover:bg-accent hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
         >
           <X className="size-3.5" />
         </button>

@@ -38,7 +38,7 @@ def _run_kind(row: sqlite3.Row) -> str:
 def _scan_item(row: sqlite3.Row) -> dict:
     return {
         "id": f"{SCAN}-{row['id']}",
-        "kind": SCAN,
+        "kind": CHECK if row["kind"] == CHECK else SCAN,
         "title": TITLES[CHECK if row["kind"] == CHECK else SCAN],
         "folder_label": row["folder_label"],
         "status": row["status"],

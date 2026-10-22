@@ -67,7 +67,7 @@ export type Meta = {
 export type Notification = {
   /** "scan-<id>" or "run-<id>". */
   id: string;
-  kind: "scan" | "conversion" | "1g1r" | "unmatched" | "empty" | "restore";
+  kind: "scan" | "check" | "conversion" | "1g1r" | "unmatched" | "set-aside" | "empty" | "restore";
   title: string;
   folder_label: string;
   status: "running" | "done" | "failed";
