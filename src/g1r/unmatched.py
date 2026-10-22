@@ -62,17 +62,28 @@ def assign(
 ) -> None:
     """Link a file to a DAT entry by hand (or undo that); it applies now and on every scan.
     `dat_sha1`: the DAT the name is read with (the first of the platform's to list it)."""
+    assign_many(conn, label, [(rel_path, game_name, dat_sha1)])
+
+
+def assign_many(
+    conn: sqlite3.Connection,
+    label: str,
+    assignments: list[tuple[str, str | None, str]],
+) -> None:
+    """`assign` for several files at once, in one transaction: (rel_path, game_name, dat_sha1)."""
     conn.execute("BEGIN IMMEDIATE")
     try:
-        conn.execute(
-            "DELETE FROM manual_identity WHERE folder_label = ? AND rel_path = ?",
-            (label, rel_path),
-        )
-        conn.execute(
-            "DELETE FROM identity WHERE folder_label = ? AND rel_path = ? AND method = ?",
-            (label, rel_path, scanner.METHOD_MANUAL),
-        )
-        if game_name is not None:
+        for rel_path, game_name, dat_sha1 in assignments:
+            conn.execute(
+                "DELETE FROM manual_identity WHERE folder_label = ? AND rel_path = ?",
+                (label, rel_path),
+            )
+            conn.execute(
+                "DELETE FROM identity WHERE folder_label = ? AND rel_path = ? AND method = ?",
+                (label, rel_path, scanner.METHOD_MANUAL),
+            )
+            if game_name is None:
+                continue
             conn.execute(
                 "INSERT INTO manual_identity VALUES (?, ?, ?)", (label, rel_path, game_name)
             )

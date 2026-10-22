@@ -143,6 +143,10 @@ class Assignment(BaseModel):
     game_name: str | None
 
 
+class Assignments(BaseModel):
+    assignments: list[Assignment]
+
+
 class Lookups(BaseModel):
     hasheous: bool | None = None
 
@@ -1192,27 +1196,47 @@ def build_router(
 
     @router.put("/folders/{label}/assign")
     def assign(label: str, body: Assignment, conn: Conn):
+        assign_all(conn, label, [body])
+        return {"rel_path": body.rel_path, "game_name": body.game_name}
+
+    @router.put("/folders/{label}/assign-many")
+    def assign_many(label: str, body: Assignments, conn: Conn):
+        assign_all(conn, label, body.assignments)
+        return {"assigned": len(body.assignments)}
+
+    def assign_all(conn, label: str, assignments: list[Assignment]) -> None:
+        """Check every assignment, then store them all in one transaction (or none)."""
         folder = folder_or_404(label)
-        dat_sha1 = ""
-        if body.game_name is not None:
-            listing = [
-                version["sha1"]
-                for version, dat in registry.load_all(conn, store.load(), folder.platform)
-                if any(g.name == body.game_name for g in dat.games)
-            ]
-            if not listing:
-                raise bad_request("That is not an entry of this platform's DATs.")
+        names = {a.game_name for a in assignments if a.game_name is not None}
+        dat_of: dict[str, str] = {}
+        if names:
+            # The first DAT, in the platform's order, listing each name.
+            for version, dat in registry.load_all(conn, store.load(), folder.platform):
+                for game in dat.games:
+                    if game.name in names:
+                        dat_of.setdefault(game.name, version["sha1"])
+            missing = sorted(names - dat_of.keys())
+            if missing:
+                raise bad_request(f"Not an entry of this platform's DATs: {missing[0]}.")
             if scanner.latest_scan(conn, label) is None:
                 raise bad_request("Scan the folder first.")
-            dat_sha1 = listing[0]
-        known = conn.execute(
-            "SELECT 1 FROM folder_file WHERE folder_label = ? AND rel_path = ?",
-            (label, body.rel_path),
-        ).fetchone()
-        if not known:
-            raise not_found("no such file in this folder's last scan")
-        unmatched.assign(conn, label, body.rel_path, body.game_name, dat_sha1)
-        return {"rel_path": body.rel_path, "game_name": body.game_name}
+        known = {
+            row[0]
+            for row in conn.execute(
+                "SELECT rel_path FROM folder_file WHERE folder_label = ?", (label,)
+            )
+        }
+        unknown = [a.rel_path for a in assignments if a.rel_path not in known]
+        if unknown:
+            raise not_found(f"no such file in this folder's last scan: {unknown[0]}")
+        unmatched.assign_many(
+            conn,
+            label,
+            [
+                (a.rel_path, a.game_name, dat_of.get(a.game_name, "") if a.game_name else "")
+                for a in assignments
+            ],
+        )
 
     @router.get("/folders/{label}/dat-search")
     def dat_search(label: str, conn: Conn, q: str = ""):

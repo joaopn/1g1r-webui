@@ -362,6 +362,27 @@ def test_unmatched_assign_and_lookup_settings(setup):
     client.put("/api/folders/nes/assign", json={"rel_path": "stray.zip", "game_name": None})
     assert len(client.get("/api/folders/nes/unmatched").json()) == 1
 
+    # Several at once: all checked first, so one bad entry stores nothing.
+    many = "/api/folders/nes/assign-many"
+    bad = client.put(
+        many,
+        json={
+            "assignments": [
+                {"rel_path": "stray.zip", "game_name": "Solo (Japan)"},
+                {"rel_path": "missing.zip", "game_name": "Solo (Japan)"},
+            ]
+        },
+    )
+    assert bad.status_code == HTTPStatus.NOT_FOUND
+    assert len(client.get("/api/folders/nes/unmatched").json()) == 1
+    ok = client.put(
+        many, json={"assignments": [{"rel_path": "stray.zip", "game_name": "Solo (Japan)"}]}
+    )
+    assert ok.json() == {"assigned": 1}
+    assert client.get("/api/folders/nes/unmatched").json() == []
+    client.put(many, json={"assignments": [{"rel_path": "stray.zip", "game_name": None}]})
+    assert len(client.get("/api/folders/nes/unmatched").json()) == 1
+
     assert client.get("/api/settings").json()["lookups"] == {"hasheous": False}
     switched = client.put("/api/settings/lookups", json={"hasheous": True}).json()
     assert switched == {"hasheous": True}
