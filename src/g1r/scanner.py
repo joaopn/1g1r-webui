@@ -1085,6 +1085,12 @@ class Scanner:
                 conn.executemany(
                     f"DELETE FROM {table} WHERE folder_label = ? AND rel_path = ?", rels
                 )
+            # Looked at: unidentified now means unmatched, no longer "not scanned yet".
+            conn.executemany(
+                "UPDATE folder_file SET scanned = 1 WHERE folder_label = ? AND rel_path = ? "
+                "AND place = 'folder'",
+                rels,
+            )
             conn.executemany(
                 "INSERT OR IGNORE INTO identity (folder_label, rel_path, game_name, method, "
                 "dat_sha1, score) VALUES (?, ?, ?, ?, ?, ?)",
@@ -1244,13 +1250,16 @@ def folder_summary(
         "WHERE folder_label = ? AND place = 'folder'",
         (label,),
     ).fetchone()[0]
+    unscanned = len(unscanned_files(conn, label, parts, waiting))
     return {
         "counts": counts,
         "roms": len(roms),
         # Every file in the folder, as last scanned (ROMs, frontend files, the rest).
         "bytes": size,
         "identified": len(known),
-        "unmatched": len(roms) - len(known) - len(held),
+        "unmatched": len(roms) - len(known) - len(held) - unscanned,
+        # Listed (by Check files, or new since the last scan) but not looked at by a Scan.
+        "unscanned": unscanned,
         # Waiting for a conversion (cue sheets and tracks included): identified once converted.
         "waiting": len(held),
         "methods": methods,
@@ -1278,6 +1287,18 @@ def unmatched_files(
 ) -> list[sqlite3.Row]:
     """Unidentified ROM files; parts of a game (cue sheets, tracks) and files a conversion
     is proposed for (`waiting`) wait for conversion instead."""
+    return [r for r in _unidentified(conn, label, parts, waiting) if r["scanned"]]
+
+
+def unscanned_files(
+    conn: sqlite3.Connection, label: str, parts=frozenset(), waiting=frozenset()
+) -> list[sqlite3.Row]:
+    """Unidentified ROM files no Scan has looked at yet (listed by Check files, new or changed
+    since the last scan, or a conversion's output): not unmatched, not scanned yet."""
+    return [r for r in _unidentified(conn, label, parts, waiting) if not r["scanned"]]
+
+
+def _unidentified(conn, label, parts, waiting) -> list[sqlite3.Row]:
     found = conn.execute(
         """SELECT f.* FROM folder_file f
            WHERE f.folder_label = ? AND f.kind IN ('rom', 'archive') AND f.place = 'folder'

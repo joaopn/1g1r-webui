@@ -7,7 +7,7 @@ from g1r import igir, scanner
 from g1r.dat_registry import DatRegistry
 from g1r.library import LibraryStore
 
-from .test_api import scanned, setup  # noqa: F401  (fixture)
+from .test_api import dat_bytes, scanned, setup  # noqa: F401  (fixture)
 from .test_scanner import env, write_zip  # noqa: F401  (fixture)
 
 
@@ -110,5 +110,20 @@ def test_check_files_from_the_api(setup):  # noqa: F811
     assert [r["rel_path"] for r in wrap] == ["odd.nes"]
     card = client.get("/api/folders").json()[0]
     assert (card["needs"], card["needs_scan"]) == ("identify", True)
+    assert card["scan"]["kind"] == "check" and card["last_scan"] is None
+    assert client.get("/api/folders/nes").json()["last_scan"] is None
     titles = [n["title"] for n in client.get("/api/notifications").json()]
     assert titles[0] == "Check files"
+    # Listed, not yet looked at by a scan: not unmatched (and no Hasheous hint for them).
+    summary = client.get("/api/folders/nes").json()["summary"]
+    assert (summary["unmatched"], summary["unscanned"], summary["waiting"]) == (0, 6, 1)
+    assert client.get("/api/folders/nes/unmatched").json() == []
+    assert card["warnings"] == [] and card["progress"]["to_match"] == 6
+    # A scan looks at them: the one no DAT lists is unmatched now.
+    client.post("/api/dats/nes/upload", files={"file": ("nes.dat", dat_bytes())})
+    client.post("/api/folders/nes/scan")
+    for _ in range(500):
+        if client.get("/api/folders/nes/scan").json()["status"] != "running":
+            break
+    summary = client.get("/api/folders/nes").json()["summary"]
+    assert (summary["unmatched"], summary["unscanned"]) == (1, 0)

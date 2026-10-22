@@ -413,16 +413,16 @@ def build_router(
             dat = registry.active_version(conn, library, folder.platform)
             parts = parts_of(folder)
             summary = scanner.folder_summary(conn, folder.label, parts, waiting)
+            last_scan = scanner.latest_scan(conn, folder.label, scanner.IDENTIFY)
             needed = dashboard.needs(
-                scan,
-                scanner.latest_scan(conn, folder.label, scanner.IDENTIFY),
-                dat,
-                journal.last_conversion_end(conn, folder.label),
+                scan, last_scan, dat, journal.last_conversion_end(conn, folder.label)
             )
             result.append(
                 {
                     **info,
+                    # The latest run of either kind (Check files or Scan), and the latest Scan.
                     "scan": row_dict(scan),
+                    "last_scan": row_dict(last_scan),
                     "dat": row_dict(dat),
                     "summary": summary,
                     "dat_download": default_download(folder.platform) if dat is None else None,
@@ -437,9 +437,13 @@ def build_router(
                         scanner.rom_paths(conn, folder.label),
                         games,
                         converting,
+                        # Not scanned yet counts too: a Scan is how it gets matched.
                         (
                             r["rel_path"]
-                            for r in scanner.unmatched_files(conn, folder.label, parts, waiting)
+                            for r in [
+                                *scanner.unmatched_files(conn, folder.label, parts, waiting),
+                                *scanner.unscanned_files(conn, folder.label, parts, waiting),
+                            ]
                         ),
                     ),
                     "discarded": discarded.totals(settings, folder.label),
@@ -758,6 +762,7 @@ def build_router(
             "dat_order": dat_order(conn, library, folder.platform),
             "dat_order_own": own_order(library, folder.platform),
             "scan": row_dict(scanner.latest_scan(conn, label)),
+            "last_scan": row_dict(scanner.latest_scan(conn, label, scanner.IDENTIFY)),
             "summary": scanner.folder_summary(conn, label, parts_of(folder), waiting),
             "unmatched": [
                 dict(r) for r in scanner.unmatched_files(conn, label, parts_of(folder), waiting)
