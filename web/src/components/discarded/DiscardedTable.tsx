@@ -8,7 +8,7 @@ import type { Discarded, DiscardedFile, Meta } from "@/lib/types";
 const ALL = "all";
 const reasonView = (id: string) => `reason:${id}`;
 
-type Row = DiscardedFile & { reason: string; reasonView: string };
+type Row = DiscardedFile & { reason: string; reasonView: string; name: string };
 
 /** Whether Restore can put a file back, and if not, why. */
 type RestoreState = "restorable" | "occupied" | "not-ours" | "unavailable";
@@ -43,7 +43,12 @@ export function DiscardedTable({
   const rows = useMemo<Row[]>(
     () =>
       data.reasons.flatMap((r) =>
-        r.files.map((f) => ({ ...f, reason: r.label, reasonView: reasonView(r.id) })),
+        r.files.map((f) => ({
+          ...f,
+          reason: r.label,
+          reasonView: reasonView(r.id),
+          name: f.rel_path.split("/").pop() ?? f.rel_path,
+        })),
       ),
     [data],
   );
@@ -71,8 +76,15 @@ export function DiscardedTable({
         title: (r) => r.reason,
       },
       {
+        id: "name",
+        label: "File name",
+        sortValue: (r) => r.name.toLowerCase(),
+        render: (r) => r.name,
+        title: (r) => r.name,
+      },
+      {
         id: "file",
-        label: "File",
+        label: "Path",
         sortValue: (r) => r.rel_path.toLowerCase(),
         render: (r) => r.rel_path,
         title: (r) => r.rel_path,

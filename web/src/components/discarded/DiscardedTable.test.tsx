@@ -107,3 +107,18 @@ test("filters by what Restore can do, sorts by any column, chooses columns", asy
   await userEvent.click(screen.getByTestId("column-restore_to"));
   expect(screen.getByTestId("header-restore_to")).toBeInTheDocument();
 });
+
+test("the file name column shows the name without its folders", () => {
+  const data: Discarded = {
+    ...DATA,
+    reasons: [{ ...DATA.reasons[0], files: [file("sub/dir/Mystery.bin")] }],
+  };
+  render(
+    <MemoryRouter>
+      <DiscardedTable data={data} meta={META} />
+    </MemoryRouter>,
+  );
+  const row = screen.getByTestId("discarded-sub/dir/Mystery.bin");
+  expect(within(row).getByText("Mystery.bin")).toBeInTheDocument();
+  expect(within(row).getByText("sub/dir/Mystery.bin")).toBeInTheDocument();
+});

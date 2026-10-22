@@ -59,9 +59,12 @@ export const META: Meta = {
       "note",
     ],
     discarded_columns: Object.fromEntries(
-      ["reason", "file", "size", "modified", "restore_to", "restore"].map((id) => [id, size(8)]),
+      ["reason", "name", "file", "size", "modified", "restore_to", "restore"].map((id) => [
+        id,
+        size(8),
+      ]),
     ),
-    discarded_columns_default: ["reason", "file", "size", "modified", "restore"],
+    discarded_columns_default: ["reason", "name", "file", "size", "modified", "restore"],
     statistics_columns: Object.fromEntries(
       ["folder", "platform", "dats"].map((id) => [id, size(8)]),
     ),

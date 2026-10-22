@@ -86,12 +86,13 @@ ui:
   # The Discarded table's columns, the same way.
   discarded_columns:
     reason: {rem: 8, min: 5, max: 16}
-    file: {rem: 20, min: 8, max: 48}
+    name: {rem: 14, min: 8, max: 40}
+    file: {rem: 14, min: 8, max: 48}
     size: {rem: 5.5, min: 4.5, max: 10}
     modified: {rem: 11.5, min: 8, max: 16}
     restore_to: {rem: 18, min: 8, max: 48}
     restore: {rem: 14, min: 8, max: 24}
-  discarded_columns_default: [reason, file, size, modified, restore]
+  discarded_columns_default: [reason, name, file, size, modified, restore]
   # The Statistics table: the set, its platform, and one DATs column holding a bar per DAT
   # source side by side. The DATs column starts as wide as the most sources a set has
   # (each `statistics_source_rem` wide, `statistics_source_gap_rem` apart), within its
