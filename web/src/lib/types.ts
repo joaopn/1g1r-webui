@@ -460,7 +460,12 @@ export type ConversionRow = {
 
 export type ConversionCounts = Record<ConversionStatus | "to_convert" | "all", number>;
 
-export type Conversion = { counts: ConversionCounts; rows: ConversionRow[] };
+export type Conversion = {
+  counts: ConversionCounts;
+  rows: ConversionRow[];
+  /** Flagged, or failed in the last conversion: moved to discarded/ in one go. */
+  cannot_convert: string[];
+};
 
 export type LookupStatus =
   | "off"

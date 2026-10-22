@@ -92,14 +92,15 @@ class ConversionRow:
 
 
 def waiting(rows: list[ConversionRow]) -> set[str]:
-    """The files a conversion is proposed for (and the tracks it takes along): they are
-    identified and ranked once converted (maintainer, 2026-10-21: conversion first)."""
-    return {
-        rel
-        for r in rows
-        if r.status in CONVERTING or r.status == PART
-        for rel in (r.rel_path, *r.parts)
-    }
+    """The files not in the target format: those a conversion is proposed for (and the tracks
+    it takes along), and those it cannot convert. Nothing is identified or ranked while any
+    is left: they are converted, or moved to discarded/, first (maintainer, 2026-10-22)."""
+    return {rel for r in rows if r.status != DONE for rel in (r.rel_path, *r.parts)}
+
+
+def cannot_convert(rows: list[ConversionRow], failed: set[str]) -> list[str]:
+    """The files that cannot be converted: flagged, or whose last conversion failed."""
+    return sorted({r.rel_path for r in rows if r.status == FLAGGED or r.rel_path in failed})
 
 
 def container_of(rel_path: str, kind: str, disc_formats=()) -> str:

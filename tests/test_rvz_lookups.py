@@ -2,7 +2,6 @@
 
 import hashlib
 import struct
-import zipfile
 
 import pytest
 
@@ -15,7 +14,6 @@ from .test_lookups import FakeHasheous
 SYSTEM = "Nintendo - GameCube"
 DISC = "Disc (Europe).rvz"
 BROKEN = "Broken (Europe).rvz"
-ZIPPED = "Zipped (Europe).zip"
 DISC_SIZE = 1459978240
 # The disc's hashes as dolphin-tool gives them: CRC32 and SHA1, no MD5.
 DISC_HASH = hashing.ContentHash(
@@ -65,8 +63,6 @@ def ngc(make_settings, roms_root):
     folder.mkdir()
     (folder / DISC).write_bytes(rvz_bytes(b"GTST01"))
     (folder / BROKEN).write_bytes(rvz_bytes(b"GBRK01"))
-    with zipfile.ZipFile(folder / ZIPPED, "w") as archive:
-        archive.writestr("Zipped (Europe).rvz", rvz_bytes(b"GZIP01"))
     settings = make_settings()
     store = LibraryStore(settings)
     store.update(
@@ -113,10 +109,7 @@ def test_an_rvz_is_looked_up_by_its_disc_never_by_its_own_hash(ngc):
     assert post.asked == [{"crc": DISC_HASH.crc32, "sha1": DISC_HASH.sha1}]
     method = conn.execute("SELECT method FROM identity WHERE rel_path = ?", (DISC,)).fetchone()
     assert method[0] == scanner.METHOD_HASHEOUS
-    # The zipped RVZ waits to be unpacked: identified (and looked up) once converted.
-    waiting = folder_scanner.waiting(conn, store.load(), store.load().folder("ngc"), folder)
-    assert waiting == {ZIPPED}
-    rows = unmatched.rows(conn, "ngc", hasheous_on=True, waiting=waiting)
+    rows = unmatched.rows(conn, "ngc", hasheous_on=True)
     reasons = {r["rel_path"]: r["hasheous"] for r in rows}
     assert reasons == {BROKEN: {"status": hasheous.SKIPPED, "detail": "the disc could not be read"}}
 

@@ -90,6 +90,7 @@ def preview(client, **body):
 
 def test_wrap_a_folder_then_restore_the_original(setup, roms_root):  # noqa: F811
     client, _, _ = setup
+    (roms_root / "NES Set" / "odd.nes").write_bytes(b"?")
     scanned(client)
     folder = roms_root / "NES Set"
     plan = preview(client)
@@ -164,6 +165,7 @@ def test_unwrap_carries_the_identity_and_the_pick(setup, roms_root):  # noqa: F8
 
 def test_deleting_originals_needs_the_typed_label(setup, roms_root):  # noqa: F811
     client, _, _ = setup
+    (roms_root / "NES Set" / "odd.nes").write_bytes(b"?")
     scanned(client)
     client.put("/api/folders/nes/conversion", json={"delete_originals": True})
     plan = preview(client)
@@ -185,6 +187,7 @@ def test_deleting_originals_needs_the_typed_label(setup, roms_root):  # noqa: F8
 
 def test_a_changed_source_refuses_the_whole_conversion(setup, roms_root):  # noqa: F811
     client, _, _ = setup
+    (roms_root / "NES Set" / "odd.nes").write_bytes(b"?")
     scanned(client)
     (roms_root / "NES Set" / "odd.nes").write_bytes(b"changed")
     plan = preview(client)
@@ -382,6 +385,7 @@ def test_a_restore_keeps_an_output_whose_original_did_not_come_back(
     """B12: the run goes on after a failed move back, but never removes that conversion's
     output: the original is still in discarded/, the output the only copy in the folder."""
     client, _, _ = setup
+    (roms_root / "NES Set" / "odd.nes").write_bytes(b"?")
     scanned(client)
     folder = roms_root / "NES Set"
     client.post("/api/folders/nes/convert", json={"token": preview(client)["token"]})
@@ -473,6 +477,7 @@ def test_a_stopped_run_keeps_converted_files_and_deletes_the_one_under_way(make_
 
 def test_stop_through_the_api(setup, roms_root, monkeypatch):  # noqa: F811
     client, _, _ = setup
+    (roms_root / "NES Set" / "odd.nes").write_bytes(b"?")
     scanned(client)
     stop = client.post("/api/folders/nes/convert/stop")
     assert stop.status_code == HTTPStatus.CONFLICT

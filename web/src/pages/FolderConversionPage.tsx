@@ -42,9 +42,7 @@ export function FolderConversionPage() {
   const counts = conversion.data?.counts;
   const toConvert = counts?.to_convert ?? 0;
   const scanning = f.scan?.status === "running";
-  const flagged = (conversion.data?.rows ?? [])
-    .filter((r) => r.status === "flagged")
-    .map((r) => r.rel_path);
+  const cannotConvert = conversion.data?.cannot_convert ?? [];
 
   return (
     <div className="space-y-6">
@@ -122,15 +120,15 @@ export function FolderConversionPage() {
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="mr-auto font-semibold text-lg">Files</h2>
-        {flagged.length > 0 ? (
+        {cannotConvert.length > 0 ? (
           <Button
             variant="outline"
             disabled={scanning}
-            onClick={() => setAside.move(flagged)}
-            title="Review, then move every flagged file to discarded/ (can be restored)"
+            onClick={() => setAside.move(cannotConvert)}
+            title="Review, then move every file that cannot be converted (flagged, or failed in the last conversion) to discarded/; each can be restored. Matching waits until none is left."
           >
             <Archive className="size-4" aria-hidden="true" />
-            Move flagged to discarded/ ({formatFiles(flagged.length)})
+            Move what can't be converted to discarded/ ({formatFiles(cannotConvert.length)})
           </Button>
         ) : null}
         <Button

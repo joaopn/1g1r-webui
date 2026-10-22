@@ -23,6 +23,7 @@ export function ScanPanel({
   lastScan,
   title,
   actions,
+  blocked,
   children,
 }: {
   label: string;
@@ -32,6 +33,8 @@ export function ScanPanel({
   title: string;
   /** More buttons, before the run buttons. */
   actions?: ReactNode;
+  /** Why a Scan cannot run now (files not converted yet): its buttons are off and say so. */
+  blocked?: string;
   children: ReactNode;
 }) {
   const start = useStartScan(label);
@@ -39,6 +42,8 @@ export function ScanPanel({
   const progress = scanProgress(scan);
   const running = scan?.status === "running";
   const busy = running || start.isPending || check.isPending;
+  // A Scan waits for the conversion; Check files never does.
+  const off = busy || (kind === "identify" && Boolean(blocked));
   // When a run ends, every table of the folder is stale.
   const wasRunning = useRef(running);
   useEffect(() => {
@@ -78,23 +83,29 @@ export function ScanPanel({
               <Button
                 variant="outline"
                 onClick={() => start.mutate({ full: true })}
-                disabled={busy}
-                title="Read every file again, ignoring what earlier scans read: for files changed in a way their size and date do not show"
+                disabled={off}
+                title={
+                  blocked ??
+                  "Read every file again, ignoring what earlier scans read: for files changed in a way their size and date do not show"
+                }
               >
                 <ScanSearch className="size-4" aria-hidden="true" />
                 Full scan
               </Button>
               <Button
                 onClick={() => start.mutate({})}
-                disabled={busy}
-                title="Read new and changed files; reuse what earlier scans read from the others"
+                disabled={off}
+                title={
+                  blocked ??
+                  "Read new and changed files; reuse what earlier scans read from the others"
+                }
               >
                 <RefreshCw className={spin} aria-hidden="true" />
                 Quick scan
               </Button>
             </>
           ) : (
-            <Button onClick={() => start.mutate({})} disabled={busy}>
+            <Button onClick={() => start.mutate({})} disabled={off} title={blocked}>
               <RefreshCw className={spin} aria-hidden="true" />
               Scan folder
             </Button>

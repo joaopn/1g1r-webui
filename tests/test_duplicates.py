@@ -77,14 +77,3 @@ def test_different_data_of_the_same_size_is_not_a_duplicate(setup, roms_root):  
     assert "solo-ish.zip" not in versions(client)
     unmatched = [f["rel_path"] for f in client.get("/api/folders/nes/unmatched").json()]
     assert "solo-ish.zip" in unmatched
-
-
-def test_of_two_identical_copies_the_one_in_the_target_format_stays(setup, roms_root):  # noqa: F811
-    client, _, _ = setup
-    # The bare ROM of Solo (Japan).zip, named like the DAT entry too: the zip (target) stays.
-    (roms_root / "NES Set" / "Solo (Japan).nes").write_bytes(b"Solo (Japan)")
-    scanned(client)
-    solo = games(client)["Solo"]
-    assert (solo["status"], solo["kept"]) == ("decided", "Solo (Japan).zip")
-    reasons = {v["rel_path"]: v["discard_reason"] for v in solo["versions"]}
-    assert reasons == {"Solo (Japan).zip": None, "Solo (Japan).nes": "duplicates"}

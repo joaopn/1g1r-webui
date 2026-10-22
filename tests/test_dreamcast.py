@@ -1,13 +1,12 @@
 import os
 import zipfile
-import zlib
 from http import HTTPStatus
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
-from g1r import discs, igir
+from g1r import discs
 from g1r.web.app import create_app
 
 from .test_discs import HAS_CHDMAN, MIN_TRACK_SECTORS, SECTOR
@@ -118,89 +117,3 @@ def test_cdi_images_cannot_be_converted(dc, roms_root):
         assert (found[rel]["status"], found[rel]["output"]) == ("flagged", None), rel
     plan = client.post("/api/folders/dc/convert/preview", json={}).json()
     assert plan["conversions"] == []
-
-
-def dc_dat(games: dict[str, list[tuple[str, bytes]]]) -> bytes:
-    """A Redump-style DAT: each game's ROMs as (name, data)."""
-    body = "".join(
-        f'<game name="{n}">'
-        + "".join(f'<rom name="{r}" size="{len(d)}" crc="{zlib.crc32(d):08x}"/>' for r, d in roms)
-        + "</game>"
-        for n, roms in games.items()
-    )
-    return (
-        f"<?xml version='1.0'?><datafile><header><name>Sega - Dreamcast</name></header>"
-        f"{body}</datafile>"
-    ).encode()
-
-
-@pytest.fixture
-def identified(make_settings, roms_root):
-    """A Dreamcast folder whose files igir identifies as `found` says (path -> DAT game)."""
-    folder = roms_root / "dc"
-    folder.mkdir()
-    (roms_root / "discarded").mkdir()
-    found: dict[str, str] = {}
-
-    def report(settings_, dat_file, input_dir, **options):
-        # Scene archives carry .url/.nfo files: igir must allow them.
-        assert options.get("excess") is True
-        return [igir.ReportRow(g, "FOUND", (str(input_dir / p),)) for p, g in found.items()]
-
-    settings = make_settings({"grouping": {"retool_clonelists_dir": "/nonexistent"}})
-    with TestClient(create_app(settings, report_runner=report)) as client:
-        body = {"platform": "dc", "mount": "roms", "path": "dc", "label": "dc"}
-        assert client.post("/api/folders", json=body).status_code == HTTPStatus.CREATED
-        yield client, folder, found
-
-
-def games(client):
-    return {g["name"]: g for g in client.get("/api/folders/dc/games").json()}
-
-
-def proposed(game):
-    return {v["rel_path"]: v["discard_reason"] for v in game["versions"]}
-
-
-GDI_SHEET = b"1\n1 0 4 2352 disc.bin 0\n"
-
-
-def zipped_gdi(path: Path, extra: dict[str, bytes] | None = None) -> list[tuple[str, bytes]]:
-    """A zipped one-track .gdi set (plus `extra` files); its ROMs as the DAT lists them."""
-    roms = [("disc.gdi", GDI_SHEET), ("disc.bin", path.name.encode())]
-    with zipfile.ZipFile(path, "w") as z:
-        for name, data in [*roms, *(extra or {}).items()]:
-            z.writestr(name, data)
-    return roms
-
-
-def chd(path: Path) -> list[tuple[str, bytes]]:
-    """A disc already in the target format (a stand-in file igir's fake report names); its
-    ROMs as the DAT lists them (a one-track .gdi set). A zipped set would wait for its CHD."""
-    path.write_bytes(path.name.encode())
-    return [("disc.gdi", GDI_SHEET), ("disc.bin", path.name.encode())]
-
-
-def two_cdis(path: Path, extra: dict[str, bytes]) -> list[tuple[str, bytes]]:
-    """A game's two CDI discs in one archive, kept together as it is (B10), plus `extra`."""
-    roms = [(f"{path.stem} (Disc {n}).cdi", f"{path.stem} {n}".encode()) for n in (1, 2)]
-    with zipfile.ZipFile(path, "w") as z:
-        for name, data in [*roms, *extra.items()]:
-            z.writestr(name, data)
-    return roms
-
-
-def test_extra_files_in_an_archive_only_never_another_rom(identified):
-    client, folder, found = identified
-    readme = {"Game.url": b"[InternetShortcut]", "Game.nfo": b"scene"}
-    entries = {
-        "Game (USA)": two_cdis(folder / "Game (USA).zip", readme),
-        # Another ROM inside: the archive is not this one game.
-        "Game (Japan)": two_cdis(folder / "Game (Japan).zip", {"other.cdi": b"x"}),
-    }
-    client.post("/api/dats/dc/upload", files={"file": ("dc.dat", dc_dat(entries))})
-    found.update({f"{n}.zip": n for n in entries})
-    scan(client)
-    assert {v["rel_path"] for v in games(client)["Game"]["versions"]} == {"Game (USA).zip"}
-    unmatched = {f["rel_path"] for f in client.get("/api/folders/dc/unmatched").json()}
-    assert unmatched == {"Game (Japan).zip"}

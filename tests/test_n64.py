@@ -179,34 +179,6 @@ def test_online_lookups_get_the_native_order_hash_too(make_settings, tmp_path):
     assert hashes[FULL] == hashlib.sha1(swap_words(native, V64)).hexdigest()
 
 
-def test_a_dat_listing_each_byte_order_as_a_rom_still_identifies_one_file(n64):
-    """libretro's N64 DAT lists a game's .z64 and .v64 as two ROMs; igir reports such a game
-    missing unless both are present (the fake report runner finds nothing, as igir did)."""
-    client, folder = n64
-    mario = rom(b"mario")
-    v64 = swap_words(mario, V64)
-    game = (
-        f'<game name="Mario (USA)"><rom name="Mario (USA).z64" size="{len(mario)}" '
-        f'crc="{zlib.crc32(mario):08x}"/><rom name="Mario (USA).v64" size="{len(v64)}" '
-        f'crc="{zlib.crc32(v64):08x}"/></game>'
-    )
-    body = (
-        "<?xml version='1.0'?><datafile><header><name>Nintendo - Nintendo 64</name></header>"
-        f"{game}</datafile>"
-    ).encode()
-    # Bare files are the plain target's; a swapped one waits for its byteswap, unless it
-    # cannot have one (its output would take its own name: flagged, so identified as it is).
-    client.put("/api/settings/targets", json={"targets": {"n64": "plain"}})
-    (folder / "a.z64").write_bytes(mario)
-    (folder / "b.v64").write_bytes(v64)
-    (folder / "c.z64").write_bytes(swap_words(mario, LITTLE))
-    client.post("/api/dats/n64/upload", files={"file": ("n64.dat", body)})
-    scan(client)
-    assert rows(client)["c.z64"]["status"] == "flagged"
-    found = {rel: v["method"] for rel, v in versions(client).items()}
-    assert found == {"a.z64": "dat-checksum", "c.z64": "dat-byteswapped"}
-
-
 def test_the_zip_takes_back_its_originals_name(n64, roms_root):
     """A zip holding a swapped ROM becomes a bare .z64, then a zip under the original's own
     name, which discarded/ holds: the name is free, and restoring that original refuses."""

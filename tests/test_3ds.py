@@ -54,6 +54,13 @@ def test_the_header_tells_encryption_and_trimming(make_settings, tmp_path):
     assert cards.read_ncsd(config, tmp_path / "c.3ds", None, len(b"not a card")) is None
 
 
+def scan(client):
+    client.post("/api/folders/3ds/scan")
+    for _ in range(500):
+        if client.get("/api/folders/3ds/scan").json()["status"] != "running":
+            return
+
+
 def test_trimmed_images_match_and_encrypted_ones_are_flagged(n3ds, make_settings):
     client, folder = n3ds
     trimmed_full, trimmed = card(make_settings, encrypted=False, keep_units=UNITS - 2)
@@ -71,16 +78,7 @@ def test_trimmed_images_match_and_encrypted_ones_are_flagged(n3ds, make_settings
         f"{games}</datafile>"
     ).encode()
     client.post("/api/dats/3ds/upload", files={"file": ("3ds.dat", dat)})
-    client.post("/api/folders/3ds/scan")
-    for _ in range(500):
-        if client.get("/api/folders/3ds/scan").json()["status"] != "running":
-            break
-    versions = {
-        v["rel_path"]: v for g in client.get("/api/folders/3ds/games").json() for v in g["versions"]
-    }
-    assert versions["Trim (USA).3ds"]["method"] == "dat-untrimmed"
-    assert versions["Trim (USA).3ds"]["notes"] == ["trimmed"]
-
+    scan(client)
     rows = {r["rel_path"]: r for r in client.get("/api/folders/3ds/conversion").json()["rows"]}
     assert rows["Locked (USA).3ds"]["status"] == "flagged"
     assert "decrypted" in rows["Locked (USA).3ds"]["note"]
@@ -89,10 +87,20 @@ def test_trimmed_images_match_and_encrypted_ones_are_flagged(n3ds, make_settings
     zipped = rows["Zipped (USA).zip"]
     assert (zipped["status"], zipped["output"]) == ("unwrap", "Zipped (USA).3ds")
 
+    # Matching waits for the others: once they are gone, the trimmed image is matched.
+    (folder / "Locked (USA).3ds").unlink()
+    (folder / "Zipped (USA).zip").unlink()
+    scan(client)
+    versions = {
+        v["rel_path"]: v for g in client.get("/api/folders/3ds/games").json() for v in g["versions"]
+    }
+    assert versions["Trim (USA).3ds"]["method"] == "dat-untrimmed"
+    assert versions["Trim (USA).3ds"]["notes"] == ["trimmed"]
 
-def test_an_encrypted_image_is_suggested_the_entries_with_its_product_code(n3ds, make_settings):
+
+def test_an_unmatched_image_is_suggested_the_entries_with_its_product_code(n3ds, make_settings):
     client, folder = n3ds
-    locked, _ = card(make_settings, encrypted=True, product="CTR-P-AWAE")
+    locked, _ = card(make_settings, encrypted=False, product="CTR-P-AWAE")
     (folder / "3DS0032 - Pilotwings Resort (Usa).3ds").write_bytes(locked)
     entries = [
         ("Pilotwings Resort (Japan)", "CTR-P-AWAJ"),
@@ -109,10 +117,7 @@ def test_an_encrypted_image_is_suggested_the_entries_with_its_product_code(n3ds,
         f"{games}</datafile>"
     ).encode()
     client.post("/api/dats/3ds/upload", files={"file": ("3ds.dat", dat)})
-    client.post("/api/folders/3ds/scan")
-    for _ in range(500):
-        if client.get("/api/folders/3ds/scan").json()["status"] != "running":
-            break
+    scan(client)
     (row,) = client.get("/api/folders/3ds/unmatched").json()
     names = [s["game_name"] for s in row["suggestions"]]
     # Both releases with the code come first (a revision shares it); the Japanese one after.

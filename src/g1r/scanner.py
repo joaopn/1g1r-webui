@@ -67,6 +67,10 @@ CHECKSUM_SCORE = 1.0
 ReportRunner = Callable[..., list[igir.ReportRow]]
 
 
+class ConvertFirst(Exception):
+    """A scan stops after its check: files are not in the target format yet."""
+
+
 class ScanError(RuntimeError):
     """The scan could not start or finish; the message is shown on the folder page."""
 
@@ -417,7 +421,12 @@ class Scanner:
             if kind == CHECK:
                 message = self._check(conn, label, progress)
             else:
-                message = self._scan(conn, label, refresh_lookups, progress, full)
+                try:
+                    message = self._scan(conn, label, refresh_lookups, progress, full)
+                except ConvertFirst as stopped:
+                    # Recorded as the check it was: the set still needs its scan.
+                    conn.execute("UPDATE scan SET kind = ? WHERE id = ?", (CHECK, scan_id))
+                    message = str(stopped)
             self._finish(conn, scan_id, "done", message)
         except (ScanError, igir.IgirError, mounts.FolderPathError, OSError) as exc:
             self._finish(conn, scan_id, "failed", str(exc))
@@ -508,27 +517,25 @@ class Scanner:
             found_files.found,
         )
         self._store_inventory(conn, label, files, found)
+        found.cache.save(conn, {f.rel_path for f in files})
         waiting = self.waiting(conn, library, folder, root)
         candidates = [f for f in files if f.kind in ("rom", "archive")]
+        left = sum(1 for f in candidates if f.rel_path in waiting)
+        if left:
+            raise ConvertFirst(f"{left} files to convert or discard first; nothing identified")
         final = [f for f in files if f.rel_path not in waiting]
-        pending = sum(1 for f in candidates if f.rel_path in waiting)
         igir_cache = igir.cache_path(self.settings, label)
         if full:
             igir_cache.unlink(missing_ok=True)
-        excluded = [str(root / rel) for rel in sorted(waiting)]
         run_igir = {
             "cache": igir_cache,
-            # The whole folder: past max_excluded_files igir reads every file.
             "timeout": igir.time_limit(self.settings, sum(f.size for f in files)),
             "threads": self.store.igir_threads(library),
-            # Beyond the limit igir reads them too; their matches are not used.
-            "exclude": excluded if len(excluded) <= self.settings.igir.max_excluded_files else [],
         }
         if self.settings.platforms.profiles[folder.platform].excess_files:
             run_igir["excess"] = True
         if self.settings.platforms.profiles[folder.platform].title_ids:
             self._title_ids(root, final, found, progress)
-        waits = f"; {pending} wait for conversion (identified once converted)" if pending else ""
         entries = [e for e in self.registry.entries(conn, library, folder.platform) if e.on]
         dats = [(e, self.registry.load(e.version)) for e in entries if e.version is not None]
         if not dats and found.identified:
@@ -537,14 +544,14 @@ class Scanner:
             self._store_identity(conn, label, final, found)
             found.cache.save(conn, {f.rel_path for f in files})
             identified = sum(1 for f in candidates if f.rel_path not in waiting)
-            return f"{len(found.identified)} of {identified} files identified by title ID{waits}"
+            return f"{len(found.identified)} of {identified} files identified by title ID"
         if not dats:
             progress.stage("Saving")
             self._store_identity(conn, label, final, found)
             found.cache.save(conn, {f.rel_path for f in files})
             return (
                 f"inventory only, {len(files)} files: this platform has no active DAT, so "
-                f"nothing was identified (add one in Settings → DATs){waits}"
+                f"nothing was identified (add one in Settings → DATs)"
             )
         parts = {
             e.lower() for e in self.settings.platforms.profiles[folder.platform].part_extensions
@@ -617,7 +624,7 @@ class Scanner:
         online = sum(1 for m in found.identified.values() if m == METHOD_HASHEOUS)
         if online:
             summary.append(f"{online} of them via Hasheous")
-        return "; ".join(summary + notes) + waits
+        return "; ".join(summary + notes)
 
     def _source_label(self, entry) -> str:
         source = self.settings.dats.sources.get(entry.id)

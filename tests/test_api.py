@@ -32,8 +32,6 @@ def setup(make_settings, roms_root):
     folder.mkdir()
     for n in NAMES:
         write_zip(folder / f"{n}.zip", f"{n}.nes", n.encode())
-    # Loose: it waits to be zipped (the NES target), so it is neither identified nor unmatched.
-    (folder / "odd.nes").write_bytes(b"?")
     # Zipped, as the target wants it, and in no DAT: unmatched.
     write_zip(folder / "stray.zip", "stray.nes", b"??")
     (folder / "metadata.txt").write_text("x")
@@ -190,13 +188,11 @@ def test_dat_order_is_saved_per_platform(setup):
 def test_scan_and_folder_detail(setup):
     client, _, _ = setup
     scan = scanned(client)
-    assert scan["status"] == "done" and scan["message"] == (
-        "5 of 6 ROM files identified; 1 wait for conversion (identified once converted)"
-    )
+    assert scan["status"] == "done" and scan["message"] == "5 of 6 ROM files identified"
     detail = client.get("/api/folders/nes").json()
-    assert (detail["summary"]["unmatched"], detail["summary"]["waiting"]) == (1, 1)
+    assert (detail["summary"]["unmatched"], detail["summary"]["waiting"]) == (1, 0)
     assert [f["rel_path"] for f in detail["unmatched"]] == ["stray.zip"]
-    assert [f["rel_path"] for f in detail["convert_first"]] == ["odd.nes"]
+    assert detail["convert_first"] == []
     assert [f["rel_path"] for f in detail["others"]] == ["metadata.txt"]
     assert client.get("/api/folders/missing").status_code == HTTPStatus.NOT_FOUND
 
@@ -244,9 +240,50 @@ def test_games_keep_leave_and_ranking(setup):
     assert store.load().folder("nes").ranking is None
     home = client.get("/api/folders").json()[0]
     assert home["counts"]["several"] == 2 and home["summary"]["identified"] == 5
-    # To process: the undecided game's two versions and stray.zip (unmatched) to match, and
-    # odd.nes to wrap (waiting for it, not to match).
-    assert home["progress"] == {"processed": 3, "to_process": 4, "to_match": 3, "to_convert": 1}
+    # To process: the undecided game's two versions and stray.zip (unmatched).
+    assert home["progress"] == {"processed": 3, "to_process": 3, "to_match": 3, "to_convert": 0}
+
+
+def test_matching_waits_until_every_file_is_converted_or_discarded(setup, roms_root):
+    """One target format, converted first: while a file is not in it, a scan stops after its
+    check (recorded as a check) and 1G1R cannot be applied; converting it, or moving what
+    cannot be converted to discarded/, lets matching go on."""
+    client, _, _ = setup
+    folder = roms_root / "NES Set"
+    (folder / "odd.nes").write_bytes(b"?")
+    write_zip(folder / "Empty.zip", "readme.txt", b"no ROM")
+    scan = scanned(client)
+    assert (scan["status"], scan["kind"]) == ("done", "check")
+    assert scan["message"].startswith("2 files to convert or discard first")
+    assert client.get("/api/folders/nes/games").json() == []
+    refused = client.post("/api/folders/nes/apply/preview", json={})
+    assert refused.status_code == HTTPStatus.CONFLICT and "convert or discard first" in refused.text
+    detail = client.get("/api/folders/nes").json()
+    assert [f["rel_path"] for f in detail["convert_first"]] == ["Empty.zip", "odd.nes"]
+    assert client.get("/api/folders").json()[0]["needs"] == "identify"
+    conversion_body = client.get("/api/folders/nes/conversion").json()
+    assert conversion_body["cannot_convert"] == ["Empty.zip"]
+
+    # Convert what can be converted, discard what cannot: then the scan identifies.
+    def finished(path):
+        for _ in range(500):
+            body = client.get(f"/api/folders/nes/{path}").json()
+            if body and body["status"] != "running":
+                return body
+        raise AssertionError(f"{path} did not finish")
+
+    plan = client.post("/api/folders/nes/convert/preview", json={}).json()
+    client.post("/api/folders/nes/convert", json={"token": plan["token"]})
+    assert finished("run")["status"] == "done"
+    aside = client.post("/api/folders/nes/set-aside/preview", json={"rel_paths": ["Empty.zip"]})
+    client.post(
+        "/api/folders/nes/set-aside",
+        json={"rel_paths": ["Empty.zip"], "token": aside.json()["token"]},
+    )
+    assert finished("run")["status"] == "done"
+    assert client.post("/api/folders/nes/scan").status_code == HTTPStatus.ACCEPTED
+    scan = finished("scan")
+    assert (scan["kind"], scan["message"]) == ("identify", "5 of 7 ROM files identified")
 
 
 def test_healthz(setup):
@@ -284,8 +321,9 @@ def test_index_is_revalidated_so_a_new_build_is_picked_up(make_settings, tmp_pat
             assert page.headers.get("cache-control") == "no-cache", path
 
 
-def test_conversion_proposals_and_delete_originals(setup):
+def test_conversion_proposals_and_delete_originals(setup, roms_root):
     client, _, _ = setup
+    (roms_root / "NES Set" / "odd.nes").write_bytes(b"?")
     scanned(client)
     body = client.get("/api/folders/nes/conversion").json()
     rows = {r["rel_path"]: r for r in body["rows"]}

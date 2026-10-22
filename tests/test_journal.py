@@ -9,6 +9,7 @@ from g1r import db, journal, moves
 from g1r.config import ApplyConfig
 
 from .test_api import scanned, setup  # noqa: F401  (fixture)
+from .test_scanner import write_zip
 
 CONFIG = ApplyConfig(
     copy_chunk_bytes=4,
@@ -114,8 +115,8 @@ def test_apply_and_restore_a_folder(setup, roms_root):  # noqa: F811
     assert contra["status"] == "applied"
     gone = next(v for v in contra["versions"] if v["rel_path"] == "Contra (Japan).zip")
     assert gone["discarded"] and gone["operation"] is None
-    # 7 ROM files were scanned (6 zips and odd.nes); one is now in discarded/.
-    assert client.get("/api/folders/nes").json()["summary"]["roms"] == 6
+    # 6 zips were scanned; one is now in discarded/.
+    assert client.get("/api/folders/nes").json()["summary"]["roms"] == 5
     listing = client.get("/api/folders/nes/discarded").json()
     assert listing["reasons"][0]["files"][0]["operation_id"] == gone["discarded"]
 
@@ -148,6 +149,8 @@ def test_preflight_refuses_changed_files_and_taken_places(setup, roms_root):  # 
     assert refused.json()["detail"]["problems"][0]["rel_path"] == "Contra (Japan).zip"
     assert source.exists()
 
+    # A broken zip cannot be converted, so matching waits: put a good one back first.
+    write_zip(source, "Contra (Japan).nes", b"Contra (Japan)")
     scanned_again = client.post("/api/folders/nes/scan")
     assert scanned_again.status_code == HTTPStatus.ACCEPTED
     for _ in range(500):

@@ -13,7 +13,6 @@ from .test_lookups import FakeHasheous
 SYSTEM = "Sony - PlayStation"
 DISC = "Disc (Europe).chd"
 BROKEN = "Broken (Europe).chd"
-BIG = "Big (Europe).iso"
 
 
 def track(index: int, kind: str, size: int, seed: str) -> dict:
@@ -43,7 +42,6 @@ def psx(make_settings, roms_root):
     for name in (DISC, BROKEN):
         (folder / name).write_bytes(b"MComprHD" + name.encode())
     settings = make_settings()
-    (folder / BIG).write_bytes(b"iso data")
     store = LibraryStore(settings)
     store.update(
         lambda lib: lib.folders.append(
@@ -91,10 +89,7 @@ def test_a_chd_is_looked_up_by_its_data_track_never_by_its_own_hash(psx):
     assert not own & {a["sha1"] for a in post.asked}
     method = conn.execute("SELECT method FROM identity WHERE rel_path = ?", (DISC,)).fetchone()
     assert method[0] == scanner.METHOD_HASHEOUS
-    # The ISO waits for its CHD: identified (and looked up) once converted.
-    waiting = folder_scanner.waiting(conn, store.load(), store.load().folder("psx"), folder)
-    assert waiting == {BIG}
-    rows = unmatched.rows(conn, "psx", hasheous_on=True, waiting=waiting)
+    rows = unmatched.rows(conn, "psx", hasheous_on=True)
     reasons = {r["rel_path"]: r["hasheous"] for r in rows}
     assert reasons == {
         BROKEN: {"status": hasheous.SKIPPED, "detail": "the disc's tracks could not be read"},

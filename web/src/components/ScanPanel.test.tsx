@@ -23,7 +23,7 @@ function renderPanel(scan: Scan | null) {
 }
 
 /** The Matching page's panel: the latest run of either kind, and the latest Scan. */
-function renderPanelWith(scan: Scan | null, lastScan: Scan | null) {
+function renderPanelWith(scan: Scan | null, lastScan: Scan | null, blocked?: string) {
   const posted: string[] = [];
   vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
     if (init?.method === "POST") posted.push(url);
@@ -32,7 +32,14 @@ function renderPanelWith(scan: Scan | null, lastScan: Scan | null) {
   queryClient.clear();
   render(
     <QueryClientProvider client={queryClient}>
-      <ScanPanel label="nes" kind="identify" scan={scan} lastScan={lastScan} title="Matching">
+      <ScanPanel
+        label="nes"
+        kind="identify"
+        scan={scan}
+        lastScan={lastScan}
+        title="Matching"
+        blocked={blocked}
+      >
         DAT
       </ScanPanel>
     </QueryClientProvider>,
@@ -46,6 +53,15 @@ test("a quick scan reuses earlier reads; a full scan asks for every file again",
   await userEvent.click(screen.getByRole("button", { name: /Quick scan/ }));
   await userEvent.click(screen.getByRole("button", { name: /Full scan/ }));
   expect(posted).toEqual(["/api/folders/nes/scan", "/api/folders/nes/scan?full=true"]);
+});
+
+test("a scan waits while files are not converted, and says why", () => {
+  renderPanelWith(SCAN, SCAN, "Convert or discard first: 2 files");
+  for (const name of [/Quick scan/, /Full scan/]) {
+    const button = screen.getByRole("button", { name });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute("title", "Convert or discard first: 2 files");
+  }
 });
 
 test("a folder never scanned has one button", () => {

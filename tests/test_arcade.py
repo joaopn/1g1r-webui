@@ -40,7 +40,6 @@ def mvs(make_settings, roms_root):
         with zipfile.ZipFile(folder / f"{name}.zip", "w") as z:
             z.writestr("chip.bin", name.encode())
             z.writestr("chip2.bin", name.encode() * 2)
-    (folder / "loose.bin").write_bytes(b"chip")
     modes = []
 
     def report(settings, dat_file, root, merge=None, **_):
@@ -70,8 +69,9 @@ def scan(client):
     raise AssertionError("scan did not finish")
 
 
-def test_fbneo_dat_download_and_sets_identified_in_both_merge_modes(mvs):
+def test_fbneo_dat_download_and_sets_identified_in_both_merge_modes(mvs, roms_root):
     client, modes, fetched = mvs
+    folder = roms_root / "mvs"
     assert (
         client.post("/api/dats/neogeomvs/download?source=fbneo").status_code
         < HTTPStatus.BAD_REQUEST
@@ -96,4 +96,8 @@ def test_fbneo_dat_download_and_sets_identified_in_both_merge_modes(mvs):
     rows = {r["rel_path"]: r for r in client.get("/api/folders/mvs/conversion").json()["rows"]}
     # Romsets are whole games, never "several ROM files to split".
     assert {rows[f"{n}.zip"]["status"] for n in (PARENT, CLONE, BIOS)} == {"done"}
+    # A loose chip is no game: flagged, and matching waits until it is discarded.
+    (folder / "loose.bin").write_bytes(b"chip")
+    scan(client)
+    rows = {r["rel_path"]: r for r in client.get("/api/folders/mvs/conversion").json()["rows"]}
     assert rows["loose.bin"]["status"] == "flagged"

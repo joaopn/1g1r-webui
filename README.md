@@ -35,7 +35,7 @@ The app keeps its database, DATs, caches and console keys in `data/` in the clon
 
 ## Platforms
 
-Files are read bare or inside `.zip`/`.7z`. Every file is converted to its platform's target format (a `.7z` becomes a `.zip`); files that cannot be converted are listed for moving to `discarded/`.
+Files are read bare or inside `.zip`/`.7z`. Every file is converted to its platform's target format (a `.7z` becomes a `.zip`); files that cannot be converted are listed for moving to `discarded/`. Scanning (igir, Hasheous) and 1G1R wait until every file is in the target format.
 
 | Platform | Formats | Target | DAT |
 |---|---|---|---|

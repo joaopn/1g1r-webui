@@ -94,6 +94,9 @@ export function FolderMatchingPage() {
   const ignored = f.others.filter((file) => file.kind === "ignored");
   const other = (f.summary.counts.other ?? 0) + (f.summary.counts.ignored ?? 0);
   const scanning = f.scan?.status === "running";
+  // Files not in the target format yet: scanning and 1G1R wait for them (converted first).
+  const waiting = f.summary.waiting ?? 0;
+  const convertFirst = `Convert or discard first: ${formatFiles(waiting)} not in the target format (Conversion tab)`;
   // The DATs identifying this set, in order (switched-off ones left out).
   const dats = f.dat_order.filter((e) => e.on && e.dat);
   const lookupsOn = !!settingsData.data && settingsData.data.lookups.hasheous;
@@ -125,6 +128,7 @@ export function FolderMatchingPage() {
         scan={f.scan}
         lastScan={f.last_scan}
         title="Matching"
+        blocked={waiting > 0 ? convertFirst : undefined}
         actions={
           f.dat_order.some((e) => e.dat) ? (
             <DatOrderEditor
@@ -188,14 +192,15 @@ export function FolderMatchingPage() {
           className="rounded-md border border-border bg-card px-3 py-2 text-muted-foreground text-sm"
           data-testid="waiting"
         >
-          Waiting for conversion: {formatFiles(f.summary.waiting ?? 0)}. Convert them on the{" "}
+          Not in the target format yet: {formatFiles(f.summary.waiting ?? 0)}. Convert them, or move
+          what can't be converted to discarded/, on the{" "}
           <Link
             to={`/folders/${label}/conversion`}
             className="text-primary underline underline-offset-2"
           >
             Conversion tab
           </Link>
-          ; the scan after identifies them here.
+          ; scanning and 1G1R wait until none is left.
         </p>
       ) : null}
       {(f.summary.counts.other ?? 0) > 0 ? (
@@ -217,10 +222,14 @@ export function FolderMatchingPage() {
               onSave={(value) => ranking.mutate(value)}
             />
             <Button
-              disabled={proposed === 0 || scanning}
+              disabled={proposed === 0 || scanning || waiting > 0}
               onClick={() => setApplying({ game: null })}
               title={
-                proposed === 0 ? "No proposed moves" : "Review every proposed move, then apply"
+                waiting > 0
+                  ? convertFirst
+                  : proposed === 0
+                    ? "No proposed moves"
+                    : "Review every proposed move, then apply"
               }
             >
               <Archive className="size-4" aria-hidden="true" />

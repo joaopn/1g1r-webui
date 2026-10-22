@@ -3,9 +3,7 @@ files with nothing left to convert) as two runs (maintainer, 2026-10-21)."""
 
 from http import HTTPStatus
 
-from g1r import igir, scanner
-from g1r.dat_registry import DatRegistry
-from g1r.library import LibraryStore
+from g1r import scanner
 
 from .test_api import dat_bytes, scanned, setup  # noqa: F401  (fixture)
 from .test_scanner import env, write_zip  # noqa: F401  (fixture)
@@ -51,44 +49,25 @@ def test_a_check_keeps_what_a_scan_found_for_unchanged_files(env, roms_root):  #
     assert conn.execute(loose).fetchone()[0] > 0
 
 
-def test_a_scan_leaves_files_waiting_for_conversion_to_their_conversion(env, roms_root):  # noqa: F811
+def test_a_scan_waits_for_files_not_in_the_target_format(env, roms_root):  # noqa: F811
+    """While a file waits for its conversion, a scan stops after its check: igir is not run,
+    nothing is identified, and the run is recorded as a check."""
     settings, store, registry, conn, _ = env
-    loose = roms_root / "nes" / "Wait (USA).nes"
-    loose.write_bytes(b"loose")
-    asked = []
+    (roms_root / "nes" / "Wait (USA).nes").write_bytes(b"loose")
 
-    def report(settings_, dat_file, input_dir, **options):
-        asked.append(options["exclude"])
-        # Even if igir named it, a waiting file is not identified.
-        return [igir.ReportRow("Known (USA)", "FOUND", (str(loose),))]
+    def report(*args, **kwargs):
+        raise AssertionError("igir ran before every file was converted")
 
     folder_scanner = scanner.Scanner(settings, store, registry, report)
     scan = run(folder_scanner, conn, scanner.IDENTIFY)
-    assert asked == [[str(loose)]]
-    assert "Wait (USA).nes" not in identities(conn)
-    assert scan["message"].endswith("1 wait for conversion (identified once converted)")
+    assert (scan["kind"], scan["status"]) == ("check", "done")
+    assert scan["message"].startswith("1 files to convert or discard first")
+    assert identities(conn) == {}
 
 
-def test_past_the_limit_igir_reads_the_waiting_files_too(env, roms_root, make_settings):  # noqa: F811
-    _, _, _, conn, _ = env
-    (roms_root / "nes" / "Wait (USA).nes").write_bytes(b"loose")
-    settings = make_settings({"igir": {"max_excluded_files": 0}})
-    store = LibraryStore(settings)
-    asked = []
-
-    def report(settings_, dat_file, input_dir, **options):
-        asked.append(options["exclude"])
-        return []
-
-    folder_scanner = scanner.Scanner(
-        settings, store, DatRegistry(settings, store, lambda url: b""), report
-    )
-    run(folder_scanner, conn, scanner.IDENTIFY)
-    assert asked == [[]]
-
-
-def test_check_files_from_the_api(setup):  # noqa: F811
+def test_check_files_from_the_api(setup, roms_root):  # noqa: F811
     client, _, _ = setup
+    (roms_root / "NES Set" / "odd.nes").write_bytes(b"?")
     assert (
         client.post(
             "/api/folders",
@@ -119,7 +98,8 @@ def test_check_files_from_the_api(setup):  # noqa: F811
     assert (summary["unmatched"], summary["unscanned"], summary["waiting"]) == (0, 6, 1)
     assert client.get("/api/folders/nes/unmatched").json() == []
     assert card["warnings"] == [] and card["progress"]["to_match"] == 6
-    # A scan looks at them: the one no DAT lists is unmatched now.
+    # Once odd.nes is gone, a scan looks at them: the one no DAT lists is unmatched now.
+    (roms_root / "NES Set" / "odd.nes").unlink()
     client.post("/api/dats/nes/upload", files={"file": ("nes.dat", dat_bytes())})
     client.post("/api/folders/nes/scan")
     for _ in range(500):

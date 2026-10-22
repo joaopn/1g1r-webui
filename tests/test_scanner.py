@@ -320,7 +320,8 @@ def test_igir_may_take_longer_on_a_larger_folder(env, roms_root):
 
     folder_scanner = scanner.Scanner(settings, store, registry, report)
     folder_scanner.run(conn, folder_scanner.start(conn, "nes"), "nes")
-    with open(roms_root / "nes" / "Big (Europe).nes", "wb") as big:
+    # Not a ROM (it would wait for its conversion): the limit counts every file igir walks.
+    with open(roms_root / "nes" / "Big (Europe).img", "wb") as big:
         big.truncate(int(settings.igir.min_bytes_per_second * settings.igir.timeout_seconds))
     folder_scanner.run(conn, folder_scanner.start(conn, "nes"), "nes")
     small, large = limits

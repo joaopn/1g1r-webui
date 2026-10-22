@@ -291,7 +291,13 @@ function CardActions({ folder }: { folder: FolderCard }) {
   const running = folder.scan?.status === "running";
   // The run that is due: Check files first (it needs no DAT), then Scan.
   const checking = folder.needs === "check";
-  const guard = checking ? undefined : datGuard(folder);
+  // A Scan waits for every file to be in the target format (converted or discarded first).
+  const guard = checking
+    ? undefined
+    : (datGuard(folder) ??
+      (folder.progress.to_convert > 0
+        ? "Convert or discard first (Conversion tab): scanning waits until every file is in the target format"
+        : undefined));
   return (
     <div className="relative flex flex-wrap items-center gap-2 px-4 pb-4">
       {folder.dat_download ? (

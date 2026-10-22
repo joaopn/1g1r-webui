@@ -815,6 +815,13 @@ def build_router(
         }
         return HTTPException(status_code=HTTPStatus.CONFLICT, detail=detail)
 
+    def converted_first(conn, label: str) -> None:
+        """1G1R waits while files are not in the target format (maintainer, 2026-10-22)."""
+        folder = folder_or_404(label)
+        left = len(waiting_of(store.load(), folder, conn))
+        if left:
+            raise conflict(f"convert or discard first: {left} files (Conversion tab)")
+
     def discard_plan(conn, label: str, group_key: str | None):
         folder = folder_or_404(label)
         games = matching.game_rows(
@@ -866,6 +873,7 @@ def build_router(
 
     @router.post("/folders/{label}/apply/preview")
     def apply_preview(label: str, body: ApplyScope, conn: Conn):
+        converted_first(conn, label)
         plan, problems = discard_plan(conn, label, body.group_key)
         return {
             "token": journal.token(plan),
@@ -877,6 +885,8 @@ def build_router(
 
     @router.post("/folders/{label}/apply", status_code=HTTPStatus.ACCEPTED)
     def apply(label: str, body: ApplyScope, request: Request, conn: Conn):
+        converted_first(conn, label)
+
         def check():
             plan, problems = discard_plan(conn, label, body.group_key)
             if journal.token(plan) != body.token:
@@ -1153,7 +1163,14 @@ def build_router(
     def folder_conversion(label: str, conn: Conn):
         folder = folder_or_404(label)
         found = conversion_rows(store.load(), folder, conn)
-        return {"counts": conversion.counts(found), "rows": [asdict(r) for r in found]}
+        return {
+            "counts": conversion.counts(found),
+            "rows": [asdict(r) for r in found],
+            # Flagged, or failed in the last conversion: offered for discarded/ in one go.
+            "cannot_convert": conversion.cannot_convert(
+                found, journal.failed_conversions(conn, label)
+            ),
+        }
 
     @router.put("/folders/{label}/conversion")
     def save_conversion(label: str, body: ConversionOptions):

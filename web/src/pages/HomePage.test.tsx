@@ -207,6 +207,18 @@ test("without a DAT the card offers the default one and holds the scan back", as
   ).toBe(true);
 });
 
+test("a scan waits until every file is converted or discarded", async () => {
+  renderPage([
+    {
+      ...checked("gb", "gb"),
+      progress: { processed: 0, to_process: 1, to_match: 0, to_convert: 1 },
+    },
+  ]);
+  const scan = await screen.findByRole("button", { name: "Scan gb" });
+  expect(scan).toBeDisabled();
+  expect(scan).toHaveAttribute("title", expect.stringContaining("Convert or discard first"));
+});
+
 test("a set without figures shows a box saying what it waits for, in both views", async () => {
   const folders = [
     { ...card("nodat", "nes", null), needs_dat: true },
