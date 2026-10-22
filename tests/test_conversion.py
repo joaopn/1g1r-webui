@@ -139,7 +139,14 @@ def test_zip_target(gb):
     rows = by_path(settings, conn, "zip")
     assert rows["Zipped (USA).zip"].status == conversion.DONE
     assert rows["Readme (USA).zip"].status == conversion.DONE
-    assert rows["Seven (Japan).7z"].status == conversion.ACCEPTED
+    # One format: a 7z becomes a zip holding all its members.
+    seven = rows["Seven (Japan).7z"]
+    assert (seven.status, seven.recipe, seven.output) == (
+        conversion.REPACK,
+        conversion.RECIPE_REPACK,
+        "Seven (Japan).zip",
+    )
+    assert seven.originals_to.endswith("discarded/gb/originals/Seven (Japan).7z")
     bare = rows["Bare (Europe).gb"]
     assert (bare.status, bare.output) == (conversion.WRAP, "Bare (Europe).zip")
     assert bare.originals_to.endswith("discarded/gb/originals/Bare (Europe).gb")
@@ -174,5 +181,5 @@ def test_delete_originals_makes_the_step_irreversible(gb):
 def test_counts(gb):
     settings, conn = gb
     counts = conversion.counts(list(by_path(settings, conn, "zip").values()))
-    assert counts["to_convert"] == counts["wrap"] == 1
+    assert counts["to_convert"] == counts["wrap"] + counts["repack"] == 2
     assert counts["flagged"] == 2 and counts["all"] == 8

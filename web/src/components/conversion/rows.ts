@@ -4,26 +4,26 @@ import type { ConversionRow, ConversionStatus } from "@/lib/types";
 export const STATUS_ORDER: ConversionStatus[] = [
   "wrap",
   "unwrap",
+  "repack",
   "make chd",
   "make rvz",
   "byteswap",
   "decrypt",
   "flagged",
   "part",
-  "accepted",
   "done",
 ];
 
 export const STATUS_LABELS: Record<ConversionStatus, string> = {
   wrap: "zip it",
   unwrap: "unzip it",
+  repack: "make a zip",
   "make chd": "make CHD",
   "make rvz": "make RVZ",
   byteswap: "fix byte order",
   decrypt: "decrypt",
   part: "track",
   flagged: "flagged",
-  accepted: "accepted as is",
   done: "done",
 };
 
@@ -36,6 +36,7 @@ export type ConversionView = {
 export const converting = (row: ConversionRow) =>
   row.status === "wrap" ||
   row.status === "unwrap" ||
+  row.status === "repack" ||
   row.status === "make chd" ||
   row.status === "make rvz" ||
   row.status === "byteswap" ||
@@ -46,7 +47,6 @@ export const CONVERSION_VIEWS: ConversionView[] = [
   { id: "all", label: "All", test: () => true },
   { id: "convert", label: "To convert", test: converting },
   { id: "flagged", label: "Flagged", test: (r) => r.status === "flagged" },
-  { id: "accepted", label: "Accepted as is", test: (r) => r.status === "accepted" },
   { id: "done", label: "Done", test: (r) => r.status === "done" },
 ];
 

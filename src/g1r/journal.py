@@ -261,8 +261,9 @@ def _conversion_space(row: conversion.ConversionRow, sources, member) -> int:
     if row.recipe == conversion.RECIPE_DECRYPT and member:
         # The unpacked copy and the output.
         return member["size"] + member["size"]
-    if row.recipe == conversion.RECIPE_ARCHIVE_DISC:
-        # The unpacked copy and the output, then the output and the tracks extracted back.
+    if row.recipe in (conversion.RECIPE_ARCHIVE_DISC, conversion.RECIPE_REPACK):
+        # The unpacked copy and the output (a disc: then the output and the tracks extracted
+        # back; a zip: at most the unpacked size).
         unpacked = sum(m.get("size") or 0 for m in row.members)
         return unpacked + unpacked
     if row.recipe == conversion.RECIPE_DISC:
@@ -595,9 +596,12 @@ def _set_state(conn, op_id: int, state: str, error: str = "", moved=None) -> Non
 def carry_over(conn, label: str, old: str, new: str, moved, members: list[tuple]) -> None:
     """Give a conversion's output (`new`) the scan rows of its original (`old`)."""
     kind = "archive" if members else "rom"
+    # A file of that name in discarded/ (an earlier conversion's original) loses its row, as
+    # a rescan does when its path reappears: it is still listed in discarded/, and restoring
+    # it refuses while the name is taken.
     conn.execute(
-        "DELETE FROM folder_file WHERE folder_label = ? AND rel_path = ? AND place = ?",
-        (label, new, PLACE_FOLDER),
+        "DELETE FROM folder_file WHERE folder_label = ? AND rel_path = ?",
+        (label, new),
     )
     conn.execute(
         "INSERT INTO folder_file (folder_label, rel_path, size, mtime_ns, kind) "
@@ -644,7 +648,11 @@ def _wrapped_members(m: Move) -> list[tuple]:
     if m.destination.suffix.lower() != conversion.ZIP_SUFFIX:
         return []
     with zipfile.ZipFile(m.destination) as z:
-        return [(i.filename, i.file_size, format(i.CRC, CRC_FORMAT)) for i in z.infolist()]
+        return [
+            (i.filename, i.file_size, format(i.CRC, CRC_FORMAT))
+            for i in z.infolist()
+            if not i.is_dir()
+        ]
 
 
 def _settle(conn, kind: str, label: str, op_id: int, m: Move, moved) -> None:

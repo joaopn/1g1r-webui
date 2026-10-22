@@ -132,13 +132,6 @@ class TargetConfig(_Strict):
     label: str
     description: str
     produces: str
-    accepts: list[str]
-
-    @model_validator(mode="after")
-    def _produces_is_accepted(self) -> "TargetConfig":
-        if self.produces not in self.accepts:
-            raise ValueError(f"a target must accept what it produces ({self.produces})")
-        return self
 
 
 PLATFORM_KINDS = ("console", "handheld", "arcade", "computer")
@@ -195,7 +188,6 @@ class PlatformProfile(_Strict):
     # ROM formats kept as they are (also in rom_extensions): never converted, and never
     # discarded on a name match or for a version in another format (Dreamcast .cdi: a CD-R
     # image chdman cannot read, often a cut-down rip of a GD-ROM).
-    keep_extensions: list[str] = Field(default_factory=list)
     # Archives may hold other files besides the game's ROMs (.url, .nfo, .txt): igir is run
     # with --allow-excess-sets, and an archive's identification stands only when every ROM
     # file in it is one of the game's (by CRC32), so a several-games archive is never one.
@@ -222,9 +214,8 @@ class PlatformsConfig(_Strict):
             raise ValueError(f"platforms.enabled lists platforms without a profile: {missing}")
         containers = {*self.archive_extensions, *self.disc_formats, PLAIN}
         for target_id, target in self.targets.items():
-            unknown = [c for c in target.accepts if c not in containers]
-            if unknown:
-                raise ValueError(f"target {target_id}: unknown containers {unknown}")
+            if target.produces not in containers:
+                raise ValueError(f"target {target_id}: unknown container {target.produces}")
         for platform_id, profile in self.profiles.items():
             unknown = [t for t in profile.targets if t not in self.targets]
             if unknown:
@@ -242,11 +233,6 @@ class PlatformsConfig(_Strict):
                 )
             if profile.kind not in PLATFORM_KINDS:
                 raise ValueError(f"platform {platform_id}: kind must be one of {PLATFORM_KINDS}")
-            stray = set(profile.keep_extensions) - set(profile.rom_extensions)
-            if stray:
-                raise ValueError(
-                    f"platform {platform_id}: keep_extensions not in rom_extensions {sorted(stray)}"
-                )
         return self
 
     def enabled_profiles(self) -> dict[str, PlatformProfile]:
@@ -427,6 +413,7 @@ class ApplyConfig(_Strict):
     zip_compress_level: int = Field(ge=0)
     # Extracting one member from a 7z archive must finish within this many seconds.
     extract_timeout_seconds: int = Field(gt=0)
+    extract_min_bytes_per_second: float = Field(gt=0)
     # A disc conversion unpacks and checks its tracks in a directory with this suffix beside
     # the output; one left behind by a restart is removed at start-up.
     work_suffix: str = Field(min_length=1)

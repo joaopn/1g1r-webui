@@ -53,7 +53,7 @@ export function FolderConversionPage() {
       <ScanPanel label={label} kind="check" scan={f.scan} title="Check files">
         <span className="font-medium">Target</span> {target?.label}{" "}
         <span className="text-muted-foreground">
-          · accepts {target?.accepts.join(", ")} as they are · set for every {platformName} folder
+          · every other file is converted to it, or discarded · set for every {platformName} folder
           in{" "}
           <Link to="/settings/conversion-targets" className="underline underline-offset-2">
             Settings → Conversion targets
@@ -84,7 +84,7 @@ export function FolderConversionPage() {
             label="flagged"
             attention={counts.flagged > 0}
           />
-          <StatCard value={formatCount(counts.done + counts.accepted)} label="already fine" />
+          <StatCard value={formatCount(counts.done)} label="already fine" />
         </div>
       ) : null}
 

@@ -1,8 +1,10 @@
 """The conversion part: what each file of a folder would become under its platform's target.
 
-Proposals only: nothing here touches a file. Every proposal is lossless by construction
-(wrap a ROM in a zip, or take it out of one; a disc into one file; a byte-swapped ROM into
-its native order) and names the check that would prove it.
+Proposals only: nothing here touches a file. Every platform has one target format: a file
+is in it (done), proposed for a conversion to it, or flagged (it cannot be converted, and
+is discarded before matching). Every proposal is lossless by construction (wrap a ROM in a
+zip, or take it out of one; repack another archive as a zip; a disc into one file; a
+byte-swapped ROM into its native order) and names the check that would prove it.
 """
 
 import fnmatch
@@ -17,8 +19,9 @@ from g1r.config import PLAIN, Settings, TargetConfig
 REASON_ORIGINALS = "originals"
 
 DONE = "done"
-ACCEPTED = "accepted"
 WRAP = "wrap"
+# Another archive (7z) rewritten as a zip holding all its members.
+REPACK = "repack"
 UNWRAP = "unwrap"
 MAKE_CHD = "make chd"
 MAKE_RVZ = "make rvz"
@@ -38,8 +41,8 @@ NOTE_TEXT = {
 # A track file a cue sheet's conversion takes along.
 PART = "part"
 FLAGGED = "flagged"
-STATUSES = (WRAP, UNWRAP, MAKE_CHD, MAKE_RVZ, BYTESWAP, DECRYPT, FLAGGED, PART, ACCEPTED, DONE)
-CONVERTING = (WRAP, UNWRAP, MAKE_CHD, MAKE_RVZ, BYTESWAP, DECRYPT)
+STATUSES = (WRAP, UNWRAP, REPACK, MAKE_CHD, MAKE_RVZ, BYTESWAP, DECRYPT, FLAGGED, PART, DONE)
+CONVERTING = (WRAP, UNWRAP, REPACK, MAKE_CHD, MAKE_RVZ, BYTESWAP, DECRYPT)
 # The only archive the app writes; other targets are listed but never produced here.
 ZIP = "zip"
 ZIP_SUFFIX = f".{ZIP}"
@@ -50,6 +53,8 @@ ISO_MODE_DVD = "dvd"
 # How a conversion is carried out (converter.Converter).
 RECIPE_WRAP = "wrap"
 RECIPE_UNWRAP = "unwrap"
+# The whole archive unpacked to a work directory and zipped again, member for member.
+RECIPE_REPACK = "repack"
 # chdman createcd/createdvd from a cue sheet or ISO in the folder.
 RECIPE_DISC = "disc"
 # The same from a cue sheet or ISO inside an archive, extracted to a work directory first.
@@ -135,7 +140,6 @@ def rows(
     profile = settings.platforms.profiles[platform]
     rom_extensions = {e.lower() for e in profile.rom_extensions}
     part_extensions = {e.lower() for e in profile.part_extensions}
-    keep_extensions = {e.lower() for e in profile.keep_extensions}
     disc_formats = {e.lower() for e in settings.platforms.disc_formats}
     to_disc = target.produces in disc_formats
     files = conn.execute(
@@ -157,15 +161,11 @@ def rows(
             "SELECT rel_path, message FROM archive_problem WHERE folder_label = ?", (label,)
         ).fetchall()
     )
-    # Discarded rows count too: an output may not take the name of a file in discarded/.
+    # A name a file in discarded/ had is free: restoring that file refuses while it is taken.
     existing = {
         r[0].lower()
-        for r in conn.execute("SELECT rel_path FROM folder_file WHERE folder_label = ?", (label,))
-    }
-    held = {
-        r[0].lower()
         for r in conn.execute(
-            "SELECT rel_path FROM folder_file WHERE folder_label = ? AND place = 'discarded'",
+            "SELECT rel_path FROM folder_file WHERE folder_label = ? AND place = 'folder'",
             (label,),
         )
     }
@@ -221,17 +221,6 @@ def rows(
         ):
             # Unpacked and decrypted in one go; without what decryption needs, only unpacked.
             _decrypt(settings, label, row, profile, locked[rel], seeds, roms[0], delete_originals)
-        elif kept := keep_as_is(rel, f["kind"], roms, keep_extensions):
-            if f["kind"] == "archive" and len(roms) == 1:
-                # Never converted, but unpacked: emulators read the bare image.
-                _unwrap(row, roms[0], len(row.members) - len(roms))
-                _originals(settings, label, row, delete_originals)
-            elif f["kind"] == "archive":
-                # One game's discs belong together (maintainer, 2026-10-21).
-                row.status = ACCEPTED
-                row.note = f"{len(roms)} ROM files kept together in one archive"
-            else:
-                row.status, row.note = ACCEPTED, f".{kept} is kept as it is: it is never converted"
         elif to_disc and f["kind"] == "rom" and ext in discs.SHEETS:
             sheet = sheets.get(rel)
             if isinstance(sheet, str):
@@ -264,8 +253,8 @@ def rows(
                 row.status, row.note = FLAGGED, "a loose chip ROM: arcade games are romset zips"
             elif row.container == target.produces:
                 row.status = DONE
-            elif row.container in target.accepts:
-                row.status, row.note = ACCEPTED, f"{row.container} is accepted as it is"
+            elif target.produces == ZIP:
+                _repack(settings, label, row, delete_originals)
             else:
                 row.status, row.note = (
                     FLAGGED,
@@ -279,8 +268,8 @@ def rows(
             together = f"{len(roms)} ROM files kept together in one archive"
             if row.container == target.produces:
                 row.status, row.note = DONE, together
-            elif row.container in target.accepts:
-                row.status, row.note = ACCEPTED, together
+            elif target.produces == ZIP:
+                _repack(settings, label, row, delete_originals)
             else:
                 row.status = FLAGGED
                 row.note = f"{together}: only single-ROM archives are converted"
@@ -290,20 +279,14 @@ def rows(
             )
         elif row.container == target.produces:
             row.status = DONE
-        elif row.container in target.accepts:
-            row.status, row.note = ACCEPTED, f"{row.container} is accepted as it is"
+        elif f["kind"] == "archive" and target.produces == ZIP:
+            _repack(settings, label, row, delete_originals)
         else:
             _propose(settings, label, target, row, roms, delete_originals)
         if row.output:
             if row.output.lower() in existing | planned:
                 row.status = FLAGGED
-                if row.output.lower() in held:
-                    row.note = (
-                        f"{row.output} is the name of a file in discarded/, which a restore "
-                        "would need back; empty discarded/ to convert this"
-                    )
-                else:
-                    row.note = f"{row.output} already exists or is another file's output"
+                row.note = f"{row.output} already exists or is another file's output"
                 row.output = row.verify = row.recipe = row.originals_to = None
                 row.parts = []
             else:
@@ -312,7 +295,7 @@ def rows(
         if row.status == DECRYPT:
             notes = [n for n in notes if n != cards.ENCRYPTED]
         if notes:
-            if cards.ENCRYPTED in notes and row.status in (DONE, ACCEPTED):
+            if cards.ENCRYPTED in notes and row.status == DONE:
                 row.status = FLAGGED
             row.note = "; ".join([*(NOTE_TEXT.get(n, n) for n in notes), *filter(None, [row.note])])
         result.append(row)
@@ -322,15 +305,6 @@ def rows(
         if row.status == PART and row.rel_path not in converting:
             row.status, row.note = FLAGGED, "its cue sheet cannot be converted (see the cue)"
     return result
-
-
-def keep_as_is(rel_path: str, kind: str, roms: list[dict], keep: set[str]) -> str | None:
-    """The keep-as-is format (`keep_extensions`) of a bare file, or of an archive whose ROMs
-    are all in one, else None."""
-    if kind != "archive":
-        return _ext(rel_path) if _ext(rel_path) in keep else None
-    found = {_ext(m["name"]) for m in roms}
-    return found.pop() if len(found) == 1 and found <= keep else None
 
 
 def _cue_sheets(files, root: Path | None) -> tuple[dict, dict]:
@@ -479,6 +453,15 @@ def _unwrap(row, member, extras: int) -> None:
         row.note = f"{extras} other file(s) in the archive stay in the original"
 
 
+def _repack(settings, label, row, delete_originals) -> None:
+    """An archive that is not a zip, rewritten as one zip holding every member."""
+    row.status, row.recipe = REPACK, RECIPE_REPACK
+    row.output = str(PurePosixPath(row.rel_path).with_suffix(ZIP_SUFFIX))
+    row.verify = f"every member's name, size and CRC32 in the zip equal the {row.container}'s"
+    row.note = f"{len(row.members)} file(s) unpacked to a work folder and zipped"
+    _originals(settings, label, row, delete_originals)
+
+
 def _originals(settings, label, row, delete_originals) -> None:
     if delete_originals:
         row.reversible = False
@@ -506,8 +489,8 @@ def _byteswap(settings, label, target, row, roms, word, byte_order, delete_origi
         row.output = bare
         if target.produces == ZIP:
             row.note = (
-                "taken out of the zip in the native order; zipped again once the original "
-                "has left discarded/ (the zip's name is the original's)"
+                "taken out of the zip in the native order; the next conversion zips it again "
+                "(the zip's name is the original's)"
             )
     else:
         row.status = FLAGGED

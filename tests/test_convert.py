@@ -500,3 +500,92 @@ def test_stop_through_the_api(setup, roms_root, monkeypatch):  # noqa: F811
     )
     assert (roms_root / "NES Set" / "odd.nes").exists()
     assert {f["label"]: f for f in client.get("/api/folders").json()}["nes"]["converting"] is None
+
+
+# Repack: another archive rewritten as a zip --------------------------------------------
+
+
+def slt(members) -> str:
+    """7-Zip's technical listing of an archive holding `members` (a dict, or (name, data)
+    pairs when a name repeats)."""
+    pairs = members.items() if isinstance(members, dict) else members
+    blocks = [
+        f"Path = {name}\nSize = {len(data)}\nCRC = {zlib.crc32(data):08X}\nAttributes = A"
+        for name, data in pairs
+    ]
+    return "Path = x.7z\nType = 7z\n\n----------\n" + "\n\n".join(blocks) + "\n"
+
+
+def repacker(make_settings, members: dict[str, bytes], unpacked=None, listing=None):
+    """A Converter whose 7-Zip lists `listing` (default: the members) and unpacks `unpacked`
+    (default: the members; a name ending in a slash is an empty folder)."""
+
+    def unpack(settings, archive, directory):
+        for name, data in (unpacked if unpacked is not None else members).items():
+            target = directory / name
+            if name.endswith("/"):
+                target.mkdir(parents=True)
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(data)
+
+    return Converter(
+        make_settings(),
+        unpack=unpack,
+        seven_zip=lambda settings, path: listing or slt(members),
+    )
+
+
+def test_repack_zips_every_member_and_checks_them(make_settings, tmp_path):
+    here = tmp_path / "set"
+    here.mkdir()
+    members = {"Game (Disc 1).gb": b"one", "Game (Disc 2).gb": b"two", "extra/info.txt": b""}
+    archive = here / "Game.7z"
+    archive.write_bytes(b"7z data")
+    output = here / "Game.zip"
+    convert = repacker(make_settings, members, unpacked={**members, "empty/": b""})
+    convert(step(archive, output, recipe=conversion.RECIPE_REPACK))
+    with zipfile.ZipFile(output) as z:
+        assert {i.filename: z.read(i) for i in z.infolist() if not i.is_dir()} == members
+        assert "empty/" in z.namelist()
+    # The original stays (the journal moves it); the work folder is gone.
+    assert sorted(p.name for p in here.iterdir()) == ["Game.7z", "Game.zip"]
+
+
+@pytest.mark.parametrize(
+    ("unpacked", "listing"),
+    [
+        # A member that comes out different from what the archive lists.
+        ({"a.gb": b"changed"}, None),
+        # Two members of one name: 7-Zip keeps only the last.
+        ({"a.gb": b"two"}, slt([("a.gb", b"one"), ("a.gb", b"two")])),
+    ],
+)
+def test_a_repack_that_does_not_round_trip_leaves_nothing(
+    make_settings, tmp_path, unpacked, listing
+):
+    here = tmp_path / "set"
+    here.mkdir()
+    archive = here / "A.7z"
+    archive.write_bytes(b"7z data")
+    convert = repacker(make_settings, {"a.gb": b"one"}, unpacked=unpacked, listing=listing)
+    with pytest.raises(moves.MoveError):
+        convert(step(archive, here / "A.zip", recipe=conversion.RECIPE_REPACK))
+    assert sorted(p.name for p in here.iterdir()) == ["A.7z"]
+
+
+def test_a_repack_refuses_links(make_settings, tmp_path):
+    here = tmp_path / "set"
+    here.mkdir()
+    archive = here / "L.7z"
+    archive.write_bytes(b"7z data")
+
+    def unpack(settings, archive_, directory):
+        (directory / "a.gb").write_bytes(b"one")
+        (directory / "link.gb").symlink_to(directory / "a.gb")
+
+    members = {"a.gb": b"one", "link.gb": b"one"}
+    convert = Converter(make_settings(), unpack=unpack, seven_zip=lambda s, p: slt(members))
+    with pytest.raises(moves.MoveError, match="link"):
+        convert(step(archive, here / "L.zip", recipe=conversion.RECIPE_REPACK))
+    assert sorted(p.name for p in here.iterdir()) == ["L.7z"]

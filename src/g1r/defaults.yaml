@@ -199,30 +199,25 @@ platforms:
   # Images already stripped of data are never converted further (design §4), only flagged.
   lossy_patterns: ["*.nkit.*", "*.wbfs", "*.ciso"]
 
-  # Target formats (the format the conversion part produces). Chosen once per platform.
-  # `produces` is the container a conversion writes ("plain" = the bare ROM file);
-  # `accepts` lists the containers left alone as they are (accepted, if not preferred).
+  # Target formats, one per platform: every file not in it is converted to it, or else
+  # discarded before matching. `produces` is the container ("plain" = the bare ROM file).
   targets:
     zip:
       label: Zip (TorrentZip)
       description: One zip per game, deterministic TorrentZip format. Opened directly by the RetroArch cores.
       produces: zip
-      accepts: [zip, 7z]
     plain:
       label: Unpacked ROM file
       description: The bare ROM file, no archive.
       produces: plain
-      accepts: [plain]
     rvz:
       label: RVZ (Dolphin)
       description: Dolphin's lossless compressed disc format, made with dolphin-tool.
       produces: rvz
-      accepts: [rvz]
     chd:
       label: CHD (compressed disc image)
       description: One lossless compressed file per disc, made with chdman. Read by DuckStation, Beetle, Flycast, PCSX2 and PPSSPP.
       produces: chd
-      accepts: [chd]
 
   # Per platform: display name, its icon (a short label and the kind of device), the
   # No-Intro DAT name, the ROM file extensions, the allowed targets and the default target.
@@ -501,10 +496,10 @@ platforms:
       dat_family: redump
       redump_system: dc
       # GD-ROMs: Redump's cue sheets (with the high-density area) or a .gdi and its tracks.
-      # .cdi: DiscJuggler CD-R images (homebrew, indie, translations, rips), kept as they are.
+      # .cdi: DiscJuggler CD-R images; no lossless conversion to CHD exists, so they are
+      # listed for discarding.
       rom_extensions: [chd, cue, gdi, bin, raw, cdi]
       part_extensions: [cue, gdi, bin, raw]
-      keep_extensions: [cdi]
       # Scene CDI archives come with .url, .nfo, .txt files.
       excess_files: true
       targets: [chd]
@@ -843,8 +838,10 @@ apply:
   temp_suffix: .g1r-part
   # Conversions: a ROM wrapped in a zip is deflated at this level (0 stores, 9 is smallest).
   zip_compress_level: 9
-  # Taking one ROM out of a 7z archive must finish within this many seconds.
+  # Taking one ROM out of a 7z archive must finish within this many seconds; unpacking a
+  # whole archive to repack it gets this plus its size read at extract_min_bytes_per_second.
   extract_timeout_seconds: 600
+  extract_min_bytes_per_second: 2097152
   # Disc conversions unpack and check tracks in a work directory with this suffix, beside
   # the output; removed when done, and at start-up if a restart left one.
   work_suffix: .g1r-work

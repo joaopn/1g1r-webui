@@ -292,7 +292,6 @@ def build_router(
             profile.names_from,
             profile.title_ids,
             dats,
-            frozenset(e.lower() for e in profile.keep_extensions),
             waiting_of(library, folder, conn) if waiting is None else waiting,
         )
 

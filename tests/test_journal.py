@@ -15,6 +15,7 @@ CONFIG = ApplyConfig(
     temp_suffix=".part",
     zip_compress_level=6,
     extract_timeout_seconds=5,
+    extract_min_bytes_per_second=1024,
     work_suffix=".work",
     stop_poll_seconds=0.05,
 )

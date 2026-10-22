@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path, PurePosixPath
 
-from g1r import cards, conversion, cso, decrypt, discs, hashing, moves, stopping
+from g1r import archives, cards, conversion, cso, decrypt, discs, hashing, moves, stopping
 from g1r.config import Settings
 
 CRC_FORMAT = "08x"
@@ -28,6 +28,8 @@ UNPACKED = "source"
 
 # Writes one archive member's bytes to a new file: (settings, archive, member, output).
 Extractor = Callable[[Settings, Path, str, Path], None]
+# Unpacks a whole archive into an empty directory: (settings, archive, directory).
+Unpacker = Callable[[Settings, Path, Path], None]
 
 
 def crc_and_size(chunk_bytes: int, path: Path) -> tuple[str, int]:
@@ -71,6 +73,36 @@ def extract_member(settings: Settings, archive: Path, member: str, output: Path)
         raise moves.MoveError(detail[-1] if detail else f"7-Zip exited with {result.returncode}")
 
 
+def unpack_archive(settings: Settings, archive: Path, directory: Path) -> None:
+    """Every member of the archive into `directory`, in one 7-Zip run. Raises MoveError."""
+    config = settings.apply
+    timeout = config.extract_timeout_seconds + (
+        archive.stat().st_size / config.extract_min_bytes_per_second
+    )
+    command = [
+        settings.archives.seven_zip_binary,
+        "x",
+        "-y",
+        f"-o{directory}",
+        "--",
+        str(archive),
+    ]
+    try:
+        result = stopping.run(
+            command,
+            timeout,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise moves.MoveError(f"7-Zip could not unpack {archive.name}: {exc}") from exc
+    if result.returncode != 0:
+        detail = result.stderr.strip().splitlines()
+        raise moves.MoveError(detail[-1] if detail else f"7-Zip exited with {result.returncode}")
+
+
 def _drop_unpacked(work: Path) -> None:
     """Remove what was unpacked for the conversion as soon as the output is written."""
     shutil.rmtree(work / UNPACKED, ignore_errors=True)
@@ -89,10 +121,18 @@ class Swapped:
 
 
 class Converter:
-    def __init__(self, settings: Settings, extract: Extractor = extract_member):
+    def __init__(
+        self,
+        settings: Settings,
+        extract: Extractor = extract_member,
+        unpack: Unpacker = unpack_archive,
+        seven_zip: archives.SevenZipRunner = archives.run_seven_zip,
+    ):
         self.settings = settings
         self.config = settings.apply
         self.extract = extract
+        self.unpack = unpack
+        self.seven_zip = seven_zip
 
     def __call__(self, step) -> os.stat_result:
         """Write `step.destination` from `step.source` (a journal.Move); return its stat."""
@@ -106,6 +146,8 @@ class Converter:
                 self._byteswap(step, temp)
             elif step.recipe == conversion.RECIPE_DECRYPT:
                 self._decrypt(step, temp)
+            elif step.recipe == conversion.RECIPE_REPACK:
+                self._repack(step, temp)
             elif step.member is None:
                 self._wrap(step.source, temp)
             else:
@@ -147,6 +189,58 @@ class Converter:
             or bad is not None
         ):
             raise moves.MoveError(f"the new zip of {source} does not hold the same data")
+
+    def _repack(self, step, temp: Path) -> None:
+        """Unpack the whole archive to a work folder, zip every file in it, and check the zip
+        against the archive's own listing: the same members, sizes and CRC32s."""
+        work = moves.work_path(self.config, step.destination)
+        try:
+            work.mkdir()
+        except FileExistsError as exc:
+            raise moves.MoveError(f"{work} already exists (left by an interrupted run?)") from exc
+        try:
+            try:
+                listed = archives.list_members(self.settings, step.source, self.seven_zip)
+            except archives.ArchiveError as exc:
+                raise moves.MoveError(str(exc)) from exc
+            unpacked = work / UNPACKED
+            unpacked.mkdir()
+            self.unpack(self.settings, step.source, unpacked)
+            with zipfile.ZipFile(
+                temp,
+                "x",
+                compression=zipfile.ZIP_DEFLATED,
+                compresslevel=self.config.zip_compress_level,
+                strict_timestamps=False,
+            ) as z:
+                for path in sorted(unpacked.rglob("*")):
+                    stopping.check()
+                    name = path.relative_to(unpacked).as_posix()
+                    if path.is_symlink():
+                        raise moves.MoveError(f"{step.source.name} holds a link ({name})")
+                    if path.is_dir():
+                        if not any(path.iterdir()):
+                            z.writestr(f"{name}/", b"")
+                        continue
+                    z.write(path, arcname=name)
+            _drop_unpacked(work)
+            try:
+                with zipfile.ZipFile(temp) as z:
+                    written = [
+                        (i.filename, i.file_size, format(i.CRC, CRC_FORMAT))
+                        for i in z.infolist()
+                        if not i.is_dir()
+                    ]
+                    bad = z.testzip()
+            except zipfile.BadZipFile as exc:
+                raise moves.MoveError(f"the new zip of {step.source.name} is unreadable") from exc
+            expected = sorted((m.name, m.size, m.crc32) for m in listed)
+            if bad is not None or sorted(written) != expected:
+                raise moves.MoveError(
+                    f"the new zip of {step.source.name} does not hold the same files"
+                )
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
 
     def _byteswap(self, step, temp: Path) -> None:
         """Write the ROM in the native byte order; reading the result back and swapping it

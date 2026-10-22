@@ -37,7 +37,7 @@ const FOLDERS = [
       decrypt: 0,
       flagged: 0,
       part: 0,
-      accepted: 0,
+      repack: 0,
       done: 0,
       to_convert: 0,
       all: 0,

@@ -35,7 +35,7 @@ The app keeps its database, DATs, caches and console keys in `data/` in the clon
 
 ## Platforms
 
-Files are read bare or inside `.zip`/`.7z`. Files in other formats are listed and left alone.
+Files are read bare or inside `.zip`/`.7z`. Every file is converted to its platform's target format (a `.7z` becomes a `.zip`); files that cannot be converted are listed for moving to `discarded/`.
 
 | Platform | Formats | Target | DAT |
 |---|---|---|---|
@@ -47,7 +47,7 @@ Files are read bare or inside `.zip`/`.7z`. Files in other formats are listed an
 | Atari Lynx | `lnx`, `lyx`, `bll` (aftermarket executables) | zip | No-Intro |
 | ColecoVision | `col`, `rom`, `bin` | zip | No-Intro |
 | Commodore 64 | `crt`, `d64`; with TOSEC also `d71`, `d81`, `g64`, `nib`, `t64`, `tap`, `prg`, `p00`, `lnx` | zip | No-Intro or TOSEC |
-| Dreamcast | `chd`, `cue`/`bin`, `gdi`; `cdi` kept as it is (chdman cannot read it) | chd | Redump, TOSEC |
+| Dreamcast | `chd`, `cue`/`bin`, `gdi`; `cdi` cannot be converted (chdman cannot read it) | chd | Redump, TOSEC |
 | Game Boy | `gb` | zip | No-Intro |
 | Game Boy Advance | `gba` | zip | No-Intro |
 | Game Boy Color | `gbc` | zip | No-Intro |

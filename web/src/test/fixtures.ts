@@ -111,8 +111,8 @@ export const META: Meta = {
     },
   },
   targets: {
-    zip: { label: "Zip (TorrentZip)", description: "", produces: "zip", accepts: ["zip", "7z"] },
-    plain: { label: "Unpacked", description: "", produces: "plain", accepts: ["plain"] },
+    zip: { label: "Zip (TorrentZip)", description: "", produces: "zip" },
+    plain: { label: "Unpacked", description: "", produces: "plain" },
   },
   archive_extensions: ["zip", "7z"],
   dat_sources: {
@@ -238,5 +238,5 @@ export const CONVERSION_ROWS: ConversionRow[] = [
     originals_to: "/roms/discarded/nes/originals/Bare (Europe).nes",
   }),
   conversionRow({ rel_path: "Two.zip", status: "flagged", note: "2 ROM files in one archive" }),
-  conversionRow({ rel_path: "Seven.7z", container: "7z", status: "accepted" }),
+  conversionRow({ rel_path: "Seven.7z", container: "7z", status: "repack", output: "Seven.zip" }),
 ];

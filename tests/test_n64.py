@@ -138,8 +138,10 @@ def test_swapped_roms_are_rewritten_in_the_native_order(n64, roms_root):
     assert (originals / "mario.v64").read_bytes() == swap_words(mario, V64)
     after = rows(client)
     assert {r["status"] for p, r in after.items() if p != "Kart (USA).z64"} == {"done"}
-    # Zipping it again would take the name of the original in discarded/.
-    assert "discarded/" in after["Kart (USA).z64"]["note"]
+    # The next conversion zips it again under the original's name, which discarded/ holds:
+    # a name in discarded/ is free (restoring that original refuses while it is taken).
+    kart = after["Kart (USA).z64"]
+    assert (kart["status"], kart["output"]) == ("wrap", "Kart (USA).zip")
 
     # Undo: the swapped original comes back and is proposed again.
     listing = client.get("/api/folders/n64/discarded").json()
@@ -203,3 +205,30 @@ def test_a_dat_listing_each_byte_order_as_a_rom_still_identifies_one_file(n64):
     assert rows(client)["c.z64"]["status"] == "flagged"
     found = {rel: v["method"] for rel, v in versions(client).items()}
     assert found == {"a.z64": "dat-checksum", "c.z64": "dat-byteswapped"}
+
+
+def test_the_zip_takes_back_its_originals_name(n64, roms_root):
+    """A zip holding a swapped ROM becomes a bare .z64, then a zip under the original's own
+    name, which discarded/ holds: the name is free, and restoring that original refuses."""
+    client, folder = n64
+    kart = rom(b"kart")
+    with zipfile.ZipFile(folder / "Kart (USA).zip", "w") as z:
+        z.writestr("Kart (USA).n64", swap_words(kart, LITTLE))
+    for _ in range(2):
+        scan(client)
+        plan = client.post("/api/folders/n64/convert/preview", json={}).json()
+        assert plan["problems"] == []
+        client.post("/api/folders/n64/convert", json={"token": plan["token"]})
+        assert wait_run(client)["status"] == "done"
+    with zipfile.ZipFile(folder / "Kart (USA).zip") as z:
+        assert z.namelist() == ["Kart (USA).z64"] and z.read("Kart (USA).z64") == kart
+    listing = client.get("/api/folders/n64/discarded").json()
+    (op,) = [
+        f["operation_id"]
+        for r in listing["reasons"]
+        for f in r["files"]
+        if f["rel_path"] == "Kart (USA).zip"
+    ]
+    refused = client.post("/api/folders/n64/restore", json={"operation_ids": [op]})
+    assert refused.status_code == HTTPStatus.CONFLICT
+    assert "already exists" in refused.text

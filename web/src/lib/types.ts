@@ -425,18 +425,18 @@ export type SetCandidate = {
 
 export type SetCandidates = { mount: string; path: string; location: string; rows: SetCandidate[] };
 
-export type Target = { label: string; description: string; produces: string; accepts: string[] };
+export type Target = { label: string; description: string; produces: string };
 
 export type ConversionStatus =
   | "wrap"
   | "unwrap"
+  | "repack"
   | "make chd"
   | "make rvz"
   | "byteswap"
   | "decrypt"
   | "flagged"
   | "part"
-  | "accepted"
   | "done";
 
 export type ArchiveMember = { name: string; size: number; crc32: string | null };

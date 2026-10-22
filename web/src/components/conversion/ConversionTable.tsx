@@ -10,13 +10,13 @@ import { CONVERSION_VIEWS, converting, matchesSearch, STATUS_LABELS, STATUS_ORDE
 const STATUS_STYLE: Record<ConversionStatus, string> = {
   wrap: "border-primary text-primary",
   unwrap: "border-primary text-primary",
+  repack: "border-primary text-primary",
   "make chd": "border-primary text-primary",
   "make rvz": "border-primary text-primary",
   byteswap: "border-primary text-primary",
   decrypt: "border-primary text-primary",
   part: "border-border text-muted-foreground",
   flagged: "border-status-warn text-status-warn",
-  accepted: "border-border text-muted-foreground",
   done: "border-status-good/60 text-status-good",
 };
 
