@@ -318,9 +318,15 @@ export function sortGames<T extends Game>(
 
 /**
  * The quick-filter bar above the table: one view at a time, for the common cuts. Add a view
- * here and it appears in the bar, with its count.
+ * here and it appears in the bar, with its count. `part` names a share of the view counted
+ * beside it ("(2 undecided)"), shown only when some game is in it.
  */
-export type QuickView = { id: string; label: string; test: (game: Game) => boolean };
+export type QuickView = {
+  id: string;
+  label: string;
+  test: (game: Game) => boolean;
+  part?: { label: string; test: (game: Game) => boolean };
+};
 
 export const QUICK_VIEWS: QuickView[] = [
   { id: "all", label: "All", test: () => true },
@@ -330,7 +336,12 @@ export const QUICK_VIEWS: QuickView[] = [
     test: (g) =>
       g.versions.length === 1 && g.status !== "unmatched" && g.status !== "convert first",
   },
-  { id: "several", label: "Several versions", test: (g) => g.versions.length > 1 },
+  {
+    id: "several",
+    label: "Several versions",
+    test: (g) => g.versions.length > 1,
+    part: { label: "undecided", test: (g) => g.status === "undecided" },
+  },
   {
     id: "unmatched",
     label: "Unmatched",

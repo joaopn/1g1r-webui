@@ -277,11 +277,16 @@ export function GamesTable({
     <div className="space-y-3">
       <QuickViewBar
         name="game-view"
-        views={QUICK_VIEWS.map((v) => ({
-          id: v.id,
-          label: v.label,
-          count: unviewed.filter(v.test).length,
-        }))}
+        views={QUICK_VIEWS.map((v) => {
+          const games = unviewed.filter(v.test);
+          const part = v.part ? games.filter(v.part.test).length : 0;
+          return {
+            id: v.id,
+            label: v.label,
+            count: games.length,
+            note: v.part && part > 0 ? `(${formatCount(part)} ${v.part.label})` : undefined,
+          };
+        })}
         value={filter.view}
         onChange={(view) => setFilter({ ...filter, view })}
       />

@@ -2,7 +2,14 @@ import { formatCount } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 export type ChipTone = "good" | "convert" | "match" | "unscanned";
-export type QuickViewChip = { id: string; label: string; count: number; tone?: ChipTone };
+/** `note`: a few words after the count, e.g. the share of the view needing a look. */
+export type QuickViewChip = {
+  id: string;
+  label: string;
+  count: number;
+  tone?: ChipTone;
+  note?: string;
+};
 
 // Literal class names, so Tailwind generates them.
 const TONES: Record<ChipTone, { idle: string; dot: string; active: string }> = {
@@ -88,6 +95,7 @@ export function QuickViewBar({
               )}
             >
               {formatCount(view.count)}
+              {view.note ? ` ${view.note}` : null}
             </span>
           </label>
         );

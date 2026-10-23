@@ -95,7 +95,10 @@ test("the quick-view bar shows one-version or several-version games, with counts
   renderTable();
   const bar = screen.getByTestId("quick-views");
   expect(within(bar).getByRole("radio", { name: /All/ })).toBeChecked();
-  expect(within(bar).getByText("Several versions").parentElement).toHaveTextContent("2");
+  // The undecided share of Several versions is counted beside it; other views have none.
+  const chip = (name: RegExp) => within(bar).getByRole("radio", { name }).closest("label");
+  expect(chip(/Several versions/)).toHaveTextContent(/^Several versions2 \(1 undecided\)$/);
+  expect(chip(/One version/)).toHaveTextContent(/^One version1$/);
   await userEvent.click(within(bar).getByRole("radio", { name: /Several versions/ }));
   // Sorted by status by default: the undecided game first.
   expect(gameNames()).toEqual(["Gradius", "Contra"]);
