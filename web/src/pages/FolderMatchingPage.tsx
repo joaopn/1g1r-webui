@@ -93,7 +93,6 @@ export function FolderMatchingPage() {
   if (folder.error) return <p className="text-status-bad">{errorText(folder.error)}</p>;
   if (!meta.data || !folder.data) return <p className="text-muted-foreground">Loading…</p>;
   const f = folder.data;
-  const ignored = f.others.filter((file) => file.kind === "ignored");
   const other = (f.summary.counts.other ?? 0) + (f.summary.counts.ignored ?? 0);
   const scanning = f.scan?.status === "running";
   // Files not in the target format yet: scanning and 1G1R wait for them (converted first).
@@ -176,7 +175,7 @@ export function FolderMatchingPage() {
 
       <UnsupportedFiles
         files={f.unsupported}
-        platform={f.platform}
+        folder={f}
         meta={meta.data}
         busy={scanning}
         onMove={setAside.move}
@@ -310,21 +309,6 @@ export function FolderMatchingPage() {
 
       {unmatchedActions.dialog}
       {setAside.dialog}
-      {ignored.length > 0 ? (
-        <details className="rounded-lg border border-border bg-card">
-          <summary className="cursor-pointer px-4 py-3 font-medium">
-            Ignored files ({formatCount(ignored.length)})
-          </summary>
-          <ul className="space-y-1 border-border border-t px-4 py-3 text-sm">
-            {ignored.map((file) => (
-              <li key={file.rel_path} className="flex justify-between gap-4">
-                <span className="truncate">{file.rel_path}</span>
-                <span className="shrink-0 text-muted-foreground">ignored filename</span>
-              </li>
-            ))}
-          </ul>
-        </details>
-      ) : null}
     </div>
   );
 }

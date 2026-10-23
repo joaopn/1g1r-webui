@@ -15,6 +15,9 @@ const FOLDER: FolderInfo = {
   discarded_to: "/roms/discarded/nes/",
   delete_originals: false,
   hidden: false,
+  ignored_patterns: [],
+  ignored_patterns_default: true,
+  ignored_files: [],
 };
 
 test("the set's pages are tabs, the current one marked", () => {
@@ -29,6 +32,7 @@ test("the set's pages are tabs, the current one marked", () => {
     ["Conversion", "/folders/nes/conversion"],
     ["Matching & 1G1R", "/folders/nes/matching"],
     ["Discarded", "/folders/nes/discarded"],
+    ["Ignored", "/folders/nes/ignored"],
   ]);
   expect(screen.getByRole("link", { name: "Matching & 1G1R" })).toHaveAttribute(
     "aria-current",

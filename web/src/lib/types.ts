@@ -42,6 +42,8 @@ export type Meta = {
     conversion_columns_default: string[];
     discarded_columns: Record<string, ColumnSize>;
     discarded_columns_default: string[];
+    ignored_columns: Record<string, ColumnSize>;
+    ignored_columns_default: string[];
     statistics_columns: Record<string, ColumnSize>;
     statistics_columns_default: string[];
     statistics_source_rem: number;
@@ -152,6 +154,11 @@ export type FolderInfo = {
   delete_originals: boolean;
   /** Hidden from the sidebar and Home; still a set (Settings → Folders). */
   hidden: boolean;
+  /** Filename patterns the set ignores, whether they are the configured default, and files
+   * ignored by their path in the set. */
+  ignored_patterns: string[];
+  ignored_patterns_default: boolean;
+  ignored_files: string[];
 };
 
 export type FolderCard = FolderInfo & {
@@ -218,6 +225,10 @@ export type Discarded = { root: string; files: number; bytes: number; reasons: D
 
 export type FileRow = { rel_path: string; size: number; kind: string };
 
+/** A file the set does not process; `ignored_by` says which entry of the ignore list leaves it
+ * out ("file", a pattern, "hidden" for a dot file), null when none does now. */
+export type OtherFile = FileRow & { ignored_by: string | null };
+
 /** A file left alone because it is not in a format the platform supports. */
 export type UnsupportedFile = { rel_path: string; size: number; reason: string };
 
@@ -231,7 +242,7 @@ export type FolderDetail = FolderInfo & {
   unmatched: FileRow[];
   /** ROM files a conversion is proposed for: identified once converted. */
   convert_first: FileRow[];
-  others: FileRow[];
+  others: OtherFile[];
   unsupported: UnsupportedFile[];
   ranking: Ranking;
   ranking_is_default: boolean;
@@ -377,7 +388,6 @@ export type DatRow = {
 
 export type SettingsData = {
   targets: Record<string, string>;
-  ignored_filenames: string[];
   lookups: { hasheous: boolean };
   hasheous: {
     site: string;

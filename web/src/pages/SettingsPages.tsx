@@ -51,10 +51,6 @@ export function Page({
 export function PlatformsSettingsPage() {
   const meta = useMeta();
   const data = useSettingsData();
-  const [ignored, setIgnored] = useState("");
-  useEffect(() => {
-    if (data.data) setIgnored(data.data.ignored_filenames.join("\n"));
-  }, [data.data]);
   const saveTarget = useMutation({
     mutationFn: (targets: Record<string, string>) =>
       api("/settings/targets", json("PUT", { targets })),
@@ -62,14 +58,6 @@ export function PlatformsSettingsPage() {
       toast.success("Target format saved");
       queryClient.invalidateQueries({ queryKey: keys.settings });
       queryClient.invalidateQueries({ queryKey: keys.folders });
-    },
-    onError: (err) => toast.error(errorText(err)),
-  });
-  const saveIgnored = useMutation({
-    mutationFn: () => api("/settings/ignored", json("PUT", { patterns: ignored.split("\n") })),
-    onSuccess: () => {
-      toast.success("Ignored filenames saved");
-      queryClient.invalidateQueries({ queryKey: keys.settings });
     },
     onError: (err) => toast.error(errorText(err)),
   });
@@ -118,20 +106,6 @@ export function PlatformsSettingsPage() {
           </tbody>
         </table>
       </div>
-      <section className="max-w-2xl space-y-2">
-        <h2 className="font-semibold text-lg">Ignored filenames</h2>
-        <p className="text-muted-foreground text-sm">
-          Files matching these patterns (one per line, <code>*</code> wildcards, case-insensitive)
-          are never touched or counted as ROMs, in every folder.
-        </p>
-        <textarea
-          aria-label="Ignored filename patterns"
-          className="h-48 w-full rounded-md border border-input bg-background p-2 font-mono text-sm"
-          value={ignored}
-          onChange={(event) => setIgnored(event.target.value)}
-        />
-        <Button onClick={() => saveIgnored.mutate()}>Save ignored filenames</Button>
-      </section>
     </Page>
   );
 }

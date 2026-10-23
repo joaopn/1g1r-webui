@@ -94,6 +94,13 @@ ui:
     restore_to: {rem: 18, min: 8, max: 48}
     restore: {rem: 14, min: 8, max: 24}
   discarded_columns_default: [reason, name, file, size, modified, restore]
+  # A set's Ignored tab: the files its ignore list leaves out.
+  ignored_columns:
+    name: {rem: 16, min: 8, max: 40}
+    file: {rem: 18, min: 8, max: 48}
+    size: {rem: 5.5, min: 4.5, max: 10}
+    ignored_by: {rem: 10, min: 6, max: 24}
+  ignored_columns_default: [name, file, size, ignored_by]
   # The Statistics table: the set, its platform, and one DATs column holding a bar per DAT
   # source side by side. The DATs column starts as wide as the most sources a set has
   # (each `statistics_source_rem` wide, `statistics_source_gap_rem` apart), within its

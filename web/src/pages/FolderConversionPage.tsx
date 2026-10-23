@@ -62,7 +62,7 @@ export function FolderConversionPage() {
 
       <UnsupportedFiles
         files={f.unsupported}
-        platform={f.platform}
+        folder={f}
         meta={meta.data}
         busy={scanning}
         onMove={setAside.move}

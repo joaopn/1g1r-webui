@@ -35,7 +35,7 @@ export function FolderHeader({
           </code>
         </p>
       </div>
-      <nav aria-label="Set pages" className="grid grid-cols-3 gap-1 rounded-lg bg-muted p-1">
+      <nav aria-label="Set pages" className="grid grid-cols-4 gap-1 rounded-lg bg-muted p-1">
         {SECTIONS.map(({ id, label, icon: Icon }) => (
           <Link
             key={id}

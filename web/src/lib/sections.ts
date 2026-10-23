@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { Archive, FileCog, ListChecks } from "lucide-react";
+import { Archive, EyeOff, FileCog, ListChecks } from "lucide-react";
 import type { FolderCard } from "@/lib/types";
 
 /** The tabs of a set's page, in order; each is `/folders/<label>/<id>`. */
@@ -7,6 +7,7 @@ export const SECTIONS = [
   { id: "conversion", label: "Conversion", icon: FileCog },
   { id: "matching", label: "Matching & 1G1R", icon: ListChecks },
   { id: "discarded", label: "Discarded", icon: Archive },
+  { id: "ignored", label: "Ignored", icon: EyeOff },
 ] as const satisfies readonly { id: string; label: string; icon: LucideIcon }[];
 
 export type SectionId = (typeof SECTIONS)[number]["id"];
@@ -21,7 +22,7 @@ export function openingSection(folder: FolderCard): SectionId {
 
 /** The page has nothing left to do (a check on its tab). Conversion: every file in the
  * target format and the files checked; Matching & 1G1R: nothing left to process and no scan
- * due. A set without ROM files has nothing done yet; Discarded is never a to-do. */
+ * due. A set without ROM files has nothing done yet; Discarded and Ignored are never a to-do. */
 export function sectionDone(folder: FolderCard, section: SectionId): boolean {
   if (folder.summary.roms === 0) return false;
   if (section === "conversion") return !needsConversion(folder) && folder.needs !== "check";

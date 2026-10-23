@@ -29,6 +29,9 @@ const FOLDERS = [
     progress: { processed: 0, to_process: 0, to_match: 0, to_convert: 0 },
     delete_originals: false,
     hidden: false,
+    ignored_patterns: [],
+    ignored_patterns_default: true,
+    ignored_files: [],
     conversion: {
       wrap: 0,
       unwrap: 0,

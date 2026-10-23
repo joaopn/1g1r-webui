@@ -99,6 +99,8 @@ class UiConfig(_Strict):
     conversion_columns_default: list[str] = Field(min_length=1)
     discarded_columns: dict[str, ColumnSize]
     discarded_columns_default: list[str] = Field(min_length=1)
+    ignored_columns: dict[str, ColumnSize]
+    ignored_columns_default: list[str] = Field(min_length=1)
     statistics_columns: dict[str, ColumnSize]
     statistics_columns_default: list[str] = Field(min_length=1)
     statistics_source_rem: float = Field(gt=0)

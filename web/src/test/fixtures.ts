@@ -66,6 +66,13 @@ export const META: Meta = {
       ]),
     ),
     discarded_columns_default: ["reason", "name", "file", "size", "modified", "restore"],
+    ignored_columns: {
+      name: { rem: 16, min: 8, max: 40 },
+      file: { rem: 18, min: 8, max: 48 },
+      size: { rem: 5.5, min: 4.5, max: 10 },
+      ignored_by: { rem: 10, min: 6, max: 24 },
+    },
+    ignored_columns_default: ["name", "file", "size", "ignored_by"],
     statistics_columns: Object.fromEntries(
       ["folder", "size", "discarded", "platform", "dats"].map((id) => [id, size(8)]),
     ),

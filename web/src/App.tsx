@@ -3,6 +3,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { DatSourcesPage } from "@/pages/DatSourcesPage";
 import { FolderConversionPage } from "@/pages/FolderConversionPage";
 import { FolderDiscardedPage } from "@/pages/FolderDiscardedPage";
+import { FolderIgnoredPage } from "@/pages/FolderIgnoredPage";
 import { FolderMatchingPage } from "@/pages/FolderMatchingPage";
 import { HomePage } from "@/pages/HomePage";
 import { SetsSettingsPage } from "@/pages/SetsSettingsPage";
@@ -24,6 +25,7 @@ export function App() {
         <Route path="folders/:label/matching" element={<FolderMatchingPage />} />
         <Route path="folders/:label/conversion" element={<FolderConversionPage />} />
         <Route path="folders/:label/discarded" element={<FolderDiscardedPage />} />
+        <Route path="folders/:label/ignored" element={<FolderIgnoredPage />} />
         <Route path="settings" element={<Navigate to="/settings/dat-sources" replace />} />
         <Route path="settings/dat-sources" element={<DatSourcesPage />} />
         <Route path="settings/folders" element={<SetsSettingsPage />} />
