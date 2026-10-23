@@ -1,7 +1,7 @@
 import { useMutation } from "@tanstack/react-query";
 import { ChevronRight, RefreshCw } from "lucide-react";
-import { useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useCallback, useMemo, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { PlatformIcon } from "@/components/PlatformIcon";
 import { type DataColumn, DataTable } from "@/components/table/DataTable";
@@ -15,7 +15,8 @@ import {
 } from "@/components/ui/dialog";
 import { ApiError, api } from "@/lib/api";
 import { formatBytes, formatCount, formatWhen } from "@/lib/format";
-import { keys, queryClient, useMeta, useMissing, useStatistics } from "@/lib/queries";
+import { keys, queryClient, useFolders, useMeta, useMissing, useStatistics } from "@/lib/queries";
+import { openingSection, sectionPath } from "@/lib/sections";
 import type {
   Coverage,
   DatInfo,
@@ -31,6 +32,7 @@ const MISSING_PREFIX = "m.";
 
 // Column labels sit centred over their cells.
 const CENTRED = "text-center";
+const LINK = "rounded-sm hover:underline focus-visible:outline-2 focus-visible:outline-ring";
 const share = (covered: number, total: number) => (total ? covered / total : 0);
 // Rounded down, so only a complete DAT reads 100% (roundingMode is not in TS's ES2022 lib).
 const FLOOR = { roundingMode: "floor" } as Intl.NumberFormatOptions;
@@ -150,6 +152,16 @@ function CoverageTable({
   const digits = ui.percent_digits;
   // Only sources some folder has a DAT of get a column.
   const sources = stats.sources.filter((s) => stats.folders.some((f) => s.id in f.coverage));
+  // A romset opens on its default page, as from Home: Conversion while files wait for it,
+  // else Matching (until the cards load, Matching).
+  const cards = useFolders().data;
+  const opening = useCallback(
+    (label: string) => {
+      const card = cards?.find((c) => c.label === label);
+      return sectionPath(label, card ? openingSection(card) : "matching");
+    },
+    [cards],
+  );
   const columns = useMemo<DataColumn<StatisticsFolder>[]>(
     () => [
       {
@@ -159,7 +171,10 @@ function CoverageTable({
         render: (f) => {
           const value = share(f.identified, f.roms);
           return (
-            <div className="relative truncate rounded px-1">
+            <Link
+              to={opening(f.label)}
+              className="relative block truncate rounded px-1 hover:underline focus-visible:outline-2 focus-visible:outline-ring"
+            >
               <span
                 className="absolute inset-0 origin-left rounded bg-primary/10"
                 style={{ transform: `scaleX(${value})` }}
@@ -171,7 +186,7 @@ function CoverageTable({
                 {formatCount(f.identified)} / {formatCount(f.roms)} identified
                 {f.stale ? <span className="text-status-warn"> · changed</span> : null}
               </span>
-            </div>
+            </Link>
           );
         },
         sortValue: (f) => f.label,
@@ -182,8 +197,12 @@ function CoverageTable({
         id: "size",
         label: "Size",
         headerClassName: CENTRED,
-        className: "text-right tabular-nums",
-        render: (f) => formatBytes(f.bytes, ui.byte_unit_base, ui.byte_units),
+        className: "text-center tabular-nums",
+        render: (f) => (
+          <Link to={opening(f.label)} className={LINK}>
+            {formatBytes(f.bytes, ui.byte_unit_base, ui.byte_units)}
+          </Link>
+        ),
         sortValue: (f) => f.bytes,
         title: () => "The romset folder, as last scanned",
       },
@@ -191,8 +210,12 @@ function CoverageTable({
         id: "discarded",
         label: "Discarded",
         headerClassName: CENTRED,
-        className: "text-right text-muted-foreground tabular-nums",
-        render: (f) => formatBytes(f.discarded_bytes, ui.byte_unit_base, ui.byte_units),
+        className: "text-center text-muted-foreground tabular-nums",
+        render: (f) => (
+          <Link to={sectionPath(f.label, "discarded")} className={LINK}>
+            {formatBytes(f.discarded_bytes, ui.byte_unit_base, ui.byte_units)}
+          </Link>
+        ),
         sortValue: (f) => f.discarded_bytes,
         title: (f) => `In discarded/${f.label}/`,
       },
@@ -233,7 +256,7 @@ function CoverageTable({
           ),
       },
     ],
-    [meta, ui, sources, digits, onOpen],
+    [meta, ui, sources, digits, onOpen, opening],
   );
   // The DATs column starts as wide as the most sources one set has.
   const most = Math.max(0, ...stats.folders.map((f) => Object.keys(f.coverage).length));

@@ -1,9 +1,9 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { queryClient } from "@/lib/queries";
-import type { Missing, Statistics } from "@/lib/types";
+import type { FolderCard, Missing, Statistics } from "@/lib/types";
 import { META } from "@/test/fixtures";
 import { StatisticsPage } from "./StatisticsPage";
 
@@ -262,4 +262,53 @@ test("Refresh recomputes and shows the new figures", async () => {
   expect(await screen.findByText("Computed 2026-10-20 12:00 UTC")).toBeInTheDocument();
   expect(screen.queryByText("· changed")).toBeNull();
   expect(calls).toContain("POST /api/statistics/refresh");
+});
+
+test("a romset and its size open its default page, the discarded size its Discarded page", async () => {
+  // Only what the default page reads: conversion work left, or none.
+  const cards = [
+    { label: "nes", progress: { to_convert: 2 } },
+    { label: "nes-2", progress: { to_convert: 0 } },
+  ] as FolderCard[];
+  vi.stubGlobal("fetch", async (url: string) => {
+    const body = url.endsWith("/meta")
+      ? META
+      : url.endsWith("/statistics")
+        ? STATS
+        : url.endsWith("/folders")
+          ? cards
+          : null;
+    return new Response(JSON.stringify(body));
+  });
+  queryClient.clear();
+  render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>
+        <StatisticsPage />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+  const nes = await screen.findByTestId("statistics-nes");
+  await waitFor(() =>
+    expect(within(nes).getByRole("link", { name: /^nes/ })).toHaveAttribute(
+      "href",
+      "/folders/nes/conversion",
+    ),
+  );
+  expect(within(nes).getByRole("link", { name: "3.0 MiB" })).toHaveAttribute(
+    "href",
+    "/folders/nes/conversion",
+  );
+  expect(within(nes).getByRole("link", { name: "512.0 KiB" })).toHaveAttribute(
+    "href",
+    "/folders/nes/discarded",
+  );
+  const other = screen.getByTestId("statistics-nes-2");
+  expect(within(other).getByRole("link", { name: /^nes-2/ })).toHaveAttribute(
+    "href",
+    "/folders/nes-2/matching",
+  );
+  // Size and discarded sit centred.
+  expect(within(nes).getByTitle("The romset folder, as last scanned")).toHaveClass("text-center");
+  expect(within(nes).getByTitle("In discarded/nes/")).toHaveClass("text-center");
 });
