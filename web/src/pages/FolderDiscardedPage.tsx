@@ -11,12 +11,13 @@ import { StatCard } from "@/components/StatCard";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import { formatBytes, formatCount, formatFiles } from "@/lib/format";
-import { keys, queryClient, useDiscarded, useFolder, useMeta } from "@/lib/queries";
+import { keys, queryClient, useDiscarded, useFolder, useFolderCard, useMeta } from "@/lib/queries";
 import { FolderHeader } from "@/pages/FolderHeader";
 
 /** Discarded: what is in discarded/<label>/, by reason, with Restore for the app's own moves. */
 export function FolderDiscardedPage() {
   const { label = "" } = useParams();
+  const card = useFolderCard(label);
   const meta = useMeta();
   const folder = useFolder(label, false);
   const discarded = useDiscarded(label);
@@ -37,7 +38,7 @@ export function FolderDiscardedPage() {
   const data = discarded.data;
   return (
     <div className="space-y-6">
-      <FolderHeader folder={f} meta={meta.data} section="discarded" />
+      <FolderHeader folder={f} meta={meta.data} section="discarded" card={card} />
       <section className="space-y-1 rounded-lg border border-border bg-card px-4 py-3 text-sm">
         <p>
           Discarded files go to <code className="text-xs">{f.discarded_to}</code>, under the reason

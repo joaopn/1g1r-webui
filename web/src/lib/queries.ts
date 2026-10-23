@@ -52,6 +52,10 @@ export const useFolders = () =>
         ? (queryClient.getQueryData<Meta>(keys.meta)?.ui.poll_interval_ms ?? false)
         : false,
   });
+/** One set's Home card (from the same polled list). */
+export function useFolderCard(label: string) {
+  return useFolders().data?.find((f) => f.label === label);
+}
 export const useSettingsData = () =>
   useQuery({ queryKey: keys.settings, queryFn: () => api<SettingsData>("/settings") });
 export const useDats = () =>

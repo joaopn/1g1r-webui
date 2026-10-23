@@ -24,6 +24,7 @@ import {
   keys,
   queryClient,
   useFolder,
+  useFolderCard,
   useGames,
   useMeta,
   useSettingsData,
@@ -36,6 +37,7 @@ const errorText = (err: unknown) => (err instanceof ApiError ? err.message : Str
 
 export function FolderMatchingPage() {
   const { label = "" } = useParams();
+  const card = useFolderCard(label);
   const meta = useMeta();
   const folder = useFolder(label, meta.data?.ui.poll_interval_ms ?? false);
   const games = useGames(label);
@@ -107,7 +109,7 @@ export function FolderMatchingPage() {
 
   return (
     <div className="space-y-6">
-      <FolderHeader folder={f} meta={meta.data} section="matching" />
+      <FolderHeader folder={f} meta={meta.data} section="matching" card={card} />
 
       {f.summary.roms > 0 ? (
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">

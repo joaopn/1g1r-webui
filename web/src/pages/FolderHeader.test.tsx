@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import type { FolderInfo } from "@/lib/types";
+import type { FolderCard, FolderInfo } from "@/lib/types";
 import { META } from "@/test/fixtures";
 import { FolderHeader } from "./FolderHeader";
 
@@ -36,4 +36,33 @@ test("the set's pages are tabs, the current one marked", () => {
   );
   expect(screen.getByRole("link", { name: "Conversion" })).not.toHaveAttribute("aria-current");
   expect(screen.getByText("/roms/nes")).toBeInTheDocument();
+});
+
+test("a page with nothing left to do has a green check on its tab", () => {
+  // Only what the checks read.
+  const card = (to_convert: number, to_process: number, needs: FolderCard["needs"]) =>
+    ({ summary: { roms: 3 }, progress: { to_convert, to_process }, needs }) as FolderCard;
+  const checked = (c: FolderCard) => {
+    const { unmount } = render(
+      <MemoryRouter>
+        <FolderHeader folder={FOLDER} meta={META} section="matching" card={c} />
+      </MemoryRouter>,
+    );
+    const tabs = screen.getByRole("navigation", { name: "Set pages" });
+    const done = Array.from(tabs.querySelectorAll("a"))
+      .filter((a) => a.querySelector('[aria-label="nothing to do"]'))
+      .map((a) => a.textContent);
+    unmount();
+    return done;
+  };
+  expect(checked(card(0, 0, null))).toEqual(["Conversion", "Matching & 1G1R"]);
+  // Files still to match: only Conversion is done.
+  expect(checked(card(0, 2, null))).toEqual(["Conversion"]);
+  // A scan due: Matching is not done.
+  expect(checked(card(0, 0, "identify"))).toEqual(["Conversion"]);
+  // Files to convert, or no check yet: nothing is done.
+  expect(checked(card(2, 2, null))).toEqual([]);
+  expect(checked(card(0, 0, "check"))).toEqual([]);
+  // A set without ROM files has nothing done yet (Discarded never has a check).
+  expect(checked({ ...card(0, 0, null), summary: { roms: 0 } } as FolderCard)).toEqual([]);
 });

@@ -14,13 +14,14 @@ import { UnsupportedFiles } from "@/components/UnsupportedFiles";
 import { Button } from "@/components/ui/button";
 import { ApiError, api, json } from "@/lib/api";
 import { formatCount, formatFiles } from "@/lib/format";
-import { invalidateFolder, useConversion, useFolder, useMeta } from "@/lib/queries";
+import { invalidateFolder, useConversion, useFolder, useFolderCard, useMeta } from "@/lib/queries";
 import { FolderHeader } from "@/pages/FolderHeader";
 
 const errorText = (err: unknown) => (err instanceof ApiError ? err.message : String(err));
 
 export function FolderConversionPage() {
   const { label = "" } = useParams();
+  const card = useFolderCard(label);
   const meta = useMeta();
   const folder = useFolder(label, meta.data?.ui.poll_interval_ms ?? false);
   const conversion = useConversion(label);
@@ -46,7 +47,7 @@ export function FolderConversionPage() {
 
   return (
     <div className="space-y-6">
-      <FolderHeader folder={f} meta={meta.data} section="conversion" />
+      <FolderHeader folder={f} meta={meta.data} section="conversion" card={card} />
 
       <ScanPanel label={label} kind="check" scan={f.scan} title="Check files">
         <span className="font-medium">Target</span> {target?.label}{" "}

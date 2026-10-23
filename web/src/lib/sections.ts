@@ -19,4 +19,14 @@ export function openingSection(folder: FolderCard): SectionId {
   return needsConversion(folder) ? "conversion" : "matching";
 }
 
+/** The page has nothing left to do (a check on its tab). Conversion: every file in the
+ * target format and the files checked; Matching & 1G1R: nothing left to process and no scan
+ * due. A set without ROM files has nothing done yet; Discarded is never a to-do. */
+export function sectionDone(folder: FolderCard, section: SectionId): boolean {
+  if (folder.summary.roms === 0) return false;
+  if (section === "conversion") return !needsConversion(folder) && folder.needs !== "check";
+  if (section === "matching") return folder.progress.to_process === 0 && folder.needs === null;
+  return false;
+}
+
 export const sectionPath = (label: string, section: SectionId) => `/folders/${label}/${section}`;

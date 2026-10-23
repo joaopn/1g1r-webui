@@ -1,18 +1,22 @@
+import { CircleCheck } from "lucide-react";
 import { Link } from "react-router-dom";
 import { PlatformIcon } from "@/components/PlatformIcon";
-import { SECTIONS, type SectionId, sectionPath } from "@/lib/sections";
-import type { FolderInfo, Meta } from "@/lib/types";
+import { SECTIONS, type SectionId, sectionDone, sectionPath } from "@/lib/sections";
+import type { FolderCard, FolderInfo, Meta } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-/** The set's name and location, then its pages as tabs across the full width. */
+/** The set's name and location, then its pages as tabs across the full width; a page with
+ * nothing left to do (from the set's Home `card`) has a green check. */
 export function FolderHeader({
   folder,
   meta,
   section,
+  card,
 }: {
   folder: FolderInfo;
   meta: Meta;
   section: SectionId;
+  card?: FolderCard;
 }) {
   const platform = meta.platforms[folder.platform];
   return (
@@ -46,6 +50,13 @@ export function FolderHeader({
           >
             <Icon className="hidden size-5 shrink-0 sm:block" aria-hidden="true" />
             <span className="truncate">{label}</span>
+            {card && sectionDone(card, id) ? (
+              <CircleCheck
+                className="size-4 shrink-0 text-status-good"
+                aria-label="nothing to do"
+                role="img"
+              />
+            ) : null}
           </Link>
         ))}
       </nav>
