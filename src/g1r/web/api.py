@@ -158,7 +158,9 @@ class Targets(BaseModel):
 
 
 class Ignored(BaseModel):
-    patterns: list[str]
+    # None: back to the configured default patterns.
+    patterns: list[str] | None = None
+    files: list[str] = Field(default_factory=list)
 
 
 class JobLimit(BaseModel):
@@ -272,6 +274,9 @@ def build_router(
             "discarded_to": f"{settings.paths.discarded_root}/{folder.label}/",
             "delete_originals": folder.delete_originals,
             "hidden": folder.hidden,
+            "ignored_patterns": store.ignored_patterns(folder),
+            "ignored_patterns_default": folder.ignored_patterns is None,
+            "ignored_files": folder.ignored_files,
         }
 
     def parts_of(folder: FolderEntry) -> frozenset[str]:
@@ -823,7 +828,15 @@ def build_router(
                 )
                 if r["rel_path"] in waiting
             ],
-            "others": [dict(r) for r in scanner.other_files(conn, label)],
+            "others": [
+                {
+                    **dict(r),
+                    "ignored_by": scanner.ignored_by(
+                        r["rel_path"], store.ignored_patterns(folder), folder.ignored_files
+                    ),
+                }
+                for r in scanner.other_files(conn, label)
+            ],
             "unsupported": scanner.unsupported_files(
                 conn,
                 label,
@@ -1204,6 +1217,29 @@ def build_router(
         store.update(lambda lib: setattr(lib.folder(label), "ranking", body.ranking))
         return store.ranking_for(store.load().folder(label)).model_dump()
 
+    @router.put("/folders/{label}/ignored")
+    def save_ignored(label: str, body: Ignored, request: Request, conn: Conn):
+        """Save the folder's ignore list, then check its files so the change shows at once
+        (`checking` false: a run is busy on the set; the next check or scan applies it)."""
+        folder_or_404(label)
+        patterns = None
+        if body.patterns is not None:
+            patterns = list(dict.fromkeys(p.strip() for p in body.patterns if p.strip()))
+        files = list(dict.fromkeys(f.strip() for f in body.files if f.strip()))
+
+        def change(library: Library) -> None:
+            entry = library.folder(label)
+            entry.ignored_patterns = patterns
+            entry.ignored_files = files
+
+        library = store.update(change)
+        try:
+            request.app.state.jobs.scan(conn, label, kind=scanner.CHECK)
+            checking = True
+        except scanner.ScanError:
+            checking = False
+        return {**folder_info(library, library.folder(label)), "checking": checking}
+
     # Conversion --------------------------------------------------------------------
 
     @router.get("/folders/{label}/conversion")
@@ -1366,7 +1402,6 @@ def build_router(
         library = store.load()
         return {
             "targets": {p: store.target_for(library, p) for p in platforms},
-            "ignored_filenames": store.ignored_filenames(library),
             "lookups": library.lookups.model_dump(),
             "hasheous": {
                 "site": settings.lookups.hasheous.site,
@@ -1447,12 +1482,6 @@ def build_router(
         if body.value is not None and body.value > settings.igir.max_threads:
             raise bad_request(f"at most {settings.igir.max_threads} igir threads")
         store.update(lambda lib: setattr(lib, "igir_threads", body.value))
-        return get_settings()
-
-    @router.put("/settings/ignored")
-    def save_ignored(body: Ignored):
-        patterns = [p.strip() for p in body.patterns if p.strip()]
-        store.update(lambda lib: setattr(lib, "ignored_filenames", patterns))
         return get_settings()
 
     # DATs ----------------------------------------------------------------------------

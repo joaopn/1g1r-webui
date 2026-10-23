@@ -90,6 +90,22 @@ def test_inventory_kinds(env, roms_root):
         "metadata.txt": "ignored",
         "sub/Loose (Europe).zip": "archive",
     }
+    # A file listed by its path is ignored; the same name elsewhere is not.
+    by_path = {
+        f.rel_path: f.kind
+        for f in scanner.inventory(
+            settings, roms_root / "nes", "nes", [], {"cover.png", "Known (USA).zip"}
+        )
+    }
+    assert by_path["cover.png"] == by_path["Known (USA).zip"] == "ignored"
+    assert by_path["metadata.txt"] == "other"
+
+
+def test_ignored_by():
+    assert scanner.ignored_by("sub/a [!].png", ["*.txt"], {"sub/a [!].png"}) == "file"
+    assert scanner.ignored_by("sub/Notes.TXT", ["*.png", "*.txt"], ()) == "*.txt"
+    assert scanner.ignored_by(".DS_Store", [], ()) == "hidden"
+    assert scanner.ignored_by("game.nes", ["*.txt"], ()) is None
 
 
 def test_header_rules():

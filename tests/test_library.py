@@ -34,8 +34,26 @@ def test_target_falls_back_to_default(make_settings):
     assert store.target_for(lib, "gb") == "zip"
 
 
-def test_ignored_filenames_default_until_edited(make_settings):
+def test_ignored_patterns_default_until_edited(make_settings):
     settings = make_settings()
     store = LibraryStore(settings)
-    assert store.ignored_filenames(Library()) == settings.ignored_filenames
-    assert store.ignored_filenames(Library(ignored_filenames=[])) == []
+    folder = FolderEntry(label="nes", platform="nes", mount="roms", path="nes")
+    assert store.ignored_patterns(folder) == settings.ignored_filenames
+    folder.ignored_patterns = []
+    assert store.ignored_patterns(folder) == []
+
+
+def test_one_shared_ignore_list_becomes_each_folders_own(make_settings):
+    store = LibraryStore(make_settings())
+    store.path.write_text(
+        "ignored_filenames: ['*.bak']\n"
+        "folders:\n"
+        "- {label: a, platform: nes, mount: roms, path: a}\n"
+        "- {label: b, platform: nes, mount: roms, path: b, ignored_patterns: ['*.txt']}\n",
+        encoding="utf-8",
+    )
+    library = store.load()
+    assert library.folder("a").ignored_patterns == ["*.bak"]
+    assert library.folder("b").ignored_patterns == ["*.txt"]
+    store.save(library)
+    assert "ignored_filenames" not in store.path.read_text(encoding="utf-8")

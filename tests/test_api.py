@@ -111,7 +111,7 @@ def test_add_folder_rules(setup):
     assert store.load().folders == []
 
 
-def test_settings_targets_and_ignored(setup):
+def test_settings_targets(setup):
     client, store, _ = setup
     assert client.get("/api/settings").json()["targets"]["nes"] == "zip"
     assert (
@@ -124,8 +124,50 @@ def test_settings_targets_and_ignored(setup):
         client.put("/api/settings/targets", json={"targets": {"nes": "chd"}}).status_code
         == HTTPStatus.BAD_REQUEST
     )
-    client.put("/api/settings/ignored", json={"patterns": ["foo.txt", " ", "*.bak "]})
-    assert store.load().ignored_filenames == ["foo.txt", "*.bak"]
+    assert "ignored_filenames" not in client.get("/api/settings").json()
+
+
+def test_ignore_list_per_folder_checks_the_files_again(setup, roms_root):
+    """Each set has its own ignore list (patterns and exact files); saving it checks the
+    files so an unsupported file leaves the warning at once."""
+    client, store, settings = setup
+    folder = roms_root / "NES Set"
+    (folder / "cover.png").write_bytes(b"png")
+    (folder / "scan.jpg").write_bytes(b"jpg")
+    add_nes(client, label="nes")
+    add_nes(client, label="other", path="gb")
+    detail = client.get("/api/folders/nes").json()
+    assert detail["ignored_patterns"] == settings.ignored_filenames
+    assert detail["ignored_patterns_default"] is True
+
+    def checked():
+        for _ in range(500):
+            scan = client.get("/api/folders/nes/scan").json()
+            if scan and scan["status"] != "running":
+                return client.get("/api/folders/nes").json()
+        raise AssertionError("check did not finish")
+
+    client.post("/api/folders/nes/check")
+    assert {f["rel_path"] for f in checked()["unsupported"]} == {"cover.png", "scan.jpg"}
+
+    saved = client.put(
+        "/api/folders/nes/ignored",
+        json={"patterns": ["*.txt", " *.jpg", "", "*.jpg"], "files": ["cover.png"]},
+    ).json()
+    assert saved["checking"] is True
+    assert saved["ignored_patterns"] == ["*.txt", "*.jpg"]
+    assert saved["ignored_files"] == ["cover.png"]
+    detail = checked()
+    assert detail["unsupported"] == []
+    by = {f["rel_path"]: f["ignored_by"] for f in detail["others"]}
+    assert by == {"cover.png": "file", "scan.jpg": "*.jpg", "metadata.txt": "*.txt"}
+    # The other set keeps the default list.
+    assert store.load().folder("other").ignored_patterns is None
+
+    # Back to the default patterns.
+    client.put("/api/folders/nes/ignored", json={"patterns": None, "files": []})
+    assert store.load().folder("nes").ignored_patterns is None
+    assert {f["rel_path"] for f in checked()["unsupported"]} == {"cover.png", "scan.jpg"}
 
 
 def test_dats_download_upload_activate_pin(setup):

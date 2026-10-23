@@ -1,7 +1,7 @@
 """The library: what the user set up in the UI, kept in <data_dir>/library.yaml.
 
-It holds the platform folders, the target format chosen per platform and the ignored
-filenames. It is written by the app (atomically, via a temp file and rename) and stays
+It holds the platform folders (each with its own ignore list) and the target format chosen
+per platform. It is written by the app (atomically, via a temp file and rename) and stays
 human-readable; the database only holds data derived from it.
 """
 
@@ -34,6 +34,10 @@ class FolderEntry(BaseModel):
     delete_originals: bool = False
     # Hidden from the sidebar and Home (Settings → Folders shows it again); still a set.
     hidden: bool = False
+    # Filename patterns this folder ignores (None = the configured default list), and files
+    # ignored by their exact path in the folder (POSIX separators).
+    ignored_patterns: list[str] | None = None
+    ignored_files: list[str] = Field(default_factory=list)
 
 
 class ActiveDat(BaseModel):
@@ -96,7 +100,6 @@ class Library(BaseModel):
     # order, and the entries switched off there (None: the configured default).
     dat_order: list[str] | None = None
     dat_off: list[str] = Field(default_factory=list)
-    ignored_filenames: list[str] | None = None
     # How many folder scans run at a time (None: the configured default).
     parallel_scans: int | None = None
     # How many files a conversion run converts at a time (None: the configured default).
@@ -107,6 +110,24 @@ class Library(BaseModel):
 
     def folder(self, label: str) -> FolderEntry | None:
         return next((f for f in self.folders if f.label == label), None)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _ignored_per_folder(cls, data):
+        """The ignored filenames were one list for every folder; each folder that has no list
+        of its own starts from it."""
+        if not isinstance(data, dict) or "ignored_filenames" not in data:
+            return data
+        data = dict(data)
+        shared = data.pop("ignored_filenames")
+        if shared is not None:
+            data["folders"] = [
+                {**f, "ignored_patterns": list(shared)}
+                if isinstance(f, dict) and f.get("ignored_patterns") is None
+                else f
+                for f in data.get("folders") or []
+            ]
+        return data
 
 
 class LibraryError(ValueError):
@@ -190,7 +211,7 @@ class LibraryStore:
         chosen = library.igir_threads
         return chosen if chosen is not None and chosen <= self.settings.igir.max_threads else None
 
-    def ignored_filenames(self, library: Library) -> list[str]:
-        if library.ignored_filenames is None:
+    def ignored_patterns(self, folder: FolderEntry) -> list[str]:
+        if folder.ignored_patterns is None:
             return list(self.settings.ignored_filenames)
-        return library.ignored_filenames
+        return folder.ignored_patterns

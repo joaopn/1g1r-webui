@@ -13,7 +13,7 @@ import sqlite3
 import time
 import zipfile
 from collections import Counter
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Collection, Iterable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
 from pathlib import Path, PurePosixPath
@@ -126,12 +126,35 @@ class InventoryFile:
     kind: str
 
 
-def is_ignored(name: str, patterns: list[str]) -> bool:
+def matching_pattern(name: str, patterns: list[str]) -> str | None:
     lowered = name.lower()
-    return any(fnmatch.fnmatchcase(lowered, p.lower()) for p in patterns)
+    return next((p for p in patterns if fnmatch.fnmatchcase(lowered, p.lower())), None)
 
 
-def inventory(settings: Settings, root: Path, platform: str, ignored: list[str]):
+def is_ignored(name: str, patterns: list[str]) -> bool:
+    return matching_pattern(name, patterns) is not None
+
+
+def ignored_by(rel_path: str, patterns: list[str], ignored_files: Collection[str]) -> str | None:
+    """Why the folder's ignore list leaves this file out: "file" (listed by its path), the
+    first pattern its name matches, "hidden" (a dot file), or None (not on the list now)."""
+    name = PurePosixPath(rel_path).name
+    if rel_path in ignored_files:
+        return "file"
+    if pattern := matching_pattern(name, patterns):
+        return pattern
+    return "hidden" if name.startswith(".") else None
+
+
+def inventory(
+    settings: Settings,
+    root: Path,
+    platform: str,
+    ignored: list[str],
+    ignored_files: Collection[str] = (),
+):
+    """The folder's files and their kind; `ignored` are filename patterns, `ignored_files`
+    exact paths in the folder."""
     profile = settings.platforms.profiles[platform]
     roms = {e.lower() for e in profile.rom_extensions}
     archives = {e.lower() for e in settings.platforms.archive_extensions}
@@ -142,7 +165,8 @@ def inventory(settings: Settings, root: Path, platform: str, ignored: list[str])
             path = Path(dirpath) / name
             stat = path.stat()
             extension = path.suffix.lower().lstrip(".")
-            if is_ignored(name, ignored) or name.startswith("."):
+            rel = PurePosixPath(path.relative_to(root).as_posix())
+            if is_ignored(name, ignored) or name.startswith(".") or str(rel) in ignored_files:
                 kind = "ignored"
             elif extension in roms:
                 kind = "rom"
@@ -150,7 +174,6 @@ def inventory(settings: Settings, root: Path, platform: str, ignored: list[str])
                 kind = "archive"
             else:
                 kind = "other"
-            rel = PurePosixPath(path.relative_to(root).as_posix())
             files.append(InventoryFile(str(rel), stat.st_size, stat.st_mtime_ns, kind))
     return files
 
@@ -390,7 +413,11 @@ class Scanner:
             raise ScanError(f"{root} is not available")
         progress.stage("Listing files")
         files = inventory(
-            self.settings, root, folder.platform, self.store.ignored_filenames(library)
+            self.settings,
+            root,
+            folder.platform,
+            self.store.ignored_patterns(folder),
+            set(folder.ignored_files),
         )
         cache = FileCache(conn, label, reuse=not full)
         found = Found(*self._members(root, files, progress, cache), cache=cache)
