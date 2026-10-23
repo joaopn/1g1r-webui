@@ -2,6 +2,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   ChartColumn,
   ChevronRight,
+  CircleCheck,
   Gamepad2,
   House,
   Menu,
@@ -20,7 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { foldersByName } from "@/lib/platforms";
 import { useFolders, useMeta } from "@/lib/queries";
-import { openingSection, sectionPath } from "@/lib/sections";
+import { folderDone, openingSection, sectionPath } from "@/lib/sections";
 import { isNumber, isStringArray, readJson, removeKey, writeJson } from "@/lib/storage";
 import type { FolderCard, Meta } from "@/lib/types";
 import { clampRem, useDragWidth } from "@/lib/useDragWidth";
@@ -47,6 +48,13 @@ function folderChildren(folders: FolderCard[], meta: Meta | undefined): NavChild
         <span className="flex min-w-0 items-center gap-2">
           <PlatformIcon platform={platform} widthRem={meta?.ui.platform_icon_width_rem} />
           <span className="truncate">{platform?.name ?? folder.platform}</span>
+          {folderDone(folder) ? (
+            <CircleCheck
+              className="size-3.5 shrink-0 text-status-good"
+              aria-label="nothing to do"
+              role="img"
+            />
+          ) : null}
           <span className="shrink-0 text-muted-foreground text-xs">{folder.label}</span>
         </span>
       ),

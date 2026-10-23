@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
+import type { FolderCard } from "@/lib/types";
 import { META } from "@/test/fixtures";
 import { AppShell, navGroups } from "./AppShell";
 
@@ -49,7 +50,7 @@ const FOLDERS = [
   },
 ];
 
-function renderShell(path = "/", folders = FOLDERS) {
+function renderShell(path = "/", folders: FolderCard[] = FOLDERS) {
   vi.stubGlobal("fetch", async (url: string) => {
     const body = url.endsWith("/meta")
       ? META
@@ -114,6 +115,27 @@ test("a set's entry opens Conversion when it has conversion work, else Matching"
     "/folders/gb/conversion",
     "/folders/nes/matching",
   ]);
+});
+
+test("a set with nothing left to do gets a check beside its platform name", async () => {
+  const folder = FOLDERS[0];
+  const summary = { ...folder.summary, roms: 2 };
+  const done = { ...folder, summary, progress: { ...folder.progress, processed: 2 } };
+  const matching = {
+    ...done,
+    label: "nes-2",
+    progress: { ...folder.progress, processed: 1, to_process: 1, to_match: 1 },
+  };
+  const unscanned = { ...done, label: "nes-3", needs: "identify" as const, needs_scan: true };
+  const empty = { ...folder, label: "nes-4" };
+  renderShell("/folders/nes/matching", [done, matching, unscanned, empty]);
+  const entry = (label: string) =>
+    screen.getAllByTitle(`Nintendo Entertainment System · ${label}`)[0];
+  await waitFor(() => expect(within(entry("nes")).getByLabelText("nothing to do")).toBeVisible());
+  expect(within(entry("nes-2")).queryByLabelText("nothing to do")).toBeNull();
+  expect(within(entry("nes-3")).queryByLabelText("nothing to do")).toBeNull();
+  // A set without ROM files has nothing done yet.
+  expect(within(entry("nes-4")).queryByLabelText("nothing to do")).toBeNull();
 });
 
 test("the sidebar is resized with the keyboard and remembers its width", async () => {

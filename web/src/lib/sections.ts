@@ -29,4 +29,8 @@ export function sectionDone(folder: FolderCard, section: SectionId): boolean {
   return false;
 }
 
+/** Nothing left to do on the set at all: both of its to-do tabs are done (the sidebar's check). */
+export const folderDone = (folder: FolderCard) =>
+  sectionDone(folder, "conversion") && sectionDone(folder, "matching");
+
 export const sectionPath = (label: string, section: SectionId) => `/folders/${label}/${section}`;
