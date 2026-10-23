@@ -1,7 +1,7 @@
 import { CircleCheck } from "lucide-react";
 import { Link } from "react-router-dom";
 import { PlatformIcon } from "@/components/PlatformIcon";
-import { SECTIONS, type SectionId, sectionDone, sectionPath } from "@/lib/sections";
+import { folderState, SECTIONS, type SectionId, sectionDone, sectionPath } from "@/lib/sections";
 import type { FolderCard, FolderInfo, Meta } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -23,7 +23,7 @@ export function FolderHeader({
     <header className="space-y-4">
       <div className="space-y-1">
         <div className="flex items-center gap-2">
-          <PlatformIcon platform={platform} />
+          <PlatformIcon platform={platform} state={card ? folderState(card) : undefined} />
           <h1 className="font-semibold text-2xl tracking-tight">
             {platform?.name ?? folder.platform}
           </h1>

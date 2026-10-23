@@ -3,7 +3,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { queryClient } from "@/lib/queries";
-import type { FolderCard, Missing, Statistics } from "@/lib/types";
+import type { FolderCard, FolderWarning, Missing, Statistics } from "@/lib/types";
 import { META } from "@/test/fixtures";
 import { StatisticsPage } from "./StatisticsPage";
 
@@ -267,8 +267,18 @@ test("Refresh recomputes and shows the new figures", async () => {
 test("a romset and its size open its default page, the discarded size its Discarded page", async () => {
   // Only what the default page reads: conversion work left, or none.
   const cards = [
-    { label: "nes", progress: { to_convert: 2 } },
-    { label: "nes-2", progress: { to_convert: 0 } },
+    {
+      label: "nes",
+      summary: { roms: 2 },
+      progress: { to_convert: 2 },
+      warnings: [] as FolderWarning[],
+    },
+    {
+      label: "nes-2",
+      summary: { roms: 2 },
+      progress: { to_convert: 0 },
+      warnings: [] as FolderWarning[],
+    },
   ] as FolderCard[];
   vi.stubGlobal("fetch", async (url: string) => {
     const body = url.endsWith("/meta")

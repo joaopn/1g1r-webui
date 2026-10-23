@@ -16,7 +16,7 @@ import {
 import { ApiError, api } from "@/lib/api";
 import { formatBytes, formatCount, formatWhen } from "@/lib/format";
 import { keys, queryClient, useFolders, useMeta, useMissing, useStatistics } from "@/lib/queries";
-import { openingSection, sectionPath } from "@/lib/sections";
+import { folderState, openingSection, sectionPath } from "@/lib/sections";
 import type {
   Coverage,
   DatInfo,
@@ -223,7 +223,15 @@ function CoverageTable({
         id: "platform",
         label: "Platform",
         className: CENTRED,
-        render: (f) => <PlatformIcon platform={meta.platforms[f.platform]} />,
+        render: (f) => {
+          const card = cards?.find((c) => c.label === f.label);
+          return (
+            <PlatformIcon
+              platform={meta.platforms[f.platform]}
+              state={card ? folderState(card) : undefined}
+            />
+          );
+        },
         sortValue: (f) => f.platform_short,
         title: (f) => meta.platforms[f.platform]?.name,
       },
@@ -256,7 +264,7 @@ function CoverageTable({
           ),
       },
     ],
-    [meta, ui, sources, digits, onOpen, opening],
+    [meta, ui, sources, digits, onOpen, opening, cards],
   );
   // The DATs column starts as wide as the most sources one set has.
   const most = Math.max(0, ...stats.folders.map((f) => Object.keys(f.coverage).length));

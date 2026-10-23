@@ -117,7 +117,7 @@ test("a set's entry opens Conversion when it has conversion work, else Matching"
   ]);
 });
 
-test("a set with nothing left to do gets a check beside its platform name", async () => {
+test("a set's platform badge is coloured by its state", async () => {
   const folder = FOLDERS[0];
   const summary = { ...folder.summary, roms: 2 };
   const done = { ...folder, summary, progress: { ...folder.progress, processed: 2 } };
@@ -128,14 +128,33 @@ test("a set with nothing left to do gets a check beside its platform name", asyn
   };
   const unscanned = { ...done, label: "nes-3", needs: "identify" as const, needs_scan: true };
   const empty = { ...folder, label: "nes-4" };
-  renderShell("/folders/nes/matching", [done, matching, unscanned, empty]);
-  const entry = (label: string) =>
-    screen.getAllByTitle(`Nintendo Entertainment System · ${label}`)[0];
-  await waitFor(() => expect(within(entry("nes")).getByLabelText("nothing to do")).toBeVisible());
-  expect(within(entry("nes-2")).queryByLabelText("nothing to do")).toBeNull();
-  expect(within(entry("nes-3")).queryByLabelText("nothing to do")).toBeNull();
+  const warned = {
+    ...done,
+    label: "nes-5",
+    warnings: [
+      { level: "info" as const, text: "a hint" },
+      { level: "warn" as const, text: "w" },
+    ],
+  };
+  const failed = {
+    ...warned,
+    label: "nes-6",
+    warnings: [...warned.warnings, { level: "bad" as const, text: "The last scan failed" }],
+  };
+  renderShell("/folders/nes/matching", [done, matching, unscanned, empty, warned, failed]);
+  const state = (label: string) =>
+    within(screen.getAllByTitle(`Nintendo Entertainment System · ${label}`)[0])
+      .getByRole("img", { name: /^NES: / })
+      .getAttribute("data-state");
+  await waitFor(() => expect(state("nes")).toBe("done"));
+  expect(state("nes-2")).toBe("work");
+  expect(state("nes-3")).toBe("work");
   // A set without ROM files has nothing done yet.
-  expect(within(entry("nes-4")).queryByLabelText("nothing to do")).toBeNull();
+  expect(state("nes-4")).toBe("work");
+  // A warning outranks done, an error outranks a warning.
+  expect(state("nes-5")).toBe("warn");
+  expect(state("nes-6")).toBe("bad");
+  expect(screen.getAllByRole("img", { name: "NES: error" }).length).toBeGreaterThan(0);
 });
 
 test("the sidebar is resized with the keyboard and remembers its width", async () => {

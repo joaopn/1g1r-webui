@@ -17,6 +17,10 @@ const SET = {
   discarded: { files: 2, bytes: 2048 },
   converting: null,
   running: false,
+  summary: { roms: 0 },
+  progress: { to_convert: 0, to_process: 0 },
+  needs: null,
+  warnings: [],
 };
 
 function renderPage() {

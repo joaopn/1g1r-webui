@@ -16,6 +16,7 @@ import { ApiError, api, json } from "@/lib/api";
 import { formatBytes, formatFiles } from "@/lib/format";
 import { foldersByName } from "@/lib/platforms";
 import { keys, queryClient, useFolders, useMeta } from "@/lib/queries";
+import { folderState } from "@/lib/sections";
 import type { FolderCard } from "@/lib/types";
 import { Page } from "@/pages/SettingsPages";
 
@@ -85,7 +86,7 @@ export function SetsSettingsPage() {
                     </td>
                     <td className="px-4 py-2">
                       <span className="flex items-center gap-2">
-                        <PlatformIcon platform={platform} />
+                        <PlatformIcon platform={platform} state={folderState(set)} />
                         {platform?.name ?? set.platform}
                       </span>
                     </td>

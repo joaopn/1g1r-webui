@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import type { FolderCard, FolderInfo } from "@/lib/types";
+import type { FolderCard, FolderInfo, FolderWarning } from "@/lib/types";
 import { META } from "@/test/fixtures";
 import { FolderHeader } from "./FolderHeader";
 
@@ -41,7 +41,12 @@ test("the set's pages are tabs, the current one marked", () => {
 test("a page with nothing left to do has a green check on its tab", () => {
   // Only what the checks read.
   const card = (to_convert: number, to_process: number, needs: FolderCard["needs"]) =>
-    ({ summary: { roms: 3 }, progress: { to_convert, to_process }, needs }) as FolderCard;
+    ({
+      summary: { roms: 3 },
+      progress: { to_convert, to_process },
+      needs,
+      warnings: [] as FolderWarning[],
+    }) as FolderCard;
   const checked = (c: FolderCard) => {
     const { unmount } = render(
       <MemoryRouter>

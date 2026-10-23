@@ -15,7 +15,7 @@ import { formatBytes, formatCount, formatFiles, formatWhen } from "@/lib/format"
 import { foldersByName } from "@/lib/platforms";
 import { invalidateFolder, useFolders, useMeta } from "@/lib/queries";
 import { runWords, scanProgress, useStartCheck, useStartScan } from "@/lib/scan";
-import { needsConversion, openingSection, sectionPath } from "@/lib/sections";
+import { folderState, needsConversion, openingSection, sectionPath } from "@/lib/sections";
 import { readJson, writeJson } from "@/lib/storage";
 import type { FolderCard } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -553,7 +553,7 @@ export function HomePage() {
               {/* The title's link covers the card (::after); links inside sit above it. */}
               <div className="relative flex flex-1 flex-col p-4">
                 <div className="flex min-w-0 items-center gap-2">
-                  <PlatformIcon platform={platform} />
+                  <PlatformIcon platform={platform} state={folderState(folder)} />
                   <h2
                     className="min-w-0 truncate font-medium group-hover:text-primary"
                     title={platform?.name ?? folder.platform}

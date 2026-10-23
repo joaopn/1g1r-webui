@@ -29,8 +29,18 @@ export function sectionDone(folder: FolderCard, section: SectionId): boolean {
   return false;
 }
 
-/** Nothing left to do on the set at all: both of its to-do tabs are done (the sidebar's check). */
+/** Nothing left to do on the set at all: both of its to-do tabs are done. */
 export const folderDone = (folder: FolderCard) =>
   sectionDone(folder, "conversion") && sectionDone(folder, "matching");
+
+/** The set's state, the colour of its platform badge: an error, else a warning (the card's
+ * messages), else done or work left. */
+export type FolderState = "bad" | "warn" | "done" | "work";
+
+export function folderState(folder: FolderCard): FolderState {
+  if (folder.warnings.some((w) => w.level === "bad")) return "bad";
+  if (folder.warnings.some((w) => w.level === "warn")) return "warn";
+  return folderDone(folder) ? "done" : "work";
+}
 
 export const sectionPath = (label: string, section: SectionId) => `/folders/${label}/${section}`;
