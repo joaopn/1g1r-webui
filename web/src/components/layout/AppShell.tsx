@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { type ReactNode, useEffect, useId, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
+import logo from "@/assets/logo.svg";
 import { AddPlatformDialog } from "@/components/AddPlatformDialog";
 import { AddRomsetsDialog } from "@/components/AddRomsetsDialog";
 import { AddSetsDialog } from "@/components/AddSetsDialog";
@@ -207,6 +208,18 @@ function SidebarFoot({ onAdd }: { onAdd: () => void }) {
   );
 }
 
+/** The app's mark, drawn in the theme's primary colour through the favicon's shape. */
+function Logo() {
+  return (
+    <span
+      aria-hidden="true"
+      data-testid="logo"
+      className="size-5 shrink-0 bg-primary [mask-repeat:no-repeat] [mask-size:contain]"
+      style={{ maskImage: `url(${logo})` }}
+    />
+  );
+}
+
 /** The frame every page renders in: a resizable sidebar on desktop, a sheet on narrow screens. */
 export function AppShell() {
   const meta = useMeta();
@@ -248,9 +261,10 @@ export function AppShell() {
         className="sticky top-0 hidden h-screen shrink-0 flex-col border-border border-r bg-sidebar px-3 py-4 md:flex"
       >
         <div className="flex items-center gap-2 pb-4 pl-2.5">
-          <div className="min-w-0 flex-1">
-            <span className="font-semibold text-sidebar-foreground tracking-tight">{name}</span>
-          </div>
+          <Logo />
+          <span className="min-w-0 flex-1 truncate font-semibold text-sidebar-foreground tracking-tight">
+            {name}
+          </span>
           <div className="flex items-center gap-0.5">
             <ThemeToggle />
             <Notifications />
@@ -305,6 +319,7 @@ export function AppShell() {
               />
             </SheetContent>
           </Sheet>
+          <Logo />
           <span className="font-medium text-sm">{name}</span>
         </header>
         <main className="w-full flex-1 px-4 py-6 md:px-8">

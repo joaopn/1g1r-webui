@@ -232,6 +232,7 @@ test("the theme toggle sits left of the bell and the license line in the sidebar
   const bell = within(sidebar).getByTestId("notifications");
   expect(toggle.compareDocumentPosition(bell) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(sidebar).not.toHaveTextContent(/one game, one ROM/i);
+  expect(within(sidebar).getByTestId("logo")).toBeInTheDocument();
   expect(within(sidebar).getByTestId("license")).toHaveTextContent(/^License: AGPL 3\.0 · /);
   expect(screen.queryByRole("contentinfo")).toBeNull();
 });
