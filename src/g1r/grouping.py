@@ -263,6 +263,7 @@ def build_title_groups(
         return []
     groups: dict[str, Group] = {}
     names: dict[str, str] = {}
+    based: set[str] = set()
     for rel_path, game, method, dat_sha1 in sorted(identities):
         title = titles.from_name(game, config)
         if title is None:
@@ -270,8 +271,11 @@ def build_title_groups(
         role = title.role(config)
         app = titles.hex_id(title.app_id(config), config)
         key = "tid:" + app
-        if role == titles.BASE or key not in names:
+        # The game's name: its first base file's (by path), else its first file's.
+        if key not in names or (role == titles.BASE and key not in based):
             names[key] = title.name
+            if role == titles.BASE:
+                based.add(key)
         group = groups.setdefault(key, Group(key=key, name="", source=SOURCE_TITLE_ID))
         parsed = parse_name(title.name, settings.names)
         group.versions.append(

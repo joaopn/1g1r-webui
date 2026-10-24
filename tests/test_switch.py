@@ -143,6 +143,22 @@ def test_two_base_files_are_still_several_versions(folder_of, make_settings):
     assert card["counts"]["several"] == 1
 
 
+def test_copies_of_a_base_file_are_yours_to_pick(folder_of, make_settings):
+    """Two base files of one title ID, byte-identical or not, leave the game undecided
+    (maintainer, 2026-10-24: "Even when byte-identical they are mine to pick"). Without
+    titledb the game is named after its first base file (by path)."""
+    client, folder = folder_of("switch")
+    base = nsp(make_settings, BASE_ID, 0, "Application")
+    for name in ("Super Game [0100AAAA00010000][v0].nsp", "SG v0.nsp"):
+        (folder / name).write_bytes(base)
+    (folder / "update.nsp").write_bytes(nsp(make_settings, UPDATE_ID, FIRST_UPDATE))
+    scan(client)
+    (game,) = client.get("/api/folders/switch/games").json()
+    assert (game["name"], game["status"]) == ("SG v0", "undecided")
+    assert not any(v["operation"] for v in game["versions"])
+    assert all(v["identical"] == [] for v in game["versions"])
+
+
 def test_older_updates_are_proposed_kept_or_moved(switch):
     client, folder, roms_root = switch
     scan(client)
