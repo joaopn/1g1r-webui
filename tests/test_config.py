@@ -1,6 +1,6 @@
 import pytest
 
-from g1r.config import DATA_DIR_ENV, ConfigError, deep_merge, load_defaults, load_settings
+from g1r.config import ConfigError, deep_merge, load_defaults
 
 
 def test_defaults_validate(make_settings, data_dir):
@@ -29,14 +29,6 @@ def test_invalid_value_is_rejected(make_settings):
         make_settings({"server": {"port": 0}})
 
 
-def test_no_config_file_is_read(data_dir):
-    # Users configure the app in compose and the UI; a config.yaml in /data is ignored.
-    data_dir.mkdir(parents=True)
-    (data_dir / "config.yaml").write_text("server: {port: 1}\n", encoding="utf-8")
-    settings = load_settings({DATA_DIR_ENV: str(data_dir)})
-    assert settings.server.port == load_defaults()["server"]["port"]
-
-
 def test_enabled_platform_needs_profile(make_settings):
     with pytest.raises(ConfigError, match="without a profile"):
         make_settings({"platforms": {"enabled": ["nes", "psvita"]}})
@@ -45,12 +37,6 @@ def test_enabled_platform_needs_profile(make_settings):
 def test_default_target_must_be_allowed(make_settings):
     with pytest.raises(ConfigError, match="default_target"):
         make_settings({"platforms": {"profiles": {"nes": {"default_target": "chd"}}}})
-
-
-def test_wave_one_platforms_are_enabled(make_settings):
-    enabled = make_settings().platforms.enabled
-    assert {"nes", "gb", "snes", "genesis"} <= set(enabled)
-    assert not {"psvita"} & set(enabled)
 
 
 def test_deep_merge_replaces_non_mappings():

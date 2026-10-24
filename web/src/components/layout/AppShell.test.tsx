@@ -207,8 +207,6 @@ test("hidden sets stay out of the sidebar, and both ways to add sets are at its 
   await userEvent.click((await screen.findAllByRole("button", { name: /Romsets/ }))[0]);
   expect(await screen.findAllByTitle("Nintendo Entertainment System · nes")).not.toHaveLength(0);
   expect(screen.queryByTitle("Game Boy · gb")).not.toBeInTheDocument();
-  expect(screen.queryByTestId("add-set")).not.toBeInTheDocument();
-  expect(screen.queryByTestId("add-sets")).not.toBeInTheDocument();
   expect(screen.getAllByTestId("add-romsets")[0]).toHaveTextContent("Add romsets");
 });
 

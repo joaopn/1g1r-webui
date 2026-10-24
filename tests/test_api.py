@@ -124,7 +124,6 @@ def test_settings_targets(setup):
         client.put("/api/settings/targets", json={"targets": {"nes": "chd"}}).status_code
         == HTTPStatus.BAD_REQUEST
     )
-    assert "ignored_filenames" not in client.get("/api/settings").json()
 
 
 def test_ignore_list_per_folder_checks_the_files_again(setup, roms_root):

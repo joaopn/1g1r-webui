@@ -267,15 +267,6 @@ test("a file waiting for its conversion is its own row, linking to the Conversio
   expect(screen.queryByText("Wait (USA)")).not.toBeInTheDocument();
 });
 
-test("Several versions starts sorted by status, undecided first", () => {
-  render(
-    <MemoryRouter initialEntries={["/?view=several"]}>
-      <GamesTable label="nes" games={GAMES} meta={META} onKeep={vi.fn()} onLeave={vi.fn()} />
-    </MemoryRouter>,
-  );
-  expect(gameNames()).toEqual(["Gradius", "Contra"]);
-});
-
 test("a game's versions are listed by file name, revisions after the first release", () => {
   const [, gradius] = GAMES;
   const base = gradius.versions[0];

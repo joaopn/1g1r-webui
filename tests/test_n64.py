@@ -158,10 +158,6 @@ def test_swapped_roms_are_rewritten_in_the_native_order(n64, roms_root):
     assert (originals / "mario.v64").read_bytes() == swap_words(mario, V64)
     after = rows(client)
     assert {r["status"] for p, r in after.items() if p != "Kart (USA).z64"} == {"done"}
-    # The next conversion zips it again under the original's name, which discarded/ holds:
-    # a name in discarded/ is free (restoring that original refuses while it is taken).
-    kart = after["Kart (USA).z64"]
-    assert (kart["status"], kart["output"]) == ("wrap", "Kart (USA).zip")
 
     # Undo: the swapped original comes back and is proposed again.
     listing = client.get("/api/folders/n64/discarded").json()

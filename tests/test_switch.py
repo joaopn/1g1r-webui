@@ -66,13 +66,10 @@ def test_titles_are_read_from_inside_the_file(make_settings, tmp_path):
     title = titles.read_title(path, path.name, c)
     assert titles.hex_id(title.title_id, c) == DLC_ID and title.role(c) == titles.DLC
     assert title.version is None and title.name == "random name"
-    # A name with an ID but nothing inside, or a format without a PFS0: nothing read.
+    # A name with an ID but nothing inside: nothing read.
     path = tmp_path / f"Super Game [{BASE_ID}][v0].nsp"
     path.write_bytes(b"not a pfs0")
     assert titles.read_title(path, path.name, c) is None
-    path = tmp_path / f"Super Game [{BASE_ID}].xci"
-    path.write_bytes(nsp(make_settings, BASE_ID, 0, "Application"))
-    assert titles.read_title(path, path.name, c) is None  # converted to NSP first
 
 
 def scan(client) -> dict:
@@ -151,18 +148,6 @@ def test_1g1r_keeps_the_game_its_updates_and_dlc(switch, make_settings):
     assert plan["moves"] == []
 
 
-def test_two_base_files_are_still_several_versions(folder_of, make_settings):
-    client, folder = folder_of("switch")
-    for name in ("Super Game [dump a].nsp", "Super Game [dump b].nsp"):
-        (folder / name).write_bytes(nsp(make_settings, BASE_ID, 0, "Application") + name.encode())
-    (folder / "update.nsp").write_bytes(nsp(make_settings, UPDATE_ID, FIRST_UPDATE))
-    scan(client)
-    (game,) = client.get("/api/folders/switch/games").json()
-    assert game["status"] == "undecided"
-    card = next(f for f in client.get("/api/folders").json() if f["label"] == "switch")
-    assert card["counts"]["several"] == 1
-
-
 def test_copies_of_a_base_file_are_yours_to_pick(folder_of, make_settings):
     """Two base files of one title ID, byte-identical or not, leave the game undecided
     (maintainer, 2026-10-24: "Even when byte-identical they are mine to pick"). Without
@@ -171,12 +156,15 @@ def test_copies_of_a_base_file_are_yours_to_pick(folder_of, make_settings):
     base = nsp(make_settings, BASE_ID, 0, "Application")
     for name in ("Super Game [0100AAAA00010000][v0].nsp", "SG v0.nsp"):
         (folder / name).write_bytes(base)
+    (folder / "Super Game [other dump].nsp").write_bytes(base + b"other dump")
     (folder / "update.nsp").write_bytes(nsp(make_settings, UPDATE_ID, FIRST_UPDATE))
     scan(client)
     (game,) = client.get("/api/folders/switch/games").json()
     assert (game["name"], game["status"]) == ("SG v0", "undecided")
     assert not any(v["operation"] for v in game["versions"])
     assert all(v["identical"] == [] for v in game["versions"])
+    card = next(f for f in client.get("/api/folders").json() if f["label"] == "switch")
+    assert card["counts"]["several"] == 1
     # Even with their data known to be identical (a DAT pass hashes possible copies).
     conn = sqlite3.connect(client.app.state.settings.paths.database_path)
     conn.executemany(

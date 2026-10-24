@@ -85,8 +85,8 @@ def test_trimmed_images_are_noted_and_encrypted_ones_are_flagged(n3ds, make_sett
     zipped = rows["Zipped (USA).zip"]
     assert (zipped["status"], zipped["output"]) == ("unwrap", "Zipped (USA).3ds")
 
-    # Matching waits for the others. A trimmed image is matched only as igir pads it (to the
-    # next power of two): this one's card is larger, so it stays unmatched.
+    # Matching waits for the others. The DAT lists the untrimmed image, and a trimmed one is
+    # never padded to match it on our side: it stays unmatched.
     (folder / "Locked (USA).3ds").unlink()
     (folder / "Zipped (USA).zip").unlink()
     scan(client)
