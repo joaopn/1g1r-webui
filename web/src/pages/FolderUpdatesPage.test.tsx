@@ -41,11 +41,16 @@ const row = (rel_path: string, status: UpdateRow["status"], release: number | nu
     reason: "",
     operation: status === "older" ? `/roms/discarded/switch/updates/${rel_path}` : null,
     discarded: null,
+    // titledb knows a third update.
+    latest_version: 196608,
+    latest_release: 3,
+    latest_date: "2025-03-18",
+    newer: status === "newest",
   }) satisfies UpdateRow;
 
 const UPDATES = {
   updates: [row("update 2.nsp", "newest", 2), row("update 1.nsp", "older", 1)],
-  counts: { total: 2, proposed: 1, unknown: 0 },
+  counts: { total: 2, proposed: 1, unknown: 0, newer: 1 },
 };
 
 afterEach(() => {
@@ -81,6 +86,11 @@ test("older updates are proposed, and a Keep click keeps one", async () => {
   );
   expect(await screen.findByTestId("update-update 2.nsp")).toHaveTextContent("newest, kept");
   expect(screen.getByTestId("update-update 2.nsp")).toHaveTextContent("1.0.2");
+  // A newer update is released: said on the game's newest, counted, and not proposed.
+  expect(screen.getByTestId("update-update 2.nsp")).toHaveTextContent("· newer released");
+  expect(screen.getByTestId("update-update 1.nsp")).not.toHaveTextContent("newer released");
+  expect(screen.getByText("games with a newer update")).toBeInTheDocument();
+  expect(screen.getByRole("radio", { name: /Newer released/ })).toBeInTheDocument();
   expect(await screen.findByText("· not added")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Add" })).toBeEnabled();
   const older = screen.getByTestId("update-update 1.nsp");

@@ -4,6 +4,7 @@ import { type DataColumn, DataTable, type RowView } from "@/components/table/Dat
 import { Button } from "@/components/ui/button";
 import { formatBytes } from "@/lib/format";
 import type { Meta, UpdateRow } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 type Row = UpdateRow & { name: string };
 
@@ -30,6 +31,7 @@ const VIEWS: RowView<Row>[] = [
   { id: "proposed", label: "To discard", test: (r) => r.status === "older" },
   { id: "kept", label: "Older kept", test: (r) => r.status === "kept" },
   { id: "unknown", label: "Version unknown", test: (r) => r.status === "version unknown" },
+  { id: "newer", label: "Newer released", test: (r) => r.newer },
   { id: "discarded", label: "Discarded", test: (r) => r.status === "discarded" },
 ];
 
@@ -80,6 +82,25 @@ export function UpdatesTable({
           ),
       },
       {
+        id: "latest",
+        label: "Latest",
+        sortValue: (r) => r.latest_release ?? -1,
+        render: (r) =>
+          r.latest_release === null ? (
+            <span className="text-muted-foreground">–</span>
+          ) : (
+            <span className={cn("tabular-nums", r.newer && "font-medium text-status-info")}>
+              {r.latest_release}
+            </span>
+          ),
+        title: (r) =>
+          r.latest_version === null
+            ? "titledb knows no update of this game (or titledb is not downloaded)"
+            : `The newest update titledb knows: v${r.latest_version}${
+                r.latest_date ? `, released ${r.latest_date}` : ""
+              }`,
+      },
+      {
         id: "version",
         label: "Version",
         sortValue: (r) => r.version ?? -1,
@@ -106,8 +127,20 @@ export function UpdatesTable({
         id: "status",
         label: "Status",
         sortValue: (r) => STATUS_WORDS[r.status],
-        render: (r) => <span className={STATUS_TONES[r.status]}>{STATUS_WORDS[r.status]}</span>,
-        title: (r) => r.reason,
+        render: (r) => (
+          <span className={STATUS_TONES[r.status]}>
+            {STATUS_WORDS[r.status]}
+            {r.newer ? (
+              <span className="font-normal text-status-info"> · newer released</span>
+            ) : null}
+          </span>
+        ),
+        title: (r) =>
+          r.newer
+            ? `${r.reason}; titledb knows a newer one (update ${r.latest_release}${
+                r.latest_date ? `, ${r.latest_date}` : ""
+              })`
+            : r.reason,
       },
       {
         id: "size",

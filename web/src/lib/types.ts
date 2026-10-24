@@ -614,6 +614,13 @@ export type UpdateRow = {
   operation: string | null;
   /** The move that took it to discarded/ (restore). */
   discarded: number | null;
+  /** The newest update titledb knows for the game: version, which update, release date. */
+  latest_version: number | null;
+  latest_release: number | null;
+  latest_date: string | null;
+  /** The game's newest update here, and titledb knows a newer one. */
+  newer: boolean;
 };
 
-export type Updates = { updates: UpdateRow[]; counts: UpdateCounts };
+/** `newer`: games whose newest update here is older than one titledb knows. */
+export type Updates = { updates: UpdateRow[]; counts: UpdateCounts & { newer: number } };

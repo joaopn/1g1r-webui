@@ -71,6 +71,10 @@ export function FolderUpdatesPage() {
           The version is read from the file's cnmt.xml, else with your prod.keys. When one of a
           game's updates has none, nothing of that game is proposed.
         </p>
+        <p className="text-muted-foreground">
+          Latest: the newest update released, from titledb (downloaded in Settings → Platform DATs).
+          It is shown only; nothing is downloaded.
+        </p>
       </Box>
       <SwitchKeys label={label} />
       <RunPanel label={label} meta={meta.data} />
@@ -86,6 +90,7 @@ export function FolderUpdatesPage() {
             <StatCard value={formatCount(data.counts.total)} label="updates" />
             <StatCard value={formatCount(proposed)} label="older, to discard" />
             <StatCard value={formatCount(data.counts.unknown)} label="version unknown" />
+            <StatCard value={formatCount(data.counts.newer)} label="games with a newer update" />
           </div>
           <UpdatesTable
             updates={data.updates}
