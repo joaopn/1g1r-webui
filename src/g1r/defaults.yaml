@@ -103,13 +103,13 @@ ui:
   ignored_columns_default: [name, file, size, ignored_by]
   # The Updates table (Switch sets): each game's updates, newest first.
   updates_columns:
-    game: {rem: 16, min: 8, max: 40}
-    name: {rem: 16, min: 8, max: 40}
-    release: {rem: 6, min: 4.5, max: 10}
+    game: {rem: 12, min: 8, max: 40}
+    name: {rem: 14, min: 8, max: 40}
+    release: {rem: 5, min: 4, max: 10}
     version: {rem: 6.5, min: 4.5, max: 10}
-    display_version: {rem: 6.5, min: 4.5, max: 12}
+    display_version: {rem: 6, min: 4.5, max: 12}
     title_id: {rem: 10, min: 6, max: 14}
-    status: {rem: 14, min: 8, max: 30}
+    status: {rem: 11, min: 8, max: 30}
     size: {rem: 5.5, min: 4.5, max: 10}
   updates_columns_default: [game, name, release, display_version, status, size]
   # The Statistics table: the set, its platform, and one DATs column holding a bar per DAT

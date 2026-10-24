@@ -78,7 +78,7 @@ export const META: Meta = {
       name: { rem: 16, min: 8, max: 40 },
       release: { rem: 6, min: 4.5, max: 10 },
       version: { rem: 6.5, min: 4.5, max: 10 },
-      display_version: { rem: 6.5, min: 4.5, max: 12 },
+      display_version: { rem: 6, min: 4.5, max: 12 },
       title_id: { rem: 10, min: 6, max: 14 },
       status: { rem: 14, min: 8, max: 30 },
       size: { rem: 5.5, min: 4.5, max: 10 },

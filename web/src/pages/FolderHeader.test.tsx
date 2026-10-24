@@ -77,13 +77,13 @@ test("a page with nothing left to do has a green check on its tab", () => {
   expect(checked({ ...card(0, 0, null), summary: { roms: 0 } } as FolderCard)).toEqual([]);
 });
 
-test("a Switch set has an Updates tab, checked when no older update is proposed", () => {
-  const card = (proposed: number) =>
+test("a Switch set has an Updates tab, checked when no older update is proposed and every version is read", () => {
+  const card = (proposed: number, unknown = 0) =>
     ({
       summary: { roms: 3 },
       progress: { to_convert: 0, to_process: 0 },
       needs: null,
-      updates: { total: 2, proposed, unknown: 0 },
+      updates: { total: 2, proposed, unknown },
       warnings: [] as FolderWarning[],
     }) as FolderCard;
   const tabs = (c: FolderCard) => {
@@ -115,6 +115,8 @@ test("a Switch set has an Updates tab, checked when no older update is proposed"
     ["Ignored", false],
   ]);
   expect(tabs(card(0))[2]).toEqual(["Updates", true]);
+  // A version still unknown (no prod.keys yet) is work left.
+  expect(tabs(card(0, 1))[2]).toEqual(["Updates", false]);
 });
 
 test("other sets have no Updates tab", () => {
