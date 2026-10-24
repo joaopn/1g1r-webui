@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from g1r import dashboard, db, igir, matching, scanner
+from g1r import dashboard, db, hasheous, igir, matching, scanner
 from g1r.library import LibraryStore
 from g1r.web.api import suggest_label
 from g1r.web.app import create_app
@@ -688,3 +688,34 @@ def test_removing_a_source_waits_for_running_scans(setup):
         len(next(r for r in client.get("/api/dats").json() if r["platform"] == "nes")["versions"])
         == 1
     )
+
+
+def test_hasheous_other_platform_warns_only_while_the_file_is_unmatched_in_the_folder(setup):
+    client, _, settings = setup
+    scanned(client)
+    conn = db.connect(settings.paths.database_path, busy_timeout_ms=0)
+    conn.execute(
+        "INSERT INTO lookup_result VALUES ('nes', 'stray.zip', ?, ?, 'known for Game Boy')",
+        (hasheous.SERVICE, hasheous.OTHER_PLATFORM),
+    )
+    warning = {
+        "level": "warn",
+        "text": "Hasheous knows 1 file for another platform.",
+        "link": {"to": "/folders/nes/matching?view=unmatched", "text": "Show them"},
+    }
+    assert warning in client.get("/api/folders").json()[0]["warnings"]
+
+    # Matched by hand: the stored answer no longer points at anything to do.
+    client.put(
+        "/api/folders/nes/assign", json={"rel_path": "stray.zip", "game_name": "Solo (Japan)"}
+    )
+    assert warning not in client.get("/api/folders").json()[0]["warnings"]
+    client.put("/api/folders/nes/assign", json={"rel_path": "stray.zip", "game_name": None})
+    assert warning in client.get("/api/folders").json()[0]["warnings"]
+
+    # Moved to discarded/: neither.
+    conn.execute(
+        "UPDATE folder_file SET place = 'discarded' WHERE folder_label = 'nes' "
+        "AND rel_path = 'stray.zip'"
+    )
+    assert warning not in client.get("/api/folders").json()[0]["warnings"]

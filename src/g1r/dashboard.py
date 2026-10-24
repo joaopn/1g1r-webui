@@ -97,12 +97,22 @@ def warnings(
             f"Not {platform_short} ROMs or archives: {_files(foreign)}. "
             "A folder holds one platform.",
         )
+    # Only files still in the folder and unmatched: the answer stays stored after a file is
+    # matched by hand or moved to discarded/, and those leave nothing to look at.
     elsewhere = conn.execute(
-        "SELECT COUNT(*) FROM lookup_result WHERE folder_label = ? AND service = ? AND status = ?",
+        """SELECT COUNT(*) FROM lookup_result l
+           JOIN folder_file f USING (folder_label, rel_path)
+           WHERE l.folder_label = ? AND l.service = ? AND l.status = ? AND f.place = 'folder'
+             AND NOT EXISTS (SELECT 1 FROM identity i
+                             WHERE i.folder_label = l.folder_label AND i.rel_path = l.rel_path)""",
         (label, hasheous.SERVICE, hasheous.OTHER_PLATFORM),
     ).fetchone()[0]
     if elsewhere:
-        add(WARN, f"Hasheous knows {_files(elsewhere)} for another platform.")
+        add(
+            WARN,
+            f"Hasheous knows {_files(elsewhere)} for another platform.",
+            {"to": f"/folders/{label}/matching?view=unmatched", "text": "Show them"},
+        )
     last = conn.execute(
         "SELECT kind, status, message FROM apply_run WHERE folder_label = ? "
         "ORDER BY id DESC LIMIT 1",
