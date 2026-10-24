@@ -30,6 +30,8 @@ class UpdateRow:
     version: int | None
     # Which update it is (the version in update steps: 1 for the first update).
     release: int | None
+    # The version shown to players ("1.0.2"), read with prod.keys.
+    display_version: str | None
     size: int | None
     status: str
     reason: str
@@ -83,7 +85,7 @@ def rows(settings: Settings, label: str, games: list[GameRow], kept: set[str]) -
                 status, reason = (
                     STATUS_UNKNOWN,
                     (
-                        "this file has no readable version: nothing of this game is proposed"
+                        "no readable version (add prod.keys): nothing of this game is proposed"
                         if version is None
                         else "another update of this game has no readable version"
                     ),
@@ -103,6 +105,7 @@ def rows(settings: Settings, label: str, games: list[GameRow], kept: set[str]) -
                     titles.hex_id(title.title_id, config) if title and config else "",
                     version,
                     version // config.version_step if config and version is not None else None,
+                    row.version.title_display,
                     row.size,
                     status,
                     reason,

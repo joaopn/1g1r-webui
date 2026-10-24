@@ -28,6 +28,7 @@ from g1r import (
     igir,
     journal,
     mounts,
+    nca,
     titles,
 )
 from g1r.config import Settings
@@ -840,15 +841,29 @@ class Scanner:
 
     def _title_ids(self, root: Path, files, found: "Found", progress) -> None:
         """Switch: every file with a title ID (read inside it) is identified by it; the
-        identity's name carries the ID, which matching groups by."""
+        identity's name carries the ID, which matching groups by. With the user's prod.keys,
+        an NSP without a cnmt.xml gets its version from the encrypted content metadata, and
+        every one its shown version."""
         config = self.settings.title_ids
         if config is None:
             return
-        name = step("title", config)
+        keys = nca.load_keys(self.settings)
+        name = step("title", config, self.settings.nca, nca.keys_fingerprint(self.settings))
 
         def read(f: InventoryFile) -> list | None:
-            title = titles.read_title(root / f.rel_path, PurePosixPath(f.rel_path).name, config)
-            return None if title is None else [title.title_id, title.version, title.name]
+            path = root / f.rel_path
+            title = titles.read_title(path, PurePosixPath(f.rel_path).name, config)
+            if keys is None or not titles.is_pfs0(path, config):
+                return None if title is None else [title.title_id, title.version, title.name]
+            if title is None or title.version is None:
+                meta = nca.read_meta(path, keys, self.settings.nca, config)
+                if meta is not None:
+                    stem = PurePosixPath(f.rel_path).stem
+                    title = titles.Title(meta[0], meta[1], title.name if title else stem)
+            if title is None:
+                return None
+            display = nca.read_display_version(path, keys, self.settings.nca, config)
+            return [title.title_id, title.version, title.name, display]
 
         for f in progress.each("Reading title IDs", files):
             if f.kind not in ("rom", "archive"):

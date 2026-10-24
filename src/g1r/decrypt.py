@@ -22,13 +22,15 @@ from pyctr.crypto.engine import BOOT9_PROT_HASH
 from pyctr.type.cci import CCIReader
 from pyctr.type.ncch import NCCHReader, NCCHSection, NCCHSeedError
 
-from g1r import cards, stopping
+from g1r import cards, nca, stopping
 from g1r.config import NcsdConfig, Settings
 from g1r.private_files import write_private
 
 BOOT9 = "boot9"
 SEEDDB = "seeddb"
-KEY_FILES = (BOOT9, SEEDDB)
+# Switch: prod.keys, read by g1r.nca (the Updates tab of a Switch set).
+PROD_KEYS = "prod_keys"
+KEY_FILES = (BOOT9, SEEDDB, PROD_KEYS)
 
 
 class DecryptError(Exception):
@@ -55,6 +57,8 @@ def key_files(settings: Settings) -> list[list]:
 
 
 def _path(settings: Settings, kind: str) -> Path:
+    if kind == PROD_KEYS:
+        return nca.keys_path(settings)
     config = settings.decryption
     return keys_dir(settings) / (config.boot9_file if kind == BOOT9 else config.seeddb_file)
 
@@ -122,6 +126,12 @@ def store_key(settings: Settings, kind: str, data: bytes) -> None:
         if _seed_count(settings, data) is None:
             raise KeyFileError("this is not a seeddb file (its size does not match its count)")
         _write_private(settings, _path(settings, SEEDDB), data)
+    elif kind == PROD_KEYS:
+        try:
+            nca.parse_keys(data.decode("utf-8", errors="replace"), settings.nca)
+        except nca.KeysError as exc:
+            raise KeyFileError(str(exc)) from exc
+        _write_private(settings, _path(settings, PROD_KEYS), data)
     else:
         raise KeyFileError(f"unknown key file {kind!r}")
 
@@ -136,7 +146,13 @@ def key_status(settings: Settings) -> dict:
     """What is stored, never the keys themselves."""
     seeds = seeddb_path(settings)
     count = _seed_count(settings, seeds.read_bytes()) if seeds else None
-    return {BOOT9: boot9_path(settings) is not None, SEEDDB: count}
+    switch = nca.load_keys(settings)
+    return {
+        BOOT9: boot9_path(settings) is not None,
+        SEEDDB: count,
+        # The key generations prod.keys holds key area keys for, or None without it.
+        PROD_KEYS: len(switch.key_area) if switch else None,
+    }
 
 
 def decrypt_cci(settings: Settings, config: NcsdConfig, source: Path, output: Path) -> None:

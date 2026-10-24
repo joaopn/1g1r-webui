@@ -13,6 +13,7 @@ import struct
 import xml.etree.ElementTree as ElementTree
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
+from typing import BinaryIO
 
 from g1r.config import TitleIdConfig
 
@@ -26,6 +27,8 @@ class Title:
     title_id: int
     version: int | None
     name: str
+    # The version shown to players ("1.0.2"), read with the user's prod.keys.
+    display: str | None = None
 
     def role(self, config: TitleIdConfig) -> str:
         low = self.title_id & int(config.low_hex, config.radix)
@@ -44,9 +47,13 @@ def hex_id(value: int, config: TitleIdConfig) -> str:
 
 
 def identity_name(title: Title, config: TitleIdConfig) -> str:
-    """The name a title-ID identity is stored under: the file's name, its ID, its version."""
+    """The name a title-ID identity is stored under: the file's name, its ID, its version and
+    its shown version."""
     version = f"[v{title.version}]" if title.version is not None else ""
-    return f"{title.name} [{hex_id(title.title_id, config)}]{version}"
+    display = ""
+    if title.display:
+        display = "[" + config.display_prefix + re.sub(r"[\[\]]", "", title.display) + "]"
+    return f"{title.name} [{hex_id(title.title_id, config)}]{version}{display}"
 
 
 def from_name(file_name: str, config: TitleIdConfig) -> Title | None:
@@ -55,30 +62,47 @@ def from_name(file_name: str, config: TitleIdConfig) -> Title | None:
     if not found:
         return None
     version = re.search(config.version_pattern, file_name)
+    display = re.search(config.display_pattern, file_name)
     stem = PurePosixPath(file_name).stem
     name = re.split(config.name_end_pattern, stem, maxsplit=1)[0].strip() or stem
-    return Title(int(found[1], config.radix), int(version[1]) if version else None, name)
+    return Title(
+        int(found[1], config.radix),
+        int(version[1]) if version else None,
+        name,
+        display[1] if display else None,
+    )
 
 
-def _pfs0(path: Path, config: TitleIdConfig) -> tuple[int, list[tuple[str, int, int]]] | None:
-    """A PFS0's member names with their (offset, size), and where member data starts."""
+def pfs0_members(
+    handle: BinaryIO, config: TitleIdConfig
+) -> tuple[int, list[tuple[str, int, int]]] | None:
+    """A PFS0's member names with their (offset, size), and where member data starts, read
+    from the handle's current position (the offsets are relative to that start)."""
+    origin = handle.tell()
     header = struct.calcsize(config.pfs0_header)
     entry = struct.calcsize(config.pfs0_entry)
     try:
-        with path.open("rb") as handle:
-            magic, count, table_size, _ = struct.unpack(config.pfs0_header, handle.read(header))
-            if magic != config.pfs0_magic.encode() or count > config.max_entries:
-                return None
-            entries = [struct.unpack(config.pfs0_entry, handle.read(entry)) for _ in range(count)]
-            table = handle.read(table_size)
-    except (OSError, struct.error):
+        magic, count, table_size, _ = struct.unpack(config.pfs0_header, handle.read(header))
+        if magic != config.pfs0_magic.encode() or count > config.max_entries:
+            return None
+        entries = [struct.unpack(config.pfs0_entry, handle.read(entry)) for _ in range(count)]
+    except struct.error:
         return None
+    table = handle.read(table_size)
     members = []
     for offset, size, name_at, _ in entries:
         end = table.find(b"\0", name_at)
         raw = table[name_at : end if end >= 0 else len(table)]
         members.append((raw.decode("ascii", errors="replace"), offset, size))
-    return header + entry * len(entries) + table_size, members
+    return origin + header + entry * len(entries) + table_size, members
+
+
+def _pfs0(path: Path, config: TitleIdConfig) -> tuple[int, list[tuple[str, int, int]]] | None:
+    try:
+        with path.open("rb") as handle:
+            return pfs0_members(handle, config)
+    except OSError:
+        return None
 
 
 def from_ticket(path: Path, config: TitleIdConfig) -> int | None:
@@ -119,9 +143,13 @@ def from_cnmt_xml(path: Path, config: TitleIdConfig) -> tuple[int, int] | None:
         return None
 
 
+def is_pfs0(path: Path, config: TitleIdConfig) -> bool:
+    return path.suffix.lower().lstrip(".") in config.pfs0_extensions
+
+
 def read_title(path: Path, file_name: str, config: TitleIdConfig) -> Title | None:
     """The file's title from its contents; its name only for the name shown."""
-    if path.suffix.lower().lstrip(".") not in config.pfs0_extensions:
+    if not is_pfs0(path, config):
         return None
     stem = PurePosixPath(file_name).stem
     name = re.split(config.name_end_pattern, stem, maxsplit=1)[0].strip() or stem

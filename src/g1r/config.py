@@ -571,6 +571,8 @@ class TitleIdConfig(_Strict):
     dlc_step_hex: str
     name_pattern: str
     version_pattern: str
+    display_prefix: str
+    display_pattern: str
     name_end_pattern: str
     pfs0_magic: str
     pfs0_header: str
@@ -581,6 +583,58 @@ class TitleIdConfig(_Strict):
     version_step: int = Field(gt=0)
     max_cnmt_xml_bytes: int = Field(gt=0)
     pfs0_extensions: list[str]
+
+
+class NcaConfig(_Strict):
+    keys_file: str
+    header_key: str
+    key_area_key_prefix: str
+    titlekek_prefix: str
+    generation_radix: int = Field(gt=1)
+    header_key_bytes: int = Field(gt=0)
+    key_bytes: int = Field(gt=0)
+    header_bytes: int = Field(gt=0)
+    sector_bytes: int = Field(gt=0)
+    xts_reduction: int = Field(gt=0)
+    xts_tweak_bits: int = Field(gt=0)
+    magic_offset: int = Field(ge=0)
+    magic: str
+    content_type_offset: int = Field(ge=0)
+    meta_type: int
+    control_type: int
+    key_generation_offset: int = Field(ge=0)
+    key_area_index_offset: int = Field(ge=0)
+    key_generation2_offset: int = Field(ge=0)
+    rights_id_offset: int = Field(ge=0)
+    sections: int = Field(gt=0)
+    section_table_offset: int = Field(ge=0)
+    section_entry: str
+    key_area_offset: int = Field(ge=0)
+    ctr_key_index: int = Field(ge=0)
+    fs_header_offset: int = Field(ge=0)
+    fs_header_bytes: int = Field(gt=0)
+    fs_kinds: str
+    crypt_ctr: int
+    pfs0_range_offset: int = Field(ge=0)
+    romfs_range_offset: int = Field(ge=0)
+    range: str
+    section_ctr_offset: int = Field(ge=0)
+    section_ctr_bytes: int = Field(gt=0)
+    ctr_shift: int = Field(ge=0)
+    aes_block_bytes: int = Field(gt=0)
+    romfs_header: str
+    romfs_file: str
+    romfs_name_align: int = Field(gt=0)
+    nacp_name: str
+    display_version_offset: int = Field(ge=0)
+    display_version_bytes: int = Field(gt=0)
+    cnmt_suffix: str
+    nca_suffix: str
+    cnmt_header: str
+    ticket_titlekey_offset: int = Field(ge=0)
+    ticket_type_offset: int = Field(ge=0)
+    ticket_common: int
+    max_read_bytes: int = Field(gt=0)
 
 
 class TosecConfig(_Strict):
@@ -670,6 +724,7 @@ class Settings(_Strict):
     cso: CsoConfig | None = None
     decryption: DecryptionConfig
     title_ids: TitleIdConfig | None = None
+    nca: NcaConfig
     names: NamesConfig
     statistics: StatisticsConfig
     grouping: GroupingConfig

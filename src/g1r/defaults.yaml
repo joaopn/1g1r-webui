@@ -904,7 +904,8 @@ byte_orders:
 # NSP/NSZ (PFS0) is read for its unencrypted content metadata ("<id>.cnmt.xml": Id and
 # Version), else its ticket ("<rights ID>.tik", the title ID first, no version). The file
 # name is never read for either; the name shown is the file name up to its first tag. The
-# patterns read back the identity names the scan stores ("<name> [<ID>][v<version>]").
+# patterns read back the identity names the scan stores ("<name> [<ID>][v<version>]", then
+# "[d1.0.2]", the version shown to players, when prod.keys gave it).
 title_ids:
   digits: 16
   radix: 16
@@ -914,6 +915,8 @@ title_ids:
   dlc_step_hex: "1000"
   name_pattern: '\[(0[0-9A-Fa-f]{15})\]'
   version_pattern: '\[v([0-9]+)\]'
+  display_prefix: d
+  display_pattern: '\[d([^\]]+)\]'
   name_end_pattern: '\s*\['
   pfs0_magic: PFS0
   pfs0_header: "<4sIII"
@@ -1020,6 +1023,76 @@ decryption:
   # Octal: only the app's user may read the stored keys.
   file_mode: 0600
   output_suffix: " (Decrypted)"
+
+# Switch content archives (NCA), read with the user's own prod.keys (added on a Switch set's
+# Updates tab, kept in decryption.keys_dir): the content metadata of an NSP/NSZ without a
+# cnmt.xml (title ID and version), and the version shown to players ("1.0.2") from its
+# control data. The app ships no keys. Layout as hactool reads it: a 0xC00-byte header in
+# AES-XTS (Nintendo's tweak: the sector number big-endian), sections in AES-CTR keyed from
+# the decrypted key area, or from the ticket's title key when the NCA has a rights ID.
+nca:
+  keys_file: prod.keys
+  # "name = hex" lines; the two prefixes are followed by the key generation in hex.
+  header_key: header_key
+  key_area_key_prefix: key_area_key_application_
+  titlekek_prefix: titlekek_
+  generation_radix: 16
+  header_key_bytes: 32
+  key_bytes: 16
+  header_bytes: 0xC00
+  # The XTS sector, and the unit of section offsets.
+  sector_bytes: 0x200
+  # GF(2^128) reduction of the XTS tweak (x^128 = x^7 + x^2 + x + 1).
+  xts_reduction: 0x87
+  xts_tweak_bits: 128
+  magic_offset: 0x200
+  magic: NCA3
+  # Content type (u8), key generation (u8), key area key index (u8), second key generation.
+  content_type_offset: 0x205
+  meta_type: 1
+  control_type: 2
+  key_generation_offset: 0x206
+  key_area_index_offset: 0x207
+  key_generation2_offset: 0x220
+  rights_id_offset: 0x230
+  # Four section entries: start and end in sectors, padding.
+  sections: 4
+  section_table_offset: 0x240
+  section_entry: "<II8x"
+  key_area_offset: 0x300
+  ctr_key_index: 2
+  # Four filesystem headers, one per section: partition type, fs type, crypt type at 2..4.
+  fs_header_offset: 0x400
+  fs_header_bytes: 0x200
+  fs_kinds: "<2xBBB"
+  crypt_ctr: 3
+  # Where the section's data starts and its size (u64 each), inside the fs header: the PFS0
+  # superblock's pfs0 offset, or the last IVFC level of a RomFS.
+  pfs0_range_offset: 0x40
+  romfs_range_offset: 0x90
+  range: "<QQ"
+  # The counter's upper half, stored byte-reversed; the lower half is the offset / 16.
+  section_ctr_offset: 0x140
+  section_ctr_bytes: 8
+  ctr_shift: 4
+  aes_block_bytes: 16
+  # RomFS: the file table's offset and size, and where file data starts (u64 each).
+  romfs_header: "<56xQQQ"
+  romfs_file: "<IIQQII"
+  romfs_name_align: 4
+  nacp_name: control.nacp
+  display_version_offset: 0x3060
+  display_version_bytes: 0x10
+  cnmt_suffix: .cnmt
+  nca_suffix: .nca
+  # The content metadata's header: title ID, version.
+  cnmt_header: "<QI"
+  # A common ticket's encrypted title key, and the type byte saying common (0).
+  ticket_titlekey_offset: 0x180
+  ticket_type_offset: 0x281
+  ticket_common: 0
+  # Bounds on what is read from one file.
+  max_read_bytes: 4194304
 
 # CSO (CISO v0/v1), the PlayStation 2 and PSP compressed ISO: a header, then one index entry
 # per block plus one (the end), each the block's offset >> the header's index shift. A block

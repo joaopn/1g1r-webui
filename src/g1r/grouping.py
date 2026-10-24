@@ -50,6 +50,7 @@ class Version:
     # its content metadata gives (None: not read).
     role: str = ""
     title_version: int | None = None
+    title_display: str | None = None
     # Its DAT lists fewer ROMs for this game than another DAT of the platform does (one disk
     # of a multi-disk game): never kept over a complete version.
     incomplete: bool = False
@@ -271,7 +272,16 @@ def build_title_groups(settings: Settings, identities: list[tuple[str, str, str]
         group = groups.setdefault(key, Group(key=key, name="", source=SOURCE_TITLE_ID))
         parsed = parse_name(title.name, settings.names)
         group.versions.append(
-            Version(rel_path, game, method, parsed, game, role=role, title_version=title.version)
+            Version(
+                rel_path,
+                game,
+                method,
+                parsed,
+                game,
+                role=role,
+                title_version=title.version,
+                title_display=title.display,
+            )
         )
     for key, group in groups.items():
         group.name = names[key]

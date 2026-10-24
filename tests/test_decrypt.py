@@ -331,7 +331,7 @@ def boot9_like(protected: bytes) -> bytes:
 
 def test_keys_are_added_checked_and_removed_from_the_web_ui(n3ds, keys_root, monkeypatch):
     client, _ = n3ds
-    assert client.get("/api/keys").json() == {"boot9": False, "seeddb": None}
+    assert client.get("/api/keys").json() == {"boot9": False, "seeddb": None, "prod_keys": None}
     # Not a retail boot9: refused, nothing stored.
     bad = client.post("/api/keys/boot9", files={"file": ("boot9.bin", b"\1" * 65536)})
     assert bad.status_code == 400 and "not a retail 3DS boot9" in bad.json()["detail"]
@@ -342,16 +342,25 @@ def test_keys_are_added_checked_and_removed_from_the_web_ui(n3ds, keys_root, mon
     protected = b"\2" * 32768
     monkeypatch.setattr(decrypt, "BOOT9_PROT_HASH", hashlib.sha256(protected).hexdigest())
     ok = client.post("/api/keys/boot9", files={"file": ("boot9.bin", boot9_like(protected))})
-    assert ok.json() == {"boot9": True, "seeddb": None}
+    assert ok.json() == {"boot9": True, "seeddb": None, "prod_keys": None}
     stored = keys_root / "boot9_prot.bin"
     assert stored.read_bytes() == protected and stored.stat().st_mode & 0o777 == 0o600
     seeddb = (2).to_bytes(4, "little") + b"\0" * 12 + b"\3" * 64
     assert client.post("/api/keys/seeddb", files={"file": ("seeddb.bin", seeddb)}).json() == {
         "boot9": True,
         "seeddb": 2,
+        "prod_keys": None,
     }
     junk = client.post("/api/keys/seeddb", files={"file": ("seeddb.bin", seeddb[:-1])})
     assert junk.status_code == 400 and "not a seeddb" in junk.json()["detail"]
-    assert client.delete("/api/keys/seeddb").json() == {"boot9": True, "seeddb": None}
-    assert client.delete("/api/keys/boot9").json() == {"boot9": False, "seeddb": None}
+    assert client.delete("/api/keys/seeddb").json() == {
+        "boot9": True,
+        "seeddb": None,
+        "prod_keys": None,
+    }
+    assert client.delete("/api/keys/boot9").json() == {
+        "boot9": False,
+        "seeddb": None,
+        "prod_keys": None,
+    }
     assert client.delete("/api/keys/other").status_code == 404
