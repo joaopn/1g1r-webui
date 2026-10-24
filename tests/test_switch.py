@@ -122,6 +122,7 @@ def test_1g1r_keeps_the_game_its_updates_and_dlc(switch, make_settings):
     assert sorted(entries) == ["Lone Game", "Other Game - Pack", "Super Game (USA)"]
     sg = entries["Super Game (USA)"]
     assert (sg["updates"], sg["dlc"], sg["to_discard"], sg["version"]) == (2, 1, 1, SECOND_UPDATE)
+    assert sg["release"] == 2
     assert (entries["Lone Game"]["updates"], entries["Lone Game"]["dlc"]) == (0, 0)
     assert entries["Other Game - Pack"]["dlc"] == 1
     assert roles["Other Game - Pack.nsp"] == ("dlc", "dlc")

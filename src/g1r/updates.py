@@ -190,10 +190,11 @@ class GameEntry:
 
     group_key: str
     game: str
-    # Its newest update here: the version shown to players and the version number (None
-    # without an update, or when not read).
+    # Its newest update here: the version shown to players, the version number and which
+    # update it is (None without an update, or when not read).
     display_version: str | None
     version: int | None
+    release: int | None
     # titledb knows a newer update than its newest here (a game without an update: titledb
     # knows one).
     newer: bool
@@ -241,6 +242,7 @@ def games(
                 game.group.name,
                 newest.display_version if newest else None,
                 newest.version if newest else None,
+                newest.release if newest else None,
                 newer,
                 released.version // config.version_step if released and config else None,
                 released.date if released else None,

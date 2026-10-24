@@ -70,6 +70,7 @@ const UPDATES = {
       game: "Super Game",
       display_version: "1.0.2",
       version: 131072,
+      release: 2,
       newer: true,
       latest_release: 3,
       latest_date: "2025-03-18",
@@ -84,6 +85,7 @@ const UPDATES = {
       game: "Lone Game",
       display_version: null,
       version: null,
+      release: null,
       newer: false,
       latest_release: null,
       latest_date: null,
@@ -98,6 +100,7 @@ const UPDATES = {
       game: "Behind Game",
       display_version: null,
       version: null,
+      release: null,
       newer: true,
       latest_release: 1,
       latest_date: "2024-01-01",
@@ -147,7 +150,7 @@ test("older updates are proposed, and a Keep click keeps one", async () => {
   const game = await screen.findByTestId("updates-game-tid:0100AAAA00010000");
   // Its version, titledb's newer one, then what it holds, all in the game's cell.
   expect(within(game).getAllByTitle(/titledb knows a newer update/)[0]).toHaveTextContent(
-    "Super Game (1.0.2, update 3 latest)2 updates · 1 DLC",
+    "Super Game (update 2 v1.0.2, update 3 latest)2 updates · 1 DLC",
   );
   expect(game).toHaveTextContent("1 older → discard");
   expect(within(game).getByText("Super Game")).toHaveClass("text-status-warn");

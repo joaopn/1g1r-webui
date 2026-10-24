@@ -66,12 +66,17 @@ function gameStatus(g: UpdateGame): { text: string; tone: string } {
   return { text: "no update", tone: tone || "text-muted-foreground" };
 }
 
-/** A game's name, its version and titledb's newest update when that is newer (titledb
- * gives a release's update number, not the version shown to players), then what it holds:
- * "80 DAYS (1.0.1, update 3 latest) 1 update". */
+/** A game's name, its newest update (which one, and the version shown to players) and
+ * titledb's newest update when that is newer (titledb gives a release's update number, not
+ * its shown version), then what it holds: "80 DAYS (update 1 v1.0.1, update 3 latest)
+ * 1 update". */
 function GameName({ game: g }: { game: UpdateGame }) {
+  const here = [
+    ...(g.release !== null ? [`update ${g.release}`] : []),
+    ...(g.display_version ? [`v${g.display_version}`] : []),
+  ].join(" ");
   const versions = [
-    ...(g.display_version ? [g.display_version] : []),
+    ...(here ? [here] : []),
     ...(g.newer && g.latest_release !== null ? [`update ${g.latest_release} latest`] : []),
   ];
   const holds = [

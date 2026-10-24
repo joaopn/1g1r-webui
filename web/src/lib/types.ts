@@ -645,6 +645,8 @@ export type UpdateGame = {
   game: string;
   display_version: string | null;
   version: number | null;
+  /** Which update its newest one is (1 for the first). */
+  release: number | null;
   newer: boolean;
   latest_release: number | null;
   latest_date: string | null;
