@@ -247,14 +247,13 @@ export function AppShell() {
         style={width === null ? undefined : { width: `${width}rem` }}
         className="sticky top-0 hidden h-screen shrink-0 flex-col border-border border-r bg-sidebar px-3 py-4 md:flex"
       >
-        <div className="flex items-start gap-2 pb-4 pl-2.5">
+        <div className="flex items-center gap-2 pb-4 pl-2.5">
           <div className="min-w-0 flex-1">
             <span className="font-semibold text-sidebar-foreground tracking-tight">{name}</span>
-            <p className="text-muted-foreground text-xs">one game, one ROM</p>
           </div>
           <div className="flex items-center gap-0.5">
-            <Notifications />
             <ThemeToggle />
+            <Notifications />
           </div>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto">
@@ -294,8 +293,8 @@ export function AppShell() {
             <SheetContent side="left" className="flex w-72 flex-col p-4">
               <SheetHeader className="flex-row items-center p-0 pr-8 pb-4">
                 <SheetTitle className="flex-1">{name}</SheetTitle>
-                <Notifications />
                 <ThemeToggle />
+                <Notifications />
               </SheetHeader>
               <NavItems onNavigate={() => setMobileOpen(false)} />
               <SidebarFoot

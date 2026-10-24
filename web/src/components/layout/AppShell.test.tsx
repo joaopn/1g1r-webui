@@ -224,11 +224,14 @@ test("the theme toggle is an icon at the top of the sidebar and cycles", async (
   expect(toggle.textContent).toMatch(/^Theme: /);
 });
 
-test("the bell sits beside the theme toggle and the license line in the sidebar foot", async () => {
+test("the theme toggle sits left of the bell and the license line in the sidebar foot", async () => {
   renderShell();
   const sidebar = await screen.findByTestId("sidebar");
   await waitFor(() => expect(within(sidebar).getByTestId("notifications")).toBeInTheDocument());
-  expect(within(sidebar).getByTestId("theme-toggle")).toBeInTheDocument();
+  const toggle = within(sidebar).getByTestId("theme-toggle");
+  const bell = within(sidebar).getByTestId("notifications");
+  expect(toggle.compareDocumentPosition(bell) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(sidebar).not.toHaveTextContent(/one game, one ROM/i);
   expect(within(sidebar).getByTestId("license")).toHaveTextContent(/^License: AGPL 3\.0 · /);
   expect(screen.queryByRole("contentinfo")).toBeNull();
 });
