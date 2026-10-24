@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 
 from g1r import titledb, titles
 from g1r.config import Settings
+from g1r.grouping import TITLE_KEY_PREFIX
 from g1r.matching import REASON_UPDATES, STATUS_LEFT, GameRow, discard_path
 
 STATUS_NEWEST = "newest"
@@ -193,7 +194,8 @@ class GameEntry:
     # without an update, or when not read).
     display_version: str | None
     version: int | None
-    # titledb knows a newer update than its newest here.
+    # titledb knows a newer update than its newest here (a game without an update: titledb
+    # knows one).
     newer: bool
     latest_release: int | None
     latest_date: str | None
@@ -202,11 +204,22 @@ class GameEntry:
     to_discard: int
     # The bytes of its updates and DLC still in the folder.
     size: int
+    # On titledb's newest update (or titledb knows none for it); None: cannot be told (no
+    # titledb, or its newest update's version is not read).
+    latest: bool | None
 
 
-def games(game_rows: list[GameRow], rows: list[UpdateRow]) -> list[GameEntry]:
+def games(
+    settings: Settings,
+    game_rows: list[GameRow],
+    rows: list[UpdateRow],
+    latest: dict[str, titledb.Latest] | None = None,
+) -> list[GameEntry]:
     """Every title-ID game of the set (matching.game_rows), by name, with what `rows` (its
-    updates and DLC) hold."""
+    updates and DLC) hold and whether it is on titledb's newest update (`latest`: titledb's
+    newest update per base title ID; empty without titledb)."""
+    config = settings.title_ids
+    latest = latest or {}
     by_game: dict[str, list[UpdateRow]] = {}
     for row in rows:
         by_game.setdefault(row.group_key, []).append(row)
@@ -215,20 +228,27 @@ def games(game_rows: list[GameRow], rows: list[UpdateRow]) -> list[GameEntry]:
         mine = [r for r in by_game.get(game.group.key, []) if r.status != STATUS_DISCARDED]
         updates = [r for r in mine if r.role == titles.UPDATE]
         newest = next((r for r in updates if r.status == STATUS_NEWEST), None)
-        known = next((r for r in updates if r.latest_version is not None), None)
+        # The version it is on: its newest update's, the base game's (0) without one; None
+        # while an update's version is not read.
+        here = newest.version if newest else (None if updates else 0)
+        base = game.group.key.removeprefix(TITLE_KEY_PREFIX)
+        released = latest.get(base) if config else None
+        newer = released is not None and here is not None and released.version > here
+        on_latest = None if not latest or here is None else not newer
         result.append(
             GameEntry(
                 game.group.key,
                 game.group.name,
                 newest.display_version if newest else None,
                 newest.version if newest else None,
-                any(r.newer for r in updates),
-                known.latest_release if known else None,
-                known.latest_date if known else None,
+                newer,
+                released.version // config.version_step if released and config else None,
+                released.date if released else None,
                 len(updates),
                 len(mine) - len(updates),
                 sum(1 for r in updates if r.operation),
                 sum(r.size or 0 for r in mine),
+                on_latest,
             )
         )
     result.sort(key=lambda g: (g.game.lower(), g.group_key))

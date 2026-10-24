@@ -1287,7 +1287,7 @@ def build_router(
         )
         latest = registry.titledb_latest(folder.platform)
         rows = updates.rows(settings, label, games, updates.keeps(conn, label), latest)
-        return rows, updates.games(games, rows)
+        return rows, updates.games(settings, games, rows, latest)
 
     def update_rows(conn, label: str) -> list[updates.UpdateRow]:
         return update_view(conn, label)[0]

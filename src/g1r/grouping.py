@@ -252,6 +252,10 @@ def build_groups(
     return sorted(groups.values(), key=lambda g: g.name.lower())
 
 
+# A title-ID game's key: this, then its base title ID.
+TITLE_KEY_PREFIX = "tid:"
+
+
 def build_title_groups(
     settings: Settings, identities: list[tuple[str, str, str, str]]
 ) -> list[Group]:
@@ -270,7 +274,7 @@ def build_title_groups(
             continue
         role = title.role(config)
         app = titles.hex_id(title.app_id(config), config)
-        key = "tid:" + app
+        key = TITLE_KEY_PREFIX + app
         # The game's name: its first base file's (by path), else its first file's.
         if key not in names or (role == titles.BASE and key not in based):
             names[key] = title.name

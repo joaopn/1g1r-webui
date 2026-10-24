@@ -299,6 +299,15 @@ def test_region_files_name_title_ids_in_their_order(switch):
         SECOND_UPDATE_DATE,
     )
     assert found["counts"]["newer"] == 1
+    # Per game: behind titledb's newest (blue), or on it (green: titledb knows no update of
+    # the Japan-only game, which has none here).
+    entries = {g["group_key"]: g for g in found["games"]}
+    behind = entries[f"tid:{BASE_ID}"]
+    assert (behind["newer"], behind["latest"], behind["latest_release"]) == (True, False, 2)
+    assert (entries[f"tid:{JP_ONLY_ID}"]["newer"], entries[f"tid:{JP_ONLY_ID}"]["latest"]) == (
+        False,
+        True,
+    )
 
     removed = client.delete("/api/dats/sources/titledb").json()
     assert removed == {"versions": 2, "platforms": ["switch"]}
@@ -306,6 +315,9 @@ def test_region_files_name_title_ids_in_their_order(switch):
     # Its versions went with it.
     update = client.get("/api/folders/switch/updates").json()["updates"][0]
     assert (update["latest_version"], update["newer"]) == (None, False)
+    # Without titledb, whether a game is on the newest update cannot be told.
+    games = client.get("/api/folders/switch/updates").json()["games"]
+    assert {g["latest"] for g in games} == {None}
 
 
 def test_versions_json_keeps_each_title_ids_newest_update():
