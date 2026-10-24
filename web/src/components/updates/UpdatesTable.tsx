@@ -1,10 +1,15 @@
-import { ArchiveRestore, Check } from "lucide-react";
+import { ArchiveRestore, Check, CornerDownRight } from "lucide-react";
 import { useMemo } from "react";
 import { flagTone } from "@/components/games/columns";
-import { type DataColumn, DataTable, type RowView } from "@/components/table/DataTable";
+import {
+  type DataColumn,
+  DataTable,
+  type RowGroup,
+  type RowView,
+} from "@/components/table/DataTable";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { formatBytes } from "@/lib/format";
+import { formatBytes, formatCount } from "@/lib/format";
 import type { Meta, UpdateRow } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -40,8 +45,29 @@ const VIEWS: RowView<Row>[] = [
   { id: "discarded", label: "Discarded", test: (r) => r.status === "discarded" },
 ];
 
-/** The set's updates, by game and newest first (the server's order): older ones are proposed
- * for discarded/ unless kept, and a discarded one can be restored. */
+const plural = (n: number, word: string) => `${formatCount(n)} ${word}${n === 1 ? "" : "s"}`;
+
+/** One group per game: its name, then what its rows hold and what is to do. */
+const GROUP: RowGroup<Row> = {
+  key: (r) => r.group_key,
+  name: (rows) => rows[0].game,
+  summary: (rows) => {
+    const updates = rows.filter((r) => r.role === "update").length;
+    const dlc = rows.length - updates;
+    const toDiscard = rows.filter((r) => r.status === "older").length;
+    return [
+      ...(updates ? [plural(updates, "update")] : []),
+      ...(dlc ? [`${formatCount(dlc)} DLC`] : []),
+      ...(toDiscard ? [`${formatCount(toDiscard)} to discard`] : []),
+      ...(rows.some((r) => r.newer) ? ["newer released"] : []),
+    ].join(" · ");
+  },
+  testId: (key) => `updates-game-${key}`,
+};
+
+/** The set's updates and DLC, grouped by game (each group opens and closes), updates newest
+ * first (the server's order): older ones are proposed for discarded/ unless kept, and a
+ * discarded one can be restored. */
 export function UpdatesTable({
   updates,
   meta,
@@ -65,7 +91,13 @@ export function UpdatesTable({
         id: "game",
         label: "Game",
         sortValue: (r) => r.game.toLowerCase(),
-        render: (r) => r.game,
+        // The game heads its group; its rows point to it.
+        render: () => (
+          <CornerDownRight
+            className="ml-3 inline size-3.5 text-muted-foreground"
+            aria-hidden="true"
+          />
+        ),
         title: (r) => r.game,
       },
       {
@@ -221,6 +253,7 @@ export function UpdatesTable({
       sizes={meta.ui.updates_columns}
       defaultColumns={meta.ui.updates_columns_default}
       views={VIEWS}
+      group={GROUP}
       search={(r, needle) =>
         r.rel_path.toLocaleLowerCase().includes(needle) ||
         r.game.toLocaleLowerCase().includes(needle)

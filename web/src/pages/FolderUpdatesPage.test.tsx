@@ -112,6 +112,14 @@ test("older updates are proposed, and a Keep click keeps one", async () => {
   expect(screen.getByTestId("unreadable-updates")).toHaveTextContent(
     "1 update has no readable version",
   );
+  // One group per game: its summary, and a click folds its rows away and back.
+  const group = screen.getByTestId("updates-game-tid:0100AAAA00010000");
+  expect(group).toHaveTextContent("2 updates · 1 DLC · 1 to discard · newer released");
+  const header = within(group).getByRole("button", { name: "Super Game: collapse" });
+  await userEvent.click(header);
+  expect(screen.queryByTestId("update-update 2.nsp")).toBeNull();
+  await userEvent.click(within(group).getByRole("button", { name: "Super Game: show" }));
+  expect(screen.getByTestId("update-update 2.nsp")).toBeInTheDocument();
   expect(await screen.findByText("· not added")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Add" })).toBeEnabled();
   const older = screen.getByTestId("update-update 1.nsp");

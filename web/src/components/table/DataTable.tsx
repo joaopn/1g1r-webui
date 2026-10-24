@@ -1,4 +1,4 @@
-import { Search } from "lucide-react";
+import { ChevronRight, Search } from "lucide-react";
 import { type CSSProperties, type ReactNode, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Pager } from "@/components/Pager";
@@ -38,6 +38,17 @@ export type RowFilter<T> = {
   valueOf: (row: T) => string;
 };
 
+/** Rows shown under a header per group (a game's updates and DLC), each group opening and
+ * closing on a click like the Matching table's games. Groups follow the order of their first
+ * row; a page holds `page_size` groups. */
+export type RowGroup<T> = {
+  key: (row: T) => string;
+  /** The header's text: the group's name and a summary of its rows. */
+  name: (rows: T[]) => string;
+  summary?: (rows: T[]) => ReactNode;
+  testId?: (key: string) => string;
+};
+
 const FILTER_PREFIX = "f.";
 const ALL_ROWS: RowView<unknown>[] = [{ id: "all", label: "All", test: () => true }];
 
@@ -63,6 +74,7 @@ export function DataTable<T>({
   note,
   meta,
   paramPrefix = "",
+  group,
 }: {
   /** Names the remembered columns and widths. */
   name: string;
@@ -90,7 +102,11 @@ export function DataTable<T>({
   meta: Meta;
   /** Prefixes the URL parameters, so a second table on the page keeps its own view. */
   paramPrefix?: string;
+  /** Rows grouped under a header each, open until clicked. */
+  group?: RowGroup<T>;
 }) {
+  // Groups closed by a click (every group starts open).
+  const [closed, setClosed] = useState<Set<string>>(() => new Set());
   const [urlParams, setParams] = useSearchParams();
   const params = { get: (key: string) => urlParams.get(paramPrefix + key) };
   const prefs = useMemo(
@@ -140,10 +156,19 @@ export function DataTable<T>({
         return result === 0 ? rowKey(a).localeCompare(rowKey(b)) : result * direction;
       })
     : inView;
+  const grouped = group
+    ? groupRows(sorted, group.key)
+    : sorted.map((row) => ({ key: "", rows: [row] }));
   const pageSize = meta.ui.page_size;
-  const pages = Math.max(1, Math.ceil(sorted.length / pageSize));
+  const pages = Math.max(1, Math.ceil(grouped.length / pageSize));
   const page = Math.min(pages, Math.max(1, Math.trunc(Number(params.get("page") ?? "1")) || 1));
-  const visible = sorted.slice((page - 1) * pageSize, page * pageSize);
+  const visible = grouped.slice((page - 1) * pageSize, page * pageSize);
+  const toggle = (key: string) =>
+    setClosed((current) => {
+      const next = new Set(current);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
 
   const update = (changes: Record<string, string>, keepPage = false) => {
     const next = new URLSearchParams(urlParams);
@@ -271,39 +296,101 @@ export function DataTable<T>({
           {visible.length === 0 ? (
             <p className="px-3 py-6 text-center text-muted-foreground">No {noun} match.</p>
           ) : (
-            visible.map((row) => (
-              <div
-                key={rowKey(row)}
-                data-testid={rowTestId?.(row)}
-                className="flex items-center border-border border-b px-3 py-1.5 last:border-b-0 hover:bg-accent/40"
-              >
-                <div className={grid}>
-                  {shownColumns.map((column) => (
-                    <div
-                      key={column.id}
-                      className={cn("min-w-0 truncate", column.className)}
-                      title={column.title?.(row)}
-                    >
-                      {column.render(row)}
-                    </div>
-                  ))}
+            visible.map((g) =>
+              group ? (
+                <div key={g.key} data-testid={group.testId?.(g.key)}>
+                  <GroupHeader
+                    name={group.name(g.rows)}
+                    summary={group.summary?.(g.rows)}
+                    open={!closed.has(g.key)}
+                    onToggle={() => toggle(g.key)}
+                  />
+                  {closed.has(g.key) ? null : g.rows.map(renderRow)}
                 </div>
-                {actions ? (
-                  <div
-                    className={cn(
-                      "sticky right-0 flex shrink-0 items-center justify-end gap-1 bg-card",
-                      actionsClassName,
-                    )}
-                  >
-                    {actions(row)}
-                  </div>
-                ) : null}
-              </div>
-            ))
+              ) : (
+                g.rows.map(renderRow)
+              ),
+            )
           )}
         </section>
       </div>
       <Pager page={page} pages={pages} onPage={(p) => update({ page: String(p) }, true)} />
     </div>
+  );
+
+  function renderRow(row: T) {
+    return (
+      <div
+        key={rowKey(row)}
+        data-testid={rowTestId?.(row)}
+        className="flex items-center border-border border-b px-3 py-1.5 last:border-b-0 hover:bg-accent/40"
+      >
+        <div className={grid}>
+          {shownColumns.map((column) => (
+            <div
+              key={column.id}
+              className={cn("min-w-0 truncate", column.className)}
+              title={column.title?.(row)}
+            >
+              {column.render(row)}
+            </div>
+          ))}
+        </div>
+        {actions ? (
+          <div
+            className={cn(
+              "sticky right-0 flex shrink-0 items-center justify-end gap-1 bg-card",
+              actionsClassName,
+            )}
+          >
+            {actions(row)}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+}
+
+/** Rows by group, in the order of each group's first row. */
+function groupRows<T>(rows: T[], keyOf: (row: T) => string): { key: string; rows: T[] }[] {
+  const found = new Map<string, T[]>();
+  for (const row of rows) {
+    const key = keyOf(row);
+    const list = found.get(key);
+    if (list) list.push(row);
+    else found.set(key, [row]);
+  }
+  return [...found].map(([key, list]) => ({ key, rows: list }));
+}
+
+function GroupHeader({
+  name,
+  summary,
+  open,
+  onToggle,
+}: {
+  name: string;
+  summary?: ReactNode;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-expanded={open}
+      aria-label={`${name}: ${open ? "collapse" : "show"}`}
+      onClick={onToggle}
+      className="flex w-full items-center gap-2 border-border border-b px-3 py-1.5 text-left hover:bg-accent/40 focus-visible:outline-2 focus-visible:outline-ring"
+    >
+      <ChevronRight
+        className={cn(
+          "size-4 shrink-0 text-muted-foreground transition-transform duration-200 motion-reduce:transition-none",
+          open && "rotate-90",
+        )}
+        aria-hidden="true"
+      />
+      <span className="min-w-0 truncate font-medium">{name}</span>
+      {summary ? <span className="shrink-0 text-muted-foreground text-xs">{summary}</span> : null}
+    </button>
   );
 }
