@@ -10,6 +10,7 @@ BASE_ID = "0100AAAA00010000"
 UPDATE_ID = "0100AAAA00010800"
 DLC_ID = "0100AAAA00011001"
 OTHER_DLC_ID = "0100BBBB00011001"
+LONE_ID = "0100CCCC00010000"
 # Versions as the console counts them: each update release adds 65536.
 FIRST_UPDATE = 65536
 SECOND_UPDATE = 131072
@@ -107,9 +108,10 @@ def switch(folder_of, make_settings, roms_root):
     return client, folder, roms_root
 
 
-def test_1g1r_keeps_the_game_its_updates_and_dlc(switch):
+def test_1g1r_keeps_the_game_its_updates_and_dlc(switch, make_settings):
     client, folder, roms_root = switch
-    assert scan(client)["message"] == "5 of 6 files identified by title ID"
+    (folder / "Lone Game.nsp").write_bytes(nsp(make_settings, LONE_ID, 0, "Application"))
+    assert scan(client)["message"] == "6 of 7 files identified by title ID"
     games = {g["name"]: g for g in client.get("/api/folders/switch/games").json()}
     game = games["Super Game (USA)"]
     assert (game["status"], game["reason"]) == ("single", "its updates and DLC are kept")
@@ -124,6 +126,13 @@ def test_1g1r_keeps_the_game_its_updates_and_dlc(switch):
     assert roles["Super Game - Pack.nsp"] == ("dlc", "dlc")
     # DLC without its game: not a game of the Matching table; listed with the DLC, kept.
     assert "Other Game - Pack" not in games
+    # The Updates & DLC tab lists every game, those without updates or DLC too.
+    entries = {g["game"]: g for g in client.get("/api/folders/switch/updates").json()["games"]}
+    assert sorted(entries) == ["Lone Game", "Other Game - Pack", "Super Game (USA)"]
+    sg = entries["Super Game (USA)"]
+    assert (sg["updates"], sg["dlc"], sg["to_discard"], sg["version"]) == (2, 1, 1, SECOND_UPDATE)
+    assert (entries["Lone Game"]["updates"], entries["Lone Game"]["dlc"]) == (0, 0)
+    assert entries["Other Game - Pack"]["dlc"] == 1
     assert roles["Other Game - Pack.nsp"] == ("dlc", "dlc")
     refused = client.put(
         "/api/folders/switch/updates/keep",

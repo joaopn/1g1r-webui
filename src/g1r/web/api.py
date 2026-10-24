@@ -1277,7 +1277,8 @@ def build_router(
 
     # Updates (title-ID folders) ------------------------------------------------------
 
-    def update_rows(conn, label: str) -> list[updates.UpdateRow]:
+    def update_view(conn, label: str) -> tuple[list[updates.UpdateRow], list]:
+        """The set's updates and DLC, and its games."""
         folder = folder_or_404(label)
         if not title_ids(folder.platform):
             raise not_found("this set has no updates: its platform has no title IDs")
@@ -1285,20 +1286,26 @@ def build_router(
             settings, conn, label, store.ranking_for(folder), produces(store.load(), folder, conn)
         )
         latest = registry.titledb_latest(folder.platform)
-        return updates.rows(settings, label, games, updates.keeps(conn, label), latest)
+        rows = updates.rows(settings, label, games, updates.keeps(conn, label), latest)
+        return rows, updates.games(games, rows)
 
-    def updates_dict(rows: list[updates.UpdateRow]) -> dict:
+    def update_rows(conn, label: str) -> list[updates.UpdateRow]:
+        return update_view(conn, label)[0]
+
+    def updates_dict(view: tuple[list[updates.UpdateRow], list]) -> dict:
+        rows, games = view
         # Games whose newest update here is older than one titledb knows (not on Home:
         # the card's figures are not refreshed with titledb's versions).
         newer = sum(1 for r in rows if r.newer)
         return {
             "updates": [asdict(r) for r in rows],
+            "games": [asdict(g) for g in games],
             "counts": update_counts(rows) | {"newer": newer},
         }
 
     @router.get("/folders/{label}/updates")
     def folder_updates(label: str, conn: Conn):
-        return updates_dict(update_rows(conn, label))
+        return updates_dict(update_view(conn, label))
 
     @router.put("/folders/{label}/updates/keep")
     def keep_updates(label: str, body: UpdateKeep, conn: Conn):
@@ -1306,7 +1313,7 @@ def build_router(
         if not set(body.rel_paths) <= rows:
             raise not_found("some of these files are not updates of this set")
         updates.set_keep(conn, label, body.rel_paths, body.keep)
-        return updates_dict(update_rows(conn, label))
+        return updates_dict(update_view(conn, label))
 
     def updates_plan(conn, label: str, body: UpdatesScope):
         folder = folder_or_404(label)

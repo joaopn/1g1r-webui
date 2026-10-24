@@ -183,6 +183,58 @@ def rows(
     return result
 
 
+@dataclass
+class GameEntry:
+    """One game of the set on the Updates & DLC tab, whether or not it has updates or DLC."""
+
+    group_key: str
+    game: str
+    # Its newest update here: the version shown to players and the version number (None
+    # without an update, or when not read).
+    display_version: str | None
+    version: int | None
+    # titledb knows a newer update than its newest here.
+    newer: bool
+    latest_release: int | None
+    latest_date: str | None
+    updates: int
+    dlc: int
+    to_discard: int
+    # The bytes of its updates and DLC still in the folder.
+    size: int
+
+
+def games(game_rows: list[GameRow], rows: list[UpdateRow]) -> list[GameEntry]:
+    """Every title-ID game of the set (matching.game_rows), by name, with what `rows` (its
+    updates and DLC) hold."""
+    by_game: dict[str, list[UpdateRow]] = {}
+    for row in rows:
+        by_game.setdefault(row.group_key, []).append(row)
+    result = []
+    for game in game_rows:
+        mine = [r for r in by_game.get(game.group.key, []) if r.status != STATUS_DISCARDED]
+        updates = [r for r in mine if r.role == titles.UPDATE]
+        newest = next((r for r in updates if r.status == STATUS_NEWEST), None)
+        known = next((r for r in updates if r.latest_version is not None), None)
+        result.append(
+            GameEntry(
+                game.group.key,
+                game.group.name,
+                newest.display_version if newest else None,
+                newest.version if newest else None,
+                any(r.newer for r in updates),
+                known.latest_release if known else None,
+                known.latest_date if known else None,
+                len(updates),
+                len(mine) - len(updates),
+                sum(1 for r in updates if r.operation),
+                sum(r.size or 0 for r in mine),
+            )
+        )
+    result.sort(key=lambda g: (g.game.lower(), g.group_key))
+    return result
+
+
 def unreadable(rows: list[UpdateRow]) -> int:
     """Updates in the folder whose version could not be read (prod.keys read it)."""
     return sum(
