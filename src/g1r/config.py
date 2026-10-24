@@ -679,14 +679,6 @@ class SwitchPackageConfig(_Strict):
     ncz_suffix: str
     nca_suffix: str
     cnmt_suffix: str
-    xci_magic_offset: int = Field(ge=0)
-    xci_magic: str
-    xci_hfs0: str
-    xci_hfs0_offset: int = Field(ge=0)
-    hfs0_magic: str
-    hfs0_header: str
-    hfs0_entry: str
-    secure_partition: str
     max_entries: int = Field(gt=0)
     pfs0_align: int = Field(gt=0)
     content_id_digits: int = Field(gt=0)

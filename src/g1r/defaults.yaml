@@ -224,9 +224,10 @@ platforms:
   archive_extensions: [zip, 7z]
   # Disc image formats that are a container of their own (what a disc target produces).
   disc_formats: [chd, rvz]
-  # Switch packages, each a container of its own: NSP is the target; NSZ (compressed NCAs),
-  # XCI (a game card dump) and XCZ are converted to it (switch_package.py).
-  package_formats: [nsp, nsz, xci, xcz]
+  # Switch packages, each a container of its own: NSP is the target; NSZ (compressed NCAs)
+  # is converted to it (switch_package.py). XCI and XCZ (game card dumps) are not supported
+  # (maintainer, 2026-10-24: "a mostly dead format").
+  package_formats: [nsp, nsz]
   # Images already stripped of data are never converted further (design §4), only flagged.
   lossy_patterns: ["*.nkit.*", "*.wbfs", "*.ciso"]
 
@@ -247,7 +248,7 @@ platforms:
       produces: rvz
     nsp:
       label: NSP
-      description: The Switch's own install package. NSZ and XCI are converted to it, every content archive kept byte for byte.
+      description: The Switch's own install package. NSZ is converted to it, every content archive kept byte for byte.
       produces: nsp
     chd:
       label: CHD (compressed disc image)
@@ -497,7 +498,7 @@ platforms:
       kind: handheld
       aliases: ["nsw", "nintendo switch"]
       dat_name: Nintendo - Nintendo Switch
-      rom_extensions: [nsp, nsz, xci, xcz]
+      rom_extensions: [nsp, nsz]
       # One format: NSP (maintainer, 2026-10-24: "we are not supporting XCI or NSZ").
       targets: [nsp]
       default_target: nsp
@@ -1160,9 +1161,8 @@ nca:
 # optional "NCZBLOCK" header (version, type, unused, block size exponent: u8; block count:
 # u32; decompressed size: u64; one u32 compressed size per block), then the zstd data. The
 # sections of crypto type ctr_crypto_types are encrypted again with AES-CTR (counter: the
-# entry's first 8 bytes, then the NCA offset / 16). An XCI holds a root HFS0 at the offset
-# its header gives; its "secure" partition (an HFS0) holds the NCAs. Every NCA is proven by
-# its name: the first half of its SHA-256 (content ID), read back from the written NSP.
+# entry's first 8 bytes, then the NCA offset / 16). Every NCA is proven by its name: the
+# first half of its SHA-256 (content ID), read back from the written NSP.
 switch_package:
   ncz_header_bytes: 0x4000
   section_magic: NCZSECTN
@@ -1176,14 +1176,6 @@ switch_package:
   ncz_suffix: .ncz
   nca_suffix: .nca
   cnmt_suffix: .cnmt.nca
-  xci_magic_offset: 0x100
-  xci_magic: HEAD
-  xci_hfs0: "<QQ"
-  xci_hfs0_offset: 0x130
-  hfs0_magic: HFS0
-  hfs0_header: "<4sIII"
-  hfs0_entry: "<QQII8x32s"
-  secure_partition: secure
   max_entries: 4096
   # The written PFS0's header is padded to a multiple of this.
   pfs0_align: 0x10

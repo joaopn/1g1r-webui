@@ -1,5 +1,5 @@
-"""NSZ and XCI/XCZ to NSP: synthetic packages in nsz's and the game card's layout; every NCA
-must come back byte for byte, proven by its content ID."""
+"""NSZ to NSP: synthetic packages in nsz's layout; every NCA must come back byte for byte,
+proven by its content ID."""
 
 import hashlib
 import struct
@@ -47,25 +47,6 @@ def ncz(data: bytes, plain: bytes, c, block_exponent: int | None = None) -> byte
     )
     out += b"".join(struct.pack(c.block_size, len(b)) for b in blocks)
     return out + b"".join(blocks)
-
-
-def hfs0(c, members: dict[str, bytes]) -> bytes:
-    names = b"".join(n.encode() + b"\0" for n in members)
-    entries, name_at, offset = b"", 0, 0
-    for name, data in members.items():
-        entries += struct.pack(c.hfs0_entry, offset, len(data), name_at, 0, bytes(32))
-        name_at += len(name) + 1
-        offset += len(data)
-    head = struct.pack(c.hfs0_header, c.hfs0_magic.encode(), len(members), len(names), 0)
-    return head + entries + names + b"".join(members.values())
-
-
-def xci(c, secure: dict[str, bytes]) -> bytes:
-    root = hfs0(c, {"update": hfs0(c, {}), c.secure_partition: hfs0(c, secure)})
-    header = bytearray(0x200)
-    header[c.xci_magic_offset : c.xci_magic_offset + 4] = c.xci_magic.encode()
-    struct.pack_into(c.xci_hfs0, header, c.xci_hfs0_offset, len(header), 0)
-    return bytes(header) + root
 
 
 @pytest.fixture
@@ -127,27 +108,34 @@ def test_an_nsz_becomes_the_nsp_it_was_made_from(
     assert (roms_root / ORIGINALS / "Game.nsz").exists() and not (folder / "Game.nsz").exists()
 
 
-def test_an_xci_becomes_an_nsp_of_its_secure_partition(folder_of, make_settings, roms_root, parts):
-    c, program, plain, meta = parts
-    client, folder = folder_of("switch")
-    secure = {name_of(program): program, name_of(meta, ".cnmt.nca"): meta}
-    (folder / "Game.xci").write_bytes(xci(c, secure))
-    row = converted(client, "Game.xci")
-    assert row["status"] == "make nsp" and "card header" in row["note"]
-    assert run(client, "Game.xci")["status"] == "done"
-    assert nsp_members(folder / "Game.nsp", make_settings()) == secure
-
-
 def test_what_cannot_become_one_nsp_is_flagged(folder_of, make_settings, parts):
     c, program, plain, meta = parts
     client, folder = folder_of("switch")
     other, _ = nca(3, 0x400, c)
-    two = {name_of(program): program, "a.cnmt.nca": meta, "b.cnmt.nca": other}
-    (folder / "Two.xci").write_bytes(xci(c, two))
-    (folder / "Broken.xci").write_bytes(b"\0" * 0x400)
-    two_row, broken = converted(client, "Two.xci"), converted(client, "Broken.xci")
+    two = {name_of(program, ".ncz"): ncz(program, plain, c), "a.cnmt.nca": meta}
+    two["b.cnmt.nca"] = other
+    (folder / "Two.nsz").write_bytes(pfs0(make_settings, two))
+    (folder / "Broken.nsz").write_bytes(b"\0" * 0x400)
+    two_row, broken = converted(client, "Two.nsz"), converted(client, "Broken.nsz")
     assert two_row["status"] == "flagged" and "holds 2 titles" in two_row["note"]
-    assert broken["status"] == "flagged" and "card header" in broken["note"]
+    assert broken["status"] == "flagged" and "no PFS0" in broken["note"]
+
+
+def test_game_card_images_are_not_a_switch_format(folder_of):
+    client, folder = folder_of("switch")
+    (folder / "Game.xci").write_bytes(b"\0" * 0x400)
+    (folder / "Game.xcz").write_bytes(b"\0" * 0x400)
+    client.post("/api/folders/switch/check")
+    for _ in range(500):
+        if client.get("/api/folders/switch/scan").json()["status"] != "running":
+            break
+    rows = client.get("/api/folders/switch/conversion").json()["rows"]
+    assert not any(r["rel_path"].startswith("Game.") for r in rows)
+    detail = client.get("/api/folders/switch").json()
+    assert {f["rel_path"]: f["reason"] for f in detail["unsupported"]} == {
+        "Game.xci": ".xci is not a supported format",
+        "Game.xcz": ".xcz is not a supported format",
+    }
 
 
 def test_an_ncz_that_does_not_give_its_nca_back_fails(folder_of, make_settings, parts):

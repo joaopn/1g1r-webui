@@ -381,7 +381,7 @@ class Converter:
             shutil.rmtree(work, ignore_errors=True)
 
     def _nsp(self, step, temp: Path) -> None:
-        """A Switch NSZ or XCI/XCZ written as an NSP, read back to prove every NCA."""
+        """A Switch NSZ written as an NSP, read back to prove every NCA."""
         try:
             switch_package.build(step.source, temp, self.settings, stopping.check)
         except switch_package.PackageError as exc:

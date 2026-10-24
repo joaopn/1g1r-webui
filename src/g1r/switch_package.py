@@ -1,14 +1,12 @@
-"""Switch packages converted to NSP: an NSZ (NCZ members back to NCAs) or an XCI/XCZ (the game
-card's secure partition repacked), every content archive (NCA) written byte for byte as the
-console has it.
+"""Switch NSZ packages converted to NSP (NCZ members back to NCAs), every content archive
+(NCA) written byte for byte as the console has it.
 
 An NCZ is an NCA decrypted and compressed with zstd (nsz's format, see `switch_package` in
 defaults.yaml); its header lists the key and counter of each section, so decompressing needs
 no keys. The output proves itself: each NCA is named after its content ID, the first half of
 its SHA-256, and the written NSP is read back to check every one (other members, such as a
-ticket, must read back as they were in the source). An XCI's card header, certificate and
-update partition (system firmware) are not game content and are not kept; a card holding more
-than one title (a game and an update) is not converted, so one NSP stays one title.
+ticket, must read back as they were in the source). A package holding more than one title (a
+game and an update) is not converted, so one NSP stays one title.
 """
 
 import hashlib
@@ -26,8 +24,6 @@ from g1r.config import Settings, SwitchPackageConfig
 
 NSP = "nsp"
 NSZ = "nsz"
-XCI = "xci"
-XCZ = "xcz"
 
 
 class PackageError(Exception):
@@ -52,44 +48,13 @@ class _Section:
     counter: bytes
 
 
-def _hfs0(handle: BinaryIO, at: int, config: SwitchPackageConfig) -> list[tuple[str, int, int]]:
-    """An HFS0's members as (name, absolute offset, size)."""
-    head = struct.calcsize(config.hfs0_header)
-    entry = struct.calcsize(config.hfs0_entry)
-    handle.seek(at)
-    magic, count, table_size, _ = struct.unpack(config.hfs0_header, handle.read(head))
-    if magic != config.hfs0_magic.encode() or count > config.max_entries:
-        raise PackageError("not a game card partition (no HFS0)")
-    entries = [struct.unpack(config.hfs0_entry, handle.read(entry)) for _ in range(count)]
-    table = handle.read(table_size)
-    start = at + head + entry * count + table_size
-    found = []
-    for offset, size, name_at, _, _ in entries:
-        end = table.find(b"\0", name_at)
-        name = table[name_at : end if end >= 0 else len(table)].decode("ascii", errors="replace")
-        found.append((name, start + offset, size))
-    return found
-
-
-def _source_members(handle: BinaryIO, suffix: str, settings: Settings):
-    config = settings.switch_package
-    title_config = settings.title_ids
-    if suffix in title_config.pfs0_extensions:
-        handle.seek(0)
-        found = titles.pfs0_members(handle, title_config)
-        if found is None:
-            raise PackageError("not an NSP/NSZ (no PFS0)")
-        start, members = found
-        return [(name, start + offset, size) for name, offset, size in members]
-    handle.seek(config.xci_magic_offset)
-    if handle.read(len(config.xci_magic)) != config.xci_magic.encode():
-        raise PackageError("not a game card image (no card header)")
-    handle.seek(config.xci_hfs0_offset)
-    root_offset, _ = struct.unpack(config.xci_hfs0, handle.read(struct.calcsize(config.xci_hfs0)))
-    secure = [m for m in _hfs0(handle, root_offset, config) if m[0] == config.secure_partition]
-    if not secure:
-        raise PackageError("the card image has no secure partition")
-    return _hfs0(handle, secure[0][1], config)
+def _source_members(handle: BinaryIO, settings: Settings):
+    handle.seek(0)
+    found = titles.pfs0_members(handle, settings.title_ids)
+    if found is None:
+        raise PackageError("not an NSP/NSZ (no PFS0)")
+    start, members = found
+    return [(name, start + offset, size) for name, offset, size in members]
 
 
 def _ncz_sections(handle: BinaryIO, offset: int, config: SwitchPackageConfig) -> list[_Section]:
@@ -106,11 +71,10 @@ def _ncz_sections(handle: BinaryIO, offset: int, config: SwitchPackageConfig) ->
 def plan(path: Path, settings: Settings) -> list[Member]:
     """The NSP's members, read from the source package."""
     config = settings.switch_package
-    suffix = path.suffix.lower().lstrip(".")
     try:
         with path.open("rb") as handle:
             result = []
-            for name, offset, size in _source_members(handle, suffix, settings):
+            for name, offset, size in _source_members(handle, settings):
                 if name.lower().endswith(config.ncz_suffix):
                     sections = _ncz_sections(handle, offset, config)
                     out = max([config.ncz_header_bytes, *(s.offset + s.size for s in sections)])

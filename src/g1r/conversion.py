@@ -29,7 +29,7 @@ MAKE_RVZ = "make rvz"
 BYTESWAP = "byteswap"
 # An encrypted 3DS card image decrypted with the user's own keys.
 DECRYPT = "decrypt"
-# A Switch NSZ or XCI/XCZ rewritten as an NSP.
+# A Switch NSZ rewritten as an NSP.
 MAKE_NSP = "make nsp"
 # What a card image's header says, as the Conversion table explains it.
 NOTE_TEXT = {
@@ -420,8 +420,8 @@ def _disc(settings, label, row, recipe, source, profile, target, delete_original
 
 
 def _make_nsp(settings, label, row, root: Path | None, delete_originals) -> None:
-    """An NSZ or XCI/XCZ: its NCAs written as an NSP beside it. Read from the folder when it
-    is there (the NSP's size; a card holding several titles is flagged)."""
+    """An NSZ: its NCAs written as an NSP beside it. Read from the folder when it is there
+    (the NSP's size; a package holding several titles is flagged)."""
     if root is not None:
         try:
             members = _package_plan(root / row.rel_path, row.size, settings)
@@ -432,18 +432,7 @@ def _make_nsp(settings, label, row, root: Path | None, delete_originals) -> None
     row.status, row.recipe = MAKE_NSP, RECIPE_NSP
     row.output = str(PurePosixPath(row.rel_path).with_suffix(f".{switch_package.NSP}"))
     row.verify = "every NCA read back from the NSP hashes to its content ID (its name)"
-    if row.container in (switch_package.NSZ, switch_package.XCZ):
-        row.note = "NCZs decompressed to the NCAs they were made from"
-    if row.container in (switch_package.XCI, switch_package.XCZ):
-        row.note = "; ".join(
-            filter(
-                None,
-                [
-                    row.note,
-                    "the card's game data repacked (card header and update partition left out)",
-                ],
-            )
-        )
+    row.note = "NCZs decompressed to the NCAs they were made from"
     _originals(settings, label, row, delete_originals)
 
 
