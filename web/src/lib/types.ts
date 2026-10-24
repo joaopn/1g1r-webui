@@ -416,6 +416,8 @@ export type DatRow = {
   folders: string[];
   /** Where this platform's DAT can be downloaded from, one button each. */
   downloads: { source: string; label: string; identification_only: boolean }[];
+  /** Pages its DAT is downloaded from by hand (DAT-o-MATIC), then uploaded. */
+  pages: { source: string; label: string; url: string }[];
   /** Its games have title IDs (Switch): titledb region files name them. */
   titledb: boolean;
 };

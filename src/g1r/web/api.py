@@ -1762,6 +1762,14 @@ def build_router(
                     }
                     for source_id in registry.downloads(pid)
                 ],
+                "pages": [
+                    {
+                        "source": source_id,
+                        "label": settings.dats.sources[source_id].label,
+                        "url": url,
+                    }
+                    for source_id, url in registry.pages(pid)
+                ],
             }
             for pid in platforms
         ]

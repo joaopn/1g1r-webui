@@ -147,6 +147,13 @@ PLATFORM_KINDS = ("console", "handheld", "arcade", "computer")
 DAT_FAMILIES = ("nointro", "redump", "fbneo", "tosec")
 
 
+class NonRedumpDat(_Strict):
+    # DAT-o-MATIC's number for the set (the `s=` of its download page).
+    system: int
+    # The set's DAT header name ("Non-Redump - Sony - PlayStation").
+    dat_name: str
+
+
 class PlatformProfile(_Strict):
     name: str
     # The platform's icon: a short label in a chip, and the kind of device it is.
@@ -157,6 +164,9 @@ class PlatformProfile(_Strict):
     dat_family: str = "nointro"
     # redump.info's name for the system, for the Download button (Redump platforms).
     redump_system: str | None = None
+    # No-Intro's Non-Redump set for this disc platform (discs Redump does not list:
+    # prototypes, betas, unlicensed), downloaded by hand from DAT-o-MATIC.
+    nonredump: NonRedumpDat | None = None
     # Files that are only part of a game (a cue sheet and its tracks): no versions in the
     # 1G1R table until a conversion makes one file of them.
     part_extensions: list[str] = Field(default_factory=list)
@@ -255,6 +265,9 @@ class DatSourceConfig(_Strict):
     identification_only: bool
     url_template: str | None = None
     website: str | None = None
+    # The page a platform's DAT is downloaded from by hand; {system} is the platform's
+    # DAT-o-MATIC number (`nonredump.system`).
+    page_template: str | None = None
     # The DAT families this source has (empty: every family).
     families: list[str] = Field(default_factory=list)
     # A pack found through a release index (TOSEC): the index page, the regex of release

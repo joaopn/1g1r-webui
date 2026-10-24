@@ -33,6 +33,17 @@ const GUIDE: Record<string, Guide> = {
     pros: ["One-click download", "Whole discs (every track), with serials and parent/clone data"],
     cons: ["Disc platforms only"],
   },
+  nonredump: {
+    what: "No-Intro's Non-Redump DATs (DAT-o-MATIC): discs Redump does not list.",
+    pros: [
+      "Prototypes, betas, unlicensed and homebrew discs",
+      "Its names are suggestions and manual matches for files no checksum identifies",
+    ],
+    cons: [
+      "Downloaded by hand from DAT-o-MATIC (a button on Platform DATs opens the page), then uploaded",
+      "Many entries are unverified dumps: a different build of the same disc does not match by checksum",
+    ],
+  },
   fbneo: {
     what: "FinalBurn Neo's DATs: arcade romsets.",
     pros: ["One-click download", "Parent/clone and BIOS data for romsets built for FBNeo"],

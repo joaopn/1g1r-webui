@@ -17,6 +17,11 @@ const MULTI: Meta = {
       identification_only: false,
     },
     redump: { label: "redump.info", short_label: "Redump", identification_only: false },
+    nonredump: {
+      label: "No-Intro Non-Redump (DAT-o-MATIC)",
+      short_label: "Non-Redump",
+      identification_only: false,
+    },
   },
 };
 
@@ -33,6 +38,8 @@ const version = (id: number, platform: string, source: string): DatVersion => ({
   added_at: "2026-10-20T00:00:00Z",
 });
 
+const NONREDUMP_PAGE = "https://datomatic.no-intro.org/index.php?page=download&op=dat&s=168";
+
 const row = (platform: string, versions: DatVersion[]): DatRow => ({
   platform,
   active: versions[0] ?? null,
@@ -41,6 +48,10 @@ const row = (platform: string, versions: DatVersion[]): DatRow => ({
   versions,
   folders: [],
   downloads: [],
+  pages:
+    platform === "psx"
+      ? [{ source: "nonredump", label: "No-Intro Non-Redump (DAT-o-MATIC)", url: NONREDUMP_PAGE }]
+      : [],
   titledb: platform === "switch",
 });
 
@@ -58,6 +69,7 @@ function renderPage() {
             row("nes", [version(1, "nes", "nointro"), version(2, "nes", "nointro")]),
             row("gb", [version(3, "gb", "nointro"), version(4, "gb", "libretro")]),
             row("switch", [version(5, "switch", "titledb:US.en")]),
+            row("psx", []),
           ]
         : url.endsWith("/titledb/files")
           ? ["GB.en", "JP.en", "JP.ja", "US.en"]
@@ -116,4 +128,15 @@ test("titledb: a button per featured region file, any other picked from the list
   await userEvent.selectOptions(select, "GB.en");
   await userEvent.click(within(box).getByRole("button", { name: "Download GB.en" }));
   expect(calls.some((c) => c.url.endsWith("/dats/switch/titledb?file=GB.en"))).toBe(true);
+});
+
+test("Non-Redump: a disc platform links to its DAT-o-MATIC page, beside Upload", async () => {
+  renderPage();
+  const psx = await screen.findByTestId("dats-psx");
+  const link = within(psx).getByRole("link", { name: /Non-Redump/ });
+  expect(link).toHaveAttribute("href", NONREDUMP_PAGE);
+  expect(link).toHaveAttribute("target", "_blank");
+  expect(
+    within(screen.getByTestId("dats-nes")).queryByRole("link", { name: /Non-Redump/ }),
+  ).toBeNull();
 });

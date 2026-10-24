@@ -162,6 +162,11 @@ WII_DEV_KIT = NOINTRO.replace(NES_HEADER, b"Nintendo - Wii (Development Kit Hard
         ("gba", "Nintendo - Game Boy Advance (e-Reader)", False),
         ("wii", "Nintendo - Wii U", False),
         ("gb", "Nintendo - Game Boy Advance", False),
+        # No-Intro's Non-Redump set of a disc platform, named its own way on DAT-o-MATIC.
+        ("psx", "Non-Redump - Sony - PlayStation", True),
+        ("ngc", "Non-Redump - Nintendo - Nintendo GameCube", True),
+        ("ps2", "Non-Redump - Sony - PlayStation", False),
+        ("nes", "Non-Redump - Nintendo - Nintendo Entertainment System", False),
     ],
 )
 def test_header_matches_only_format_variants(make_settings, platform, name, matches):
@@ -290,3 +295,38 @@ def test_a_library_from_when_screenscraper_was_a_lookup_still_loads(env):
     loaded = store.load()
     assert loaded.lookups.hasheous is True
     assert registry.order(loaded, "nes") == ["libretro", "hasheous"]
+
+
+REDUMP_PSX = NOINTRO.replace(NES_HEADER, b"Sony - PlayStation")
+NONREDUMP_PSX = NOINTRO.replace(NES_HEADER, b"Non-Redump - Sony - PlayStation")
+
+
+def test_a_non_redump_upload_is_its_own_source_after_redump(env):
+    _, store, registry, conn, _ = env
+    redump = registry.add(
+        conn, "psx", REDUMP_PSX, source="redump", origin=None, original_name="psx.dat"
+    )
+    other = registry.add_upload(conn, "psx", NONREDUMP_PSX, "psx-nonredump.dat")
+    row = conn.execute("SELECT * FROM dat_version WHERE id = ?", (other,)).fetchone()
+    assert row["source"] == "nonredump" and row["matches_platform"]
+    library = store.load()
+    assert registry.order(library, "psx") == ["redump", "nonredump", "hasheous"]
+    # Both DATs' names are there to match files to by hand.
+    assert [v["id"] for v, _ in registry.load_all(conn, library, "psx")] == [redump, other]
+
+
+def test_the_daily_pack_adds_a_non_redump_set_to_its_platform(env):
+    _, store, registry, conn, _ = env
+    pack = zip_of({"No-Intro/psx.dat": NONREDUMP_PSX})
+    results = registry.add_pack(conn, pack)
+    assert [(r.platform, r.message) for r in results] == [("psx", "added")]
+    assert set(store.load().dats["psx"].active) == {"nonredump"}
+
+
+def test_non_redump_pages_are_offered_only_where_the_set_exists(env):
+    _, _, registry, _, _ = env
+    assert registry.pages("psx") == [
+        ("nonredump", "https://datomatic.no-intro.org/index.php?page=download&op=dat&s=168")
+    ]
+    assert registry.pages("nes") == []
+    assert registry.pages("neo-geo-cd") == []

@@ -192,6 +192,10 @@ def test_dats_download_upload_activate_pin(setup):
     client.put("/api/dats/nes/pin", json={"pinned": False, "source": "nointro"})
     assert client.put("/api/dats/nes/active", json={"version_id": newer}).status_code == 200
     assert store.load().dats["nes"].active["libretro"].source == "libretro"
+    assert row["pages"] == []
+    psx = next(r for r in client.get("/api/dats").json() if r["platform"] == "psx")
+    assert [p["source"] for p in psx["pages"]] == ["nonredump"]
+    assert psx["pages"][0]["url"].endswith("&s=168")
     bad = client.post("/api/dats/nes/upload", files={"file": ("x.dat", b"junk")})
     assert bad.status_code == HTTPStatus.BAD_REQUEST and "not a usable DAT" in bad.json()["detail"]
 

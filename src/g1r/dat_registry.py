@@ -1,7 +1,8 @@
 """The per-platform DAT registry: stored versions (database) and the active one (library.yaml).
 
 Sources: the libretro mirror (one-click download), No-Intro DAT-o-MATIC files (uploaded,
-singly or as a daily pack, which is split by platform), and any uploaded override.
+singly or as a daily pack, which is split by platform; a disc platform's Non-Redump set is a
+source of its own), and any uploaded override.
 """
 
 import hashlib
@@ -46,6 +47,9 @@ class PackResult:
 TOSEC_MARK = "(TOSEC)"
 TOSEC_STYLE = "tosec"
 NOINTRO_STYLE = "nointro"
+# The source of No-Intro's Non-Redump sets (`PlatformProfile.nonredump`).
+NONREDUMP = "nonredump"
+UPLOADED = ("nointro", "upload")
 
 
 def name_style(version: sqlite3.Row | None) -> str:
@@ -74,28 +78,42 @@ class Entry:
         return self.id in LOOKUP_ENTRIES
 
 
-def _suffixes(profile: PlatformProfile, header_name: str) -> list[str] | None:
-    """The parenthesised groups after the platform's DAT name, or None when the name is not
-    the platform's name followed only by such groups."""
-    if not header_name.startswith(profile.dat_name):
+def _suffixes(dat_name: str, header_name: str) -> list[str] | None:
+    """The parenthesised groups after a DAT name, or None when the header is not that name
+    followed only by such groups."""
+    if not header_name.startswith(dat_name):
         return None
-    rest = header_name[len(profile.dat_name) :]
+    rest = header_name[len(dat_name) :]
     groups = re.findall(r" (\([^()]*\))", rest)
     return groups if "".join(f" {g}" for g in groups) == rest else None
 
 
-def header_matches(settings: Settings, profile: PlatformProfile, header_name: str) -> bool:
-    """The platform's DAT name, alone or with format variants ('... (Headered)'); another
-    suffix names a different set ('Nintendo - Wii (Development Kit Hard Drives)')."""
-    groups = _suffixes(profile, header_name)
+def _is_named(settings: Settings, dat_name: str, header_name: str) -> bool:
+    groups = _suffixes(dat_name, header_name)
     allowed = {*settings.dats.variant_suffixes, TOSEC_MARK}
     return groups is not None and all(g in allowed for g in groups)
+
+
+def is_nonredump(settings: Settings, profile: PlatformProfile, header_name: str) -> bool:
+    """The header names the platform's Non-Redump set (alone or with format variants)."""
+    return profile.nonredump is not None and _is_named(
+        settings, profile.nonredump.dat_name, header_name
+    )
+
+
+def header_matches(settings: Settings, profile: PlatformProfile, header_name: str) -> bool:
+    """The platform's DAT name (or its Non-Redump set's), alone or with format variants
+    ('... (Headered)'); another suffix names a different set ('Nintendo - Wii (Development
+    Kit Hard Drives)')."""
+    return _is_named(settings, profile.dat_name, header_name) or is_nonredump(
+        settings, profile, header_name
+    )
 
 
 def side_set_of(settings: Settings, header_name: str) -> str | None:
     """The platform whose DAT name this one extends with a suffix that is not a variant."""
     for platform, profile in settings.platforms.enabled_profiles().items():
-        groups = _suffixes(profile, header_name)
+        groups = _suffixes(profile.dat_name, header_name)
         if groups and not header_matches(settings, profile, header_name):
             return platform
     return None
@@ -140,6 +158,10 @@ class DatRegistry:
             raise RegistryError(f"not a usable DAT: {exc}") from exc
         if not dat.games:
             raise RegistryError("the DAT contains no games")
+        # An uploaded Non-Redump DAT (singly or in the daily pack) is a source of its own,
+        # beside the platform's Redump DAT.
+        if source in UPLOADED and is_nonredump(self.settings, profile, dat.header.name):
+            source = NONREDUMP
         sha1 = hashlib.sha1(data).hexdigest()
         existing = conn.execute(
             "SELECT id FROM dat_version WHERE platform = ? AND sha1 = ?", (platform, sha1)
@@ -371,6 +393,14 @@ class DatRegistry:
                 continue
             found.append(source_id)
         return found
+
+    def pages(self, platform: str) -> list[tuple[str, str]]:
+        """The sources whose DAT for the platform is downloaded by hand: (source, page)."""
+        profile = self._profile(platform)
+        source = self.settings.dats.sources.get(NONREDUMP)
+        if source is None or not source.page_template or profile.nonredump is None:
+            return []
+        return [(NONREDUMP, source.page_template.format(system=profile.nonredump.system))]
 
     def download(self, conn: sqlite3.Connection, platform: str, source_id: str) -> int:
         profile = self._profile(platform)

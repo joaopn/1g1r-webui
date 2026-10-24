@@ -1,5 +1,5 @@
 import { type QueryKey, useMutation } from "@tanstack/react-query";
-import { ChevronRight, Download, Pin, PinOff, Trash2, Upload } from "lucide-react";
+import { ChevronRight, Download, ExternalLink, Pin, PinOff, Trash2, Upload } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
@@ -252,6 +252,19 @@ function DatRowView({ row, meta }: { row: DatRow; meta: Meta }) {
               >
                 <Download className="size-3.5" aria-hidden="true" />{" "}
                 {d.source === "libretro" ? "libretro" : d.label}
+              </Button>
+            ))}
+            {row.pages.map((p) => (
+              <Button key={p.source} variant="outline" size="sm" asChild>
+                <a
+                  href={p.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  title={`${p.label}: download the DAT there, then upload it here`}
+                >
+                  <ExternalLink className="size-3.5" aria-hidden="true" />{" "}
+                  {meta.dat_sources[p.source]?.short_label ?? p.label}
+                </a>
               </Button>
             ))}
             <Button
