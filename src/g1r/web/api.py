@@ -599,6 +599,32 @@ def build_router(
             if e.version is not None and not e.titledb
         }
 
+    def statistics_titledb(conn, library: Library, folder: FolderEntry) -> list[sqlite3.Row]:
+        """The platform's titledb region files, in order (switched-off ones too): one
+        Statistics source together."""
+        return [
+            e.version
+            for e in registry.entries(conn, library, folder.platform)
+            if e.version is not None and e.titledb
+        ]
+
+    def titledb_dat(versions: list[sqlite3.Row], total: int) -> dict:
+        """The region files as one DAT of the Statistics page."""
+        return {
+            "sha1": "+".join(v["sha1"] for v in versions),
+            "source": statistics.TITLEDB_SOURCE,
+            "header_name": ", ".join(v["header_name"] for v in versions),
+            "version": max((v["version"] or "" for v in versions), default="") or None,
+            "game_count": total,
+        }
+
+    def titledb_counts(conn, folder: FolderEntry, versions: list[sqlite3.Row]):
+        games = statistics.titledb_games(
+            settings, [(v["sha1"], registry.load(v)) for v in versions]
+        )
+        have = statistics.titledb_identified(settings, conn, folder.label)
+        return games, statistics.coverage(games, have)
+
     def statistics_games(folder: FolderEntry, version: sqlite3.Row) -> statistics.DatGames:
         return statistics.dat_games(
             settings,
@@ -612,9 +638,9 @@ def build_router(
         """The folder's row, as kept, or computed now when never computed. `stale`: its
         files, identities or DATs changed since."""
         dats = statistics_dats(conn, library, folder)
-        current = statistics.fingerprint(
-            settings, conn, folder.label, [v["sha1"] for v in dats.values()]
-        )
+        named = statistics_titledb(conn, library, folder)
+        sha1s = [v["sha1"] for v in [*dats.values(), *named]]
+        current = statistics.fingerprint(settings, conn, folder.label, sha1s)
         kept = statistics.cached(conn, statistics.KIND_FOLDER, folder.label)
         if kept is None:
             have = statistics.identified(settings, conn, folder.label)
@@ -623,6 +649,13 @@ def build_router(
             for source, version in dats.items():
                 covered, total, _ = statistics.coverage(statistics_games(folder, version), have)
                 cells[source] = {"covered": covered, "total": total, "dat": row_dict(version)}
+            if named:
+                _, (covered, total, _) = titledb_counts(conn, folder, named)
+                cells[statistics.TITLEDB_SOURCE] = {
+                    "covered": covered,
+                    "total": total,
+                    "dat": titledb_dat(named, total),
+                }
             value = {
                 "roms": summary["roms"],
                 "identified": summary["identified"],
@@ -665,6 +698,14 @@ def build_router(
             {"id": sid, "label": source.label, "short_label": source.short_label}
             for sid, source in settings.dats.sources.items()
         ]
+        titledb_config = settings.titledb
+        sources.append(
+            {
+                "id": statistics.TITLEDB_SOURCE,
+                "label": titledb_config.label,
+                "short_label": titledb_config.short_label,
+            }
+        )
         dat_info = []
         for sid, source in settings.dats.sources.items():
             versions = list(local.get(sid, {}).values())
@@ -684,6 +725,27 @@ def build_router(
                     "publishers": any(f["publishers"] for f in features),
                 }
             )
+        # titledb: each set's region files joined; the region files counted once each.
+        region_files = {
+            sha1 for sha1s in local.get(statistics.TITLEDB_SOURCE, {}) for sha1 in sha1s.split("+")
+        }
+        dat_info.append(
+            {
+                "id": statistics.TITLEDB_SOURCE,
+                "label": titledb_config.label,
+                "dats": len(region_files),
+                "identification_only": False,
+                "checksums": [],
+                "categories": [titledb_config.game_category, titledb_config.demo_category],
+                "parent_clone": False,
+                "bios": False,
+                # Its title IDs, shown as serials.
+                "serials": True,
+                "years": True,
+                "publishers": True,
+                "title_ids": True,
+            }
+        )
         return {
             "sources": sources,
             "folders": folders,
@@ -701,15 +763,24 @@ def build_router(
         folder = folder_or_404(label)
         library = store.load()
         dats = statistics_dats(conn, library, folder)
-        if source not in dats:
+        named = statistics_titledb(conn, library, folder)
+        if source not in dats and not (source == statistics.TITLEDB_SOURCE and named):
             raise not_found(f"{label!r} has no {source!r} DAT")
-        version = dats[source]
-        current = statistics.fingerprint(
-            settings, conn, folder.label, [v["sha1"] for v in dats.values()]
-        )
+        sha1s = [v["sha1"] for v in [*dats.values(), *named]]
+        current = statistics.fingerprint(settings, conn, folder.label, sha1s)
         key = statistics.missing_key(label, source)
         kept = statistics.cached(conn, statistics.KIND_MISSING, key)
+        if source == statistics.TITLEDB_SOURCE and (kept is None or kept.fingerprint != current):
+            games, (covered, total, missing) = titledb_counts(conn, folder, named)
+            value = {
+                "dat": titledb_dat(named, total),
+                "covered": covered,
+                "total": total,
+                "rows": statistics.missing_rows(settings, games, missing),
+            }
+            kept = statistics.keep(conn, statistics.KIND_MISSING, key, current, value)
         if kept is None or kept.fingerprint != current:
+            version = dats[source]
             games = statistics_games(folder, version)
             have = statistics.identified(settings, conn, folder.label)
             covered, total, missing = statistics.coverage(games, have)

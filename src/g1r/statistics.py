@@ -20,7 +20,7 @@ import re
 import sqlite3
 from dataclasses import dataclass, field
 
-from g1r import grouping, matching
+from g1r import grouping, matching, scanner, titles
 from g1r.config import Settings
 from g1r.dats import Dat, DatGame
 from g1r.grouping import TOSEC_STYLE, DatSet, SourceDat
@@ -163,6 +163,61 @@ def dat_games(settings: Settings, sha1: str, dat: Dat, style: str, names_from: s
     return result
 
 
+def titledb_games(settings: Settings, files: list[tuple[str, Dat]]) -> DatGames:
+    """titledb's games: every base title ID any of these region files (in the platform's
+    order) lists, demos left out, named and described by the first file listing it. Each
+    is a game of its own: DLC and updates have their own title IDs and never count."""
+    config = settings.title_ids
+    key = (id(settings), tuple(sha1 for sha1, _ in files))
+    if key in _cache or config is None:
+        return _cache.get(key, DatGames())
+    result = DatGames()
+    demo = settings.titledb.demo_category
+    for _, dat in files:
+        for game in dat.games:
+            title_id = (game.id or "").upper()
+            if not title_id or title_id in result.info or title_id in result.group_of:
+                continue
+            try:
+                title = titles.Title(int(title_id, config.radix), None, game.name)
+            except ValueError:
+                continue
+            if title.role(config) != titles.BASE or game.category == demo:
+                # The first file listing it decides: a demo stays left out.
+                result.group_of.setdefault(title_id, "")
+                continue
+            result.labels[title_id] = game.name
+            result.members[title_id] = [title_id]
+            result.group_of[title_id] = title_id
+            languages = tuple(c for c in (game.languages or "").split(",") if c)
+            result.info[title_id] = GameInfo(
+                game.name, game.year, game.manufacturer, (), languages, title_id
+            )
+    # Left-out IDs were only marked as seen.
+    result.group_of = {k: v for k, v in result.group_of.items() if v}
+    _cache[key] = result
+    return result
+
+
+def titledb_identified(settings: Settings, conn: sqlite3.Connection, label: str) -> "Identified":
+    """The base title IDs of the files in the folder (read inside them; discarded ones left
+    out), as the names titledb's games are counted by."""
+    found = Identified()
+    config = settings.title_ids
+    if config is None:
+        return found
+    rows = conn.execute(
+        "SELECT i.game_name FROM identity i JOIN folder_file f USING (folder_label, rel_path) "
+        "WHERE i.folder_label = ? AND f.place = ? AND i.method = ?",
+        (label, PLACE_FOLDER, scanner.METHOD_TITLE_ID),
+    )
+    for row in rows:
+        title = titles.from_name(row["game_name"], config)
+        if title is not None and title.role(config) == titles.BASE:
+            found.names.add(titles.hex_id(title.title_id, config))
+    return found
+
+
 @dataclass
 class Identified:
     """A folder's identified files, as the names and ROM checksums they stand for."""
@@ -279,6 +334,9 @@ def dat_features(dat: Dat) -> dict:
         "publishers": any(g.manufacturer for g in games),
     }
 
+
+# The one Statistics source standing for every titledb region file.
+TITLEDB_SOURCE = "titledb"
 
 KIND_FOLDER = "folder"
 KIND_MISSING = "missing"

@@ -22,6 +22,7 @@ from tests.test_switch import (
 
 JP_ONLY_ID = "0100CCCC00010000"
 UNLISTED_ID = "0100DDDD00010000"
+MISSING_ID = "0100ABCD00010000"
 
 LANGUAGES = {"US": ["en", "es"], "JP": ["ja", "en"], "GB": ["en"], "XX": [7]}
 US = {
@@ -40,6 +41,13 @@ US = {
     "70010000000004": {"id": None, "name": "A bundle"},
     "70010000000005": {"id": "0100EEEE00010000", "name": ""},
     "70010000000006": {"id": "0100FFFF00010000", "name": "Demo Game", "isDemo": True},
+    "70010000000007": {
+        "id": MISSING_ID,
+        "name": "Missing Game",
+        "publisher": "Small Publisher",
+        "releaseDate": 20210101,
+        "languages": ["en"],
+    },
 }
 JP = {
     "70010000000101": {"id": BASE_ID, "name": "Super Game JP", "publisher": "JP Publisher"},
@@ -88,7 +96,7 @@ def test_a_region_file_becomes_a_dat_of_its_title_ids(make_settings):
     config = make_settings().titledb
     data, count = titledb.to_dat(config, "US.en", body(US), "2026-10-24")
     dat = parse_dat_bytes(data)
-    assert count == len(dat.games) == 3
+    assert count == len(dat.games) == 4
     assert dat.header.name == "titledb US.en" and dat.header.version == "2026-10-24"
     games = {g.id: g for g in dat.games}
     base = games[BASE_ID]
@@ -243,10 +251,27 @@ def test_region_files_name_title_ids_in_their_order(switch):
     scan(client)
     assert versions(client)["base.nsp"]["game"] == "Super Game: (Deluxe)"
 
-    # titledb files are no DATs to match a file to by hand, nor Statistics sources.
+    # titledb files are no DATs to match a file to by hand.
     assert client.get("/api/folders/switch/dat-search?q=Super").json() == []
-    stats = client.get("/api/statistics").json()
-    assert all(not row["coverage"] for row in stats["folders"] if row["label"] == "switch")
+    # Statistics: one titledb source, the region files joined by title ID (the one switched
+    # off too). Games: base IDs, the demo and the DLC left out; the set has two of three.
+    stats = client.post("/api/statistics/refresh").json()
+    (row,) = [r for r in stats["folders"] if r["label"] == "switch"]
+    assert list(row["coverage"]) == ["titledb"]
+    cell = row["coverage"]["titledb"]
+    assert (cell["covered"], cell["total"]) == (2, 3)
+    assert cell["dat"]["header_name"] == "titledb JP.ja, titledb US.en"
+    info = next(d for d in stats["dat_info"] if d["id"] == "titledb")
+    assert info["dats"] == 2 and info["title_ids"]
+    missing = client.get("/api/statistics/switch/titledb/missing").json()
+    (game,) = missing["rows"]
+    assert (game["name"], game["years"], game["publishers"], game["serials"]) == (
+        "Missing Game",
+        "2021-01-01",
+        "Small Publisher",
+        MISSING_ID,
+    )
+    assert client.get("/api/statistics/switch/redump/missing").status_code == (HTTPStatus.NOT_FOUND)
 
     # A restart's check of the DATs' names leaves titledb files alone.
     settings = client.app.state.settings
