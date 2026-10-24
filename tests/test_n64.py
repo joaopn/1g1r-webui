@@ -11,6 +11,8 @@ from g1r.dats import parse_dat_bytes
 from g1r.hashing import swap_words, word_bytes
 from g1r.web.app import create_app
 
+from .waits import finished
+
 # A ROM in the native (big-endian, .z64) order starts with this magic.
 NATIVE = bytes.fromhex("80371240")
 WORDS = 64
@@ -78,19 +80,11 @@ def n64(make_settings, roms_root):
 
 def scan(client):
     client.post("/api/folders/n64/scan")
-    for _ in range(500):
-        result = client.get("/api/folders/n64/scan").json()
-        if result["status"] != "running":
-            return result
-    raise AssertionError("scan did not finish")
+    return finished(client, "n64")
 
 
 def wait_run(client):
-    for _ in range(500):
-        run = client.get("/api/folders/n64/run").json()
-        if run and run["status"] != "running":
-            return run
-    raise AssertionError("run did not finish")
+    return finished(client, "n64", "run")
 
 
 def versions(client):

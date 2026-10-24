@@ -11,6 +11,8 @@ from fastapi.testclient import TestClient
 from g1r import db, discs
 from g1r.web.app import create_app
 
+from .waits import finished
+
 SECTOR = 2352
 # A CD track lasts at least 4 seconds of 75 sectors. (chdman makes an unreadable CHD from a
 # few sectors of random audio, which its verify catches; real discs never are that short.)
@@ -54,11 +56,7 @@ def psx(make_settings, roms_root):
 
 def scan(client):
     client.post("/api/folders/psx/scan")
-    for _ in range(500):
-        result = client.get("/api/folders/psx/scan").json()
-        if result["status"] != "running":
-            return result
-    raise AssertionError("scan did not finish")
+    return finished(client, "psx")
 
 
 def rows(client):
@@ -121,11 +119,7 @@ def test_the_plan_moves_every_original_of_a_cue_sheet(psx, roms_root):
 
 
 def wait_run(client):
-    for _ in range(5000):
-        run = client.get("/api/folders/psx/run").json()
-        if run and run["status"] != "running":
-            return run
-    raise AssertionError("run did not finish")
+    return finished(client, "psx", "run")
 
 
 def convert_all(client):

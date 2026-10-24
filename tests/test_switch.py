@@ -6,6 +6,8 @@ import pytest
 
 from g1r import titles
 
+from .waits import finished
+
 BASE_ID = "0100AAAA00010000"
 UPDATE_ID = "0100AAAA00010800"
 DLC_ID = "0100AAAA00011001"
@@ -74,19 +76,11 @@ def test_titles_are_read_from_inside_the_file(make_settings, tmp_path):
 
 def scan(client) -> dict:
     client.post("/api/folders/switch/scan")
-    for _ in range(500):
-        found = client.get("/api/folders/switch/scan").json()
-        if found["status"] != "running":
-            return found
-    raise AssertionError("the scan did not finish")
+    return finished(client, "switch")
 
 
 def wait_run(client) -> dict:
-    for _ in range(500):
-        run = client.get("/api/folders/switch/run").json()
-        if run and run["status"] != "running":
-            return run
-    raise AssertionError("the run did not finish")
+    return finished(client, "switch", "run")
 
 
 @pytest.fixture

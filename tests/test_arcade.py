@@ -8,6 +8,8 @@ from fastapi.testclient import TestClient
 from g1r import igir
 from g1r.web.app import create_app
 
+from .waits import finished
+
 PARENT, CLONE, OTHER_CLONE, BIOS = "pg", "pgh", "pgb", "neogeo"
 
 
@@ -63,10 +65,7 @@ def mvs(make_settings, roms_root):
 
 def scan(client):
     client.post("/api/folders/mvs/scan")
-    for _ in range(500):
-        if client.get("/api/folders/mvs/scan").json()["status"] != "running":
-            return
-    raise AssertionError("scan did not finish")
+    finished(client, "mvs")
 
 
 def test_fbneo_dat_download_and_sets_identified_in_both_merge_modes(mvs, roms_root):

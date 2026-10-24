@@ -10,6 +10,7 @@ from g1r.config import ApplyConfig
 
 from .test_api import scanned, setup  # noqa: F401  (fixture)
 from .test_scanner import write_zip
+from .waits import finished
 
 CONFIG = ApplyConfig(
     copy_chunk_bytes=4,
@@ -78,11 +79,7 @@ def test_without_hard_links_it_renames(tmp_path, monkeypatch):
 
 
 def wait_run(client, label="nes"):
-    for _ in range(500):
-        run = client.get(f"/api/folders/{label}/run").json()
-        if run and run["status"] != journal.RUNNING:
-            return run
-    raise AssertionError("run did not finish")
+    return finished(client, label, "run")
 
 
 def versions(client):
@@ -122,9 +119,7 @@ def test_apply_and_restore_a_folder(setup, roms_root):  # noqa: F811
 
     # A rescan keeps the discarded version in the table.
     assert client.post("/api/folders/nes/scan").status_code == HTTPStatus.ACCEPTED
-    for _ in range(500):
-        if client.get("/api/folders/nes/scan").json()["status"] != "running":
-            break
+    finished(client, "nes")
     assert versions(client)["Contra (Japan).zip"]["discarded"] == gone["discarded"]
     assert client.post("/api/folders/nes/apply/preview", json={}).json()["moves"] == []
 
@@ -153,9 +148,7 @@ def test_preflight_refuses_changed_files_and_taken_places(setup, roms_root):  # 
     write_zip(source, "Contra (Japan).nes", b"Contra (Japan)")
     scanned_again = client.post("/api/folders/nes/scan")
     assert scanned_again.status_code == HTTPStatus.ACCEPTED
-    for _ in range(500):
-        if client.get("/api/folders/nes/scan").json()["status"] != "running":
-            break
+    finished(client, "nes")
     taken = roms_root / "discarded" / "nes" / "1g1r" / "Contra (Japan).zip"
     taken.parent.mkdir(parents=True)
     taken.write_bytes(b"someone else's")

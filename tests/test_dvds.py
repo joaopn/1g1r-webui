@@ -4,15 +4,15 @@ import zipfile
 
 import pytest
 
+from .waits import finished
+
 DVD_SECTOR = 2048
 SECTORS = 600
 
 
 def proposals(client, label):
     client.post(f"/api/folders/{label}/scan")
-    for _ in range(500):
-        if client.get(f"/api/folders/{label}/scan").json()["status"] != "running":
-            break
+    finished(client, label)
     return {r["rel_path"]: r for r in client.get(f"/api/folders/{label}/conversion").json()["rows"]}
 
 
@@ -73,10 +73,7 @@ def test_a_dvd_iso_becomes_a_verified_chd(folder_of, roms_root):
     proposals(client, "ps2")
     plan = client.post("/api/folders/ps2/convert/preview", json={}).json()
     client.post("/api/folders/ps2/convert", json={"token": plan["token"]})
-    for _ in range(5000):
-        run = client.get("/api/folders/ps2/run").json()
-        if run and run["status"] != "running":
-            break
+    run = finished(client, "ps2", "run")
     assert (run["status"], run["message"]) == ("done", "1 file converted"), run["failed"]
     assert (folder / "A (USA).chd").is_file() and not (folder / "A (USA).iso").exists()
     assert (roms_root / "discarded/ps2/originals/A (USA).iso").read_bytes() == image

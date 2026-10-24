@@ -7,6 +7,7 @@ from g1r import scanner
 
 from .test_api import dat_bytes, scanned, setup  # noqa: F401  (fixture)
 from .test_scanner import env, write_zip  # noqa: F401  (fixture)
+from .waits import finished
 
 
 def identities(conn):
@@ -77,10 +78,7 @@ def test_check_files_from_the_api(setup, roms_root):  # noqa: F811
     assert client.get("/api/folders").json()[0]["needs"] == "check"
     started = client.post("/api/folders/nes/check")
     assert started.status_code == HTTPStatus.ACCEPTED
-    for _ in range(500):
-        check = client.get("/api/folders/nes/scan").json()
-        if check["status"] != "running":
-            break
+    check = finished(client, "nes")
     assert (check["kind"], check["status"]) == ("check", "done")
     # odd.nes waits to be zipped; the Conversion page needs nothing more.
     assert check["message"] == "7 ROM files checked; 1 to convert"
@@ -101,8 +99,6 @@ def test_check_files_from_the_api(setup, roms_root):  # noqa: F811
     (roms_root / "NES Set" / "odd.nes").unlink()
     client.post("/api/dats/nes/upload", files={"file": ("nes.dat", dat_bytes())})
     client.post("/api/folders/nes/scan")
-    for _ in range(500):
-        if client.get("/api/folders/nes/scan").json()["status"] != "running":
-            break
+    finished(client, "nes")
     summary = client.get("/api/folders/nes").json()["summary"]
     assert (summary["unmatched"], summary["unscanned"]) == (1, 0)

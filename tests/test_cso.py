@@ -8,6 +8,8 @@ import pytest
 from g1r import cso
 from tests.test_dvds import DVD_SECTOR, SECTORS, proposals
 
+from .waits import finished
+
 HEADER = "<4sIQIBB2x"
 PLAIN = 1 << 31
 SHIFT = 2
@@ -79,10 +81,7 @@ def test_a_ps2_cso_becomes_a_verified_dvd_chd(folder_of, roms_root):
     assert rows["A (USA).cso"]["disc_mode"] == "createdvd"
     plan = client.post("/api/folders/ps2/convert/preview", json={}).json()
     client.post("/api/folders/ps2/convert", json={"token": plan["token"]})
-    for _ in range(5000):
-        run = client.get("/api/folders/ps2/run").json()
-        if run and run["status"] != "running":
-            break
+    run = finished(client, "ps2", "run")
     assert (run["status"], run["message"]) == ("done", "1 file converted"), run["failed"]
     assert (folder / "A (USA).chd").is_file() and not (folder / "A (USA).cso").exists()
     assert (roms_root / "discarded/ps2/originals/A (USA).cso").read_bytes() == original

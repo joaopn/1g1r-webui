@@ -12,6 +12,8 @@ from Cryptodome.Cipher import AES
 from g1r import switch_package
 from tests.test_switch import pfs0, ticket, wait_run
 
+from .waits import finished
+
 ORIGINALS = "discarded/switch/originals"
 KEY, COUNTER = b"\x55" * 16, bytes(range(16))
 
@@ -59,9 +61,7 @@ def parts(make_settings):
 
 def converted(client, rel: str) -> dict:
     client.post("/api/folders/switch/check")
-    for _ in range(500):
-        if client.get("/api/folders/switch/scan").json()["status"] != "running":
-            break
+    finished(client, "switch")
     rows = {r["rel_path"]: r for r in client.get("/api/folders/switch/conversion").json()["rows"]}
     return rows[rel]
 
@@ -126,9 +126,7 @@ def test_game_card_images_are_not_a_switch_format(folder_of):
     (folder / "Game.xci").write_bytes(b"\0" * 0x400)
     (folder / "Game.xcz").write_bytes(b"\0" * 0x400)
     client.post("/api/folders/switch/check")
-    for _ in range(500):
-        if client.get("/api/folders/switch/scan").json()["status"] != "running":
-            break
+    finished(client, "switch")
     rows = client.get("/api/folders/switch/conversion").json()["rows"]
     assert not any(r["rel_path"].startswith("Game.") for r in rows)
     detail = client.get("/api/folders/switch").json()

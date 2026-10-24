@@ -21,6 +21,8 @@ from tests.test_switch import (
     ticket,
 )
 
+from .waits import finished
+
 JP_ONLY_ID = "0100CCCC00010000"
 UNLISTED_ID = "0100DDDD00010000"
 MISSING_ID = "0100ABCD00010000"
@@ -164,11 +166,7 @@ def switch(make_settings, roms_root):
 
 def scan(client) -> dict:
     client.post("/api/folders/switch/scan")
-    for _ in range(500):
-        found = client.get("/api/folders/switch/scan").json()
-        if found["status"] != "running":
-            return found
-    raise AssertionError("the scan did not finish")
+    return finished(client, "switch")
 
 
 def versions(client) -> dict[str, dict]:

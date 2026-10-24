@@ -6,6 +6,7 @@ import zlib
 from g1r import cards
 
 from .ncch_image import CARD_PADDING
+from .waits import finished
 
 UNITS = 8
 PARTITION_UNIT = 1
@@ -54,9 +55,7 @@ def test_the_header_tells_encryption_and_trimming(make_settings, tmp_path):
 
 def scan(client):
     client.post("/api/folders/3ds/scan")
-    for _ in range(500):
-        if client.get("/api/folders/3ds/scan").json()["status"] != "running":
-            return
+    finished(client, "3ds")
 
 
 def test_trimmed_images_are_noted_and_encrypted_ones_are_flagged(n3ds, make_settings):

@@ -11,6 +11,7 @@ from pyctr.crypto import engine as pyctr_engine
 
 from g1r import archives, cards, decrypt, scanner
 from tests.ncch_image import UNIT, card, regions
+from tests.waits import finished
 
 TITLE = "0004000000031c00"
 
@@ -19,20 +20,14 @@ def scan(client):
     """Scan the 3DS folder (no DAT: a decryption proves itself) and return its conversion
     rows by path."""
     client.post("/api/folders/3ds/scan")
-    for _ in range(500):
-        if client.get("/api/folders/3ds/scan").json()["status"] != "running":
-            break
+    finished(client, "3ds")
     return {r["rel_path"]: r for r in client.get("/api/folders/3ds/conversion").json()["rows"]}
 
 
 def convert(client):
     plan = client.post("/api/folders/3ds/convert/preview", json={}).json()
     client.post("/api/folders/3ds/convert", json={"token": plan["token"]})
-    for _ in range(5000):
-        run = client.get("/api/folders/3ds/run").json()
-        if run and run["status"] != "running":
-            return run
-    raise AssertionError("the run did not finish")
+    return finished(client, "3ds", "run")
 
 
 def seeddb(*titles: str) -> bytes:
@@ -205,9 +200,7 @@ def test_only_a_right_decryption_is_kept(n3ds, make_settings, keys_root, roms_ro
     out = rows["P (USA) (Decrypted).3ds"]
     assert out["status"] == "done" and "encrypted" not in out["note"]
     client.post("/api/folders/3ds/restore", json={})
-    for _ in range(5000):
-        if client.get("/api/folders/3ds/run").json()["status"] != "running":
-            break
+    finished(client, "3ds", "run")
     assert sorted(p.name for p in folder.iterdir()) == ["P (USA).3ds"]
 
 
@@ -235,9 +228,7 @@ def test_an_image_filled_up_after_a_cut_says_where_the_data_ends(
     plan = client.post("/api/folders/3ds/set-aside/preview", json=body).json()
     assert plan["problems"] == [] and len(plan["files"]) == 1
     client.post("/api/folders/3ds/set-aside", json={**body, "token": plan["token"]})
-    for _ in range(5000):
-        if client.get("/api/folders/3ds/run").json()["status"] != "running":
-            break
+    finished(client, "3ds", "run")
     assert (roms_root / "discarded/3ds/manual/P (USA).3ds").read_bytes() == locked
     assert not (folder / "P (USA).3ds").exists()
 

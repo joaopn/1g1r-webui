@@ -10,6 +10,7 @@ from g1r import discs
 from g1r.web.app import create_app
 
 from .test_discs import HAS_CHDMAN, MIN_TRACK_SECTORS, SECTOR
+from .waits import finished
 
 # Where a GD-ROM's high-density area starts (the third track of a .gdi).
 HIGH_DENSITY_LBA = 45000
@@ -48,10 +49,7 @@ def dc(make_settings, roms_root):
 
 def scan(client):
     client.post("/api/folders/dc/scan")
-    for _ in range(500):
-        if client.get("/api/folders/dc/scan").json()["status"] != "running":
-            return
-    raise AssertionError("scan did not finish")
+    finished(client, "dc")
 
 
 def rows(client):
@@ -90,10 +88,7 @@ def test_a_gdi_becomes_a_verified_chd(dc, roms_root):
     plan = client.post("/api/folders/dc/convert/preview", json={}).json()
     assert plan["problems"] == []
     client.post("/api/folders/dc/convert", json={"token": plan["token"]})
-    for _ in range(5000):
-        run = client.get("/api/folders/dc/run").json()
-        if run and run["status"] != "running":
-            break
+    run = finished(client, "dc", "run")
     assert (run["status"], run["message"]) == ("done", "1 file converted"), run["failed"]
     assert (folder / "A.chd").is_file() and not (folder / "A.gdi").exists()
     originals = roms_root / "discarded" / "dc" / "originals"

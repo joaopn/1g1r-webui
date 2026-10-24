@@ -10,6 +10,7 @@ from g1r.web.api import suggest_label
 from g1r.web.app import create_app
 
 from .test_scanner import write_zip
+from .waits import finished
 
 DATA = Path(__file__).parent / "data"
 NAMES = ["Contra (USA)", "Contra (Japan)", "Gradius (USA)", "Gradius (USA) (Rev 1)", "Solo (Japan)"]
@@ -59,11 +60,7 @@ def scanned(client):
     assert add_nes(client, label="nes").status_code == HTTPStatus.CREATED
     client.post("/api/dats/nes/upload", files={"file": ("nes.dat", dat_bytes())})
     assert client.post("/api/folders/nes/scan").status_code == HTTPStatus.ACCEPTED
-    for _ in range(500):
-        scan = client.get("/api/folders/nes/scan").json()
-        if scan and scan["status"] != "running":
-            return scan
-    raise AssertionError("scan did not finish")
+    return finished(client, "nes")
 
 
 def test_suggest_label():
@@ -140,11 +137,8 @@ def test_ignore_list_per_folder_checks_the_files_again(setup, roms_root):
     assert detail["ignored_patterns_default"] is True
 
     def checked():
-        for _ in range(500):
-            scan = client.get("/api/folders/nes/scan").json()
-            if scan and scan["status"] != "running":
-                return client.get("/api/folders/nes").json()
-        raise AssertionError("check did not finish")
+        finished(client, "nes")
+        return client.get("/api/folders/nes").json()
 
     client.post("/api/folders/nes/check")
     assert {f["rel_path"] for f in checked()["unsupported"]} == {"cover.png", "scan.jpg"}
@@ -306,24 +300,17 @@ def test_matching_waits_until_every_file_is_converted_or_discarded(setup, roms_r
     assert conversion_body["cannot_convert"] == ["Empty.zip"]
 
     # Convert what can be converted, discard what cannot: then the scan identifies.
-    def finished(path):
-        for _ in range(500):
-            body = client.get(f"/api/folders/nes/{path}").json()
-            if body and body["status"] != "running":
-                return body
-        raise AssertionError(f"{path} did not finish")
-
     plan = client.post("/api/folders/nes/convert/preview", json={}).json()
     client.post("/api/folders/nes/convert", json={"token": plan["token"]})
-    assert finished("run")["status"] == "done"
+    assert finished(client, "nes", "run")["status"] == "done"
     aside = client.post("/api/folders/nes/set-aside/preview", json={"rel_paths": ["Empty.zip"]})
     client.post(
         "/api/folders/nes/set-aside",
         json={"rel_paths": ["Empty.zip"], "token": aside.json()["token"]},
     )
-    assert finished("run")["status"] == "done"
+    assert finished(client, "nes", "run")["status"] == "done"
     assert client.post("/api/folders/nes/scan").status_code == HTTPStatus.ACCEPTED
-    scan = finished("scan")
+    scan = finished(client, "nes")
     assert (scan["kind"], scan["message"]) == ("identify", "5 of 7 ROM files identified")
 
 
@@ -504,9 +491,7 @@ def test_discarded_listing_and_home_warnings(setup, roms_root):
     assert folder["warnings"] == [HASHEOUS_HINT]
     (roms_root / "NES Set" / "game.sfc").write_bytes(b"x")
     client.post("/api/folders/nes/scan")
-    for _ in range(500):
-        if client.get("/api/folders/nes/scan").json()["status"] != "running":
-            break
+    finished(client, "nes")
     warning, hint = client.get("/api/folders").json()[0]["warnings"]
     assert warning["text"].startswith("Not NES ROMs or archives: 1 file.")
     assert hint == HASHEOUS_HINT
