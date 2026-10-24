@@ -8,6 +8,7 @@ import hashlib
 import io
 import re
 import sqlite3
+import time
 import urllib.parse
 import urllib.request
 import zipfile
@@ -15,7 +16,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 
-from g1r import tosec
+from g1r import titledb, tosec
 from g1r.config import LOOKUP_ENTRIES, PlatformProfile, Settings
 from g1r.dats import Dat, DatError, parse_dat_bytes, parsed
 from g1r.library import ActiveDat, Library, LibraryStore, PlatformDats
@@ -64,6 +65,8 @@ class Entry:
     id: str
     on: bool
     version: sqlite3.Row | None = None
+    # A titledb region file: names and details by title ID, no checksums.
+    titledb: bool = False
 
     @property
     def lookup(self) -> bool:
@@ -102,6 +105,8 @@ class DatRegistry:
         self.settings = settings
         self.store = store
         self.fetch = fetch or self._http_fetch
+        # titledb's region files and when they were read.
+        self._titledb_files: tuple[float, list[str]] | None = None
 
     def _http_fetch(self, url: str, timeout: float | None = None) -> bytes:
         request = urllib.request.Request(url, headers={"User-Agent": self.settings.dats.user_agent})
@@ -121,6 +126,7 @@ class DatRegistry:
         source: str,
         origin: str | None,
         original_name: str | None,
+        matches_platform: bool | None = None,
     ) -> int:
         profile = self._profile(platform)
         if len(data) > self.settings.dats.max_upload_bytes:
@@ -142,13 +148,18 @@ class DatRegistry:
             target = self.settings.paths.data_dir / relative
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(data)
+            matches = (
+                header_matches(self.settings, profile, dat.header.name)
+                if matches_platform is None
+                else matches_platform
+            )
             version_id = self._insert(
-                conn, platform, source, str(relative), dat, sha1, profile, origin, original_name
+                conn, platform, source, str(relative), dat, sha1, matches, origin, original_name
             )
         self._maybe_activate(conn, platform, version_id)
         return version_id
 
-    def _insert(self, conn, platform, source, file, dat: Dat, sha1, profile, origin, name) -> int:
+    def _insert(self, conn, platform, source, file, dat: Dat, sha1, matches, origin, name) -> int:
         cursor = conn.execute(
             """INSERT INTO dat_version (platform, source, file, original_name, origin,
                    header_name, description, version, date, sha1, game_count,
@@ -167,7 +178,7 @@ class DatRegistry:
                 sha1,
                 len(dat.games),
                 int(dat.has_parent_clone),
-                int(header_matches(self.settings, profile, dat.header.name)),
+                int(matches),
             ),
         )
         return cursor.lastrowid
@@ -176,19 +187,32 @@ class DatRegistry:
         """Every stored DAT of this source, on every platform, leaves the library: its
         active entries, its versions and their files. Sets keep their matches until their
         next scan. Returns how many versions went and from which platforms."""
-        if source not in self.settings.dats.sources:
+        config = self.settings.titledb
+        if source == config.short_label:
+            # Every titledb region file.
+            prefix = config.entry_prefix
+            rows = [
+                r
+                for r in conn.execute("SELECT id, platform, file, source FROM dat_version")
+                if r["source"].startswith(prefix)
+            ]
+        elif source in self.settings.dats.sources:
+            rows = conn.execute(
+                "SELECT id, platform, file, source FROM dat_version WHERE source = ?", (source,)
+            ).fetchall()
+        else:
             raise RegistryError(f"unknown DAT source {source!r}")
-        rows = conn.execute(
-            "SELECT id, platform, file FROM dat_version WHERE source = ?", (source,)
-        ).fetchall()
+        sources = {row["source"] for row in rows} | {source}
 
         def change(library: Library) -> None:
             for dats in library.dats.values():
-                dats.active.pop(source, None)
+                for gone in sources:
+                    dats.active.pop(gone, None)
 
         # The library first: an active entry whose version is gone is skipped, never used.
         self.store.update(change)
-        conn.execute("DELETE FROM dat_version WHERE source = ?", (source,))
+        for row in rows:
+            conn.execute("DELETE FROM dat_version WHERE id = ?", (row["id"],))
         for row in rows:
             (self.settings.paths.data_dir / row["file"]).unlink(missing_ok=True)
         return len(rows), sorted({row["platform"] for row in rows})
@@ -212,6 +236,58 @@ class DatRegistry:
         current = self.store.load().dats.get(platform, PlatformDats()).active.get(source)
         if current is None or (self.settings.dats.auto_activate_new and not current.pinned):
             self.activate(conn, platform, version_id)
+
+    # titledb ----------------------------------------------------------------------
+
+    def is_titledb(self, entry: str) -> bool:
+        return titledb.file_of(self.settings.titledb, entry) is not None
+
+    def titledb_files(self) -> list[str]:
+        """Every titledb region file ("US.en"), from its languages list (read again after
+        `languages_ttl_seconds`)."""
+        config = self.settings.titledb
+        now = time.monotonic()
+        if self._titledb_files and now - self._titledb_files[0] < config.languages_ttl_seconds:
+            return self._titledb_files[1]
+        try:
+            files = titledb.files_from_languages(config, self.fetch(config.languages_url))
+        except OSError as exc:
+            raise RegistryError(f"titledb's file list could not be read: {exc}") from exc
+        except titledb.TitleDbError as exc:
+            raise RegistryError(str(exc)) from exc
+        self._titledb_files = (now, files)
+        return files
+
+    def download_titledb(self, conn: sqlite3.Connection, platform: str, file: str) -> int:
+        """A titledb region file, kept as a DAT of its title IDs and made an entry of the
+        platform's order (the first version of a file is used at once)."""
+        profile = self._profile(platform)
+        if not profile.title_ids:
+            raise RegistryError(f"{profile.name} games have no title IDs: titledb is Switch only")
+        config = self.settings.titledb
+        if file not in config.featured and file not in self.titledb_files():
+            raise RegistryError(f"titledb has no file {file!r}")
+        url = config.url_template.format(file=urllib.parse.quote(file))
+        try:
+            data = self._fetch_long(url, config.timeout_seconds)
+        except OSError as exc:
+            raise RegistryError(f"download failed: {exc}") from exc
+        if len(data) > config.max_download_bytes:
+            raise RegistryError("the file is larger than titledb.max_download_bytes")
+        version = time.strftime(config.version_format)
+        try:
+            dat, _ = titledb.to_dat(config, file, data, version)
+        except titledb.TitleDbError as exc:
+            raise RegistryError(str(exc)) from exc
+        return self.add(
+            conn,
+            platform,
+            dat,
+            source=titledb.entry_id(config, file),
+            origin=url,
+            original_name=f"{file}.json",
+            matches_platform=True,
+        )
 
     def download_libretro(self, conn: sqlite3.Connection, platform: str) -> int:
         return self.download(conn, platform, "libretro")
@@ -440,8 +516,8 @@ class DatRegistry:
 
         self.store.update(change)
 
-    def _check_order(self, order: list[str], off: list[str]) -> None:
-        known = set(self.settings.dats.priority)
+    def _check_order(self, order: list[str], off: list[str], extra: set[str] = frozenset()) -> None:
+        known = set(self.settings.dats.priority) | extra
         if len(set(order)) != len(order) or not set(order) <= known or not set(off) <= known:
             raise RegistryError(f"the order may list only {sorted(known)}, each once")
 
@@ -450,7 +526,8 @@ class DatRegistry:
         None: follow the global order again."""
         self._profile(platform)
         if order is not None:
-            self._check_order(order, off)
+            active = self.store.load().dats.get(platform, PlatformDats()).active
+            self._check_order(order, off, {e for e in active if self.is_titledb(e)})
 
         def change(library: Library) -> None:
             dats = library.dats.setdefault(platform, PlatformDats())
@@ -492,24 +569,39 @@ class DatRegistry:
         """Every source with an active DAT and every online lookup, in the platform's order.
         One the chosen order does not name (a source added since) takes its default place
         among its kind: before the first DAT the default order puts after it, else after
-        the last one it puts before it, else at the end."""
+        the last one it puts before it, else (none of its kind yet) a DAT before the
+        lookups, a lookup at the end."""
         dats = library.dats.get(platform, PlatformDats())
         default = self.settings.dats.priority
-        present = [e for e in default if e in dats.active or e in LOOKUP_ENTRIES]
+        # titledb region files, in the order they were added, rank after every other DAT.
+        files = [e for e in dats.active if self.is_titledb(e)]
+        sources = [e for e in default if e not in LOOKUP_ENTRIES]
+
+        def rank(entry: str) -> int:
+            return len(sources) if entry in files else default.index(entry)
+
+        present = [
+            *(e for e in sources if e in dats.active),
+            *files,
+            *(e for e in default if e in LOOKUP_ENTRIES),
+        ]
         chosen = dats.order if dats.order is not None else self.global_order(library)
         order = [e for e in chosen if e in present]
         for entry in present:
             if entry in order:
                 continue
-            rank = default.index(entry)
             kin = [
-                (i, default.index(e))
+                (i, rank(e))
                 for i, e in enumerate(order)
                 if (e in LOOKUP_ENTRIES) == (entry in LOOKUP_ENTRIES)
             ]
-            later = [i for i, r in kin if r > rank]
-            earlier = [i for i, r in kin if r < rank]
-            at = later[0] if later else (earlier[-1] + 1 if earlier else len(order))
+            later = [i for i, r in kin if r > rank(entry)]
+            # Equal ranks (titledb files): after the ones already placed.
+            earlier = [i for i, r in kin if r <= rank(entry)]
+            # Without one of its kind placed: a DAT before the lookups, a lookup at the end.
+            lookups = [i for i, e in enumerate(order) if e in LOOKUP_ENTRIES]
+            alone = lookups[0] if lookups and entry not in LOOKUP_ENTRIES else len(order)
+            at = later[0] if later else (earlier[-1] + 1 if earlier else alone)
             order.insert(at, entry)
         return order
 
@@ -527,7 +619,7 @@ class DatRegistry:
                 ).fetchone()
                 if version is None:
                     continue
-            found.append(Entry(entry, entry not in off, version))
+            found.append(Entry(entry, entry not in off, version, self.is_titledb(entry)))
         return found
 
     def active_versions(self, conn, library: Library, platform: str) -> list[sqlite3.Row]:
@@ -552,7 +644,21 @@ class DatRegistry:
         return None if row is None else self.load(row)
 
     def load_all(self, conn, library: Library, platform: str) -> list[tuple[sqlite3.Row, Dat]]:
-        return [(v, self.load(v)) for v in self.active_versions(conn, library, platform)]
+        """The DATs whose names a file can be matched to by hand (titledb files name title
+        IDs, not files)."""
+        return [
+            (v, self.load(v))
+            for v in self.active_versions(conn, library, platform)
+            if not self.is_titledb(v["source"])
+        ]
+
+    def titledb_titles(self, conn, library: Library, platform: str) -> list[dict]:
+        """The platform's titledb files that are on, in order, each by title ID."""
+        return [
+            titledb.index(e.version["sha1"], self.load(e.version))
+            for e in self.entries(conn, library, platform)
+            if e.on and e.titledb
+        ]
 
     def _profile(self, platform: str) -> PlatformProfile:
         profiles = self.settings.platforms.enabled_profiles()

@@ -20,6 +20,7 @@ from g1r import (
     decrypt,
     discarded,
     filecache,
+    grouping,
     hasheous,
     igir,
     journal,
@@ -28,6 +29,8 @@ from g1r import (
     notifications,
     scanner,
     statistics,
+    titledb,
+    titles,
     unmatched,
     updates,
 )
@@ -213,9 +216,16 @@ def row_dict(row: sqlite3.Row | None) -> dict | None:
     return dict(row) if row is not None else None
 
 
-def game_dict(game: matching.GameRow, dats: dict[str, dict] | None = None) -> dict:
-    """`dats`: sha1 -> what to say about that DAT (`dat_names`)."""
+def game_dict(
+    game: matching.GameRow,
+    dats: dict[str, dict] | None = None,
+    details: Callable[[grouping.Version], titledb.Title | None] | None = None,
+) -> dict:
+    """`dats`: sha1 -> what to say about that DAT (`dat_names`); `details`: what titledb
+    says about a version identified by title ID."""
     dats = dats or {}
+    known = {row.version.rel_path: details(row.version) if details else None for row in game.rows}
+    nothing = titledb.Title("", None, None, (), "")
     return {
         "key": game.group.key,
         "name": game.group.name,
@@ -234,7 +244,13 @@ def game_dict(game: matching.GameRow, dats: dict[str, dict] | None = None) -> di
                 "dat": dats.get(row.version.dat_sha1),
                 "probability": row.probability,
                 "regions": list(row.version.parsed.regions),
-                "languages": list(row.version.parsed.languages),
+                # A titledb entry's languages, else those its name gives.
+                "languages": list(
+                    (known[row.version.rel_path] or nothing).languages
+                    or row.version.parsed.languages
+                ),
+                "publisher": (known[row.version.rel_path] or nothing).publisher,
+                "release": (known[row.version.rel_path] or nothing).release,
                 "revision": row.version.parsed.revision,
                 "prerelease": row.version.parsed.prerelease,
                 "rerelease": row.version.parsed.rerelease,
@@ -326,10 +342,13 @@ def build_router(
         found = {}
         for row in conn.execute("SELECT sha1, source, version, header_name FROM dat_version"):
             source = settings.dats.sources.get(row["source"])
+            short = source.short_label if source else row["source"]
+            if registry.is_titledb(row["source"]):
+                short = titledb.label(settings.titledb, row["source"])
             found[row["sha1"]] = {
                 "source": row["source"],
-                "label": source.short_label if source else row["source"],
-                "source_label": source.label if source else row["source"],
+                "label": short,
+                "source_label": source.label if source else short,
                 "version": row["version"],
                 "header_name": row["header_name"],
             }
@@ -337,7 +356,30 @@ def build_router(
 
     def entry_label(entry: str) -> str:
         source = settings.dats.sources.get(entry)
+        if registry.is_titledb(entry):
+            return titledb.label(settings.titledb, entry)
         return source.label if source else LOOKUP_LABELS.get(entry, entry)
+
+    def title_details(conn) -> Callable[[grouping.Version], titledb.Title | None]:
+        """What the titledb file that named a version says about its title ID (an update:
+        its base game's entry, when the file lists no entry of its own)."""
+        config = settings.title_ids
+
+        def details(version: grouping.Version) -> titledb.Title | None:
+            if config is None or version.method != scanner.METHOD_TITLE_ID:
+                return None
+            if not version.dat_sha1:
+                return None
+            title = titles.from_name(version.game_name, config)
+            dat = matching.load_dat(settings, conn, version.dat_sha1)
+            if title is None or dat is None:
+                return None
+            ids = [titles.hex_id(title.title_id, config)]
+            if title.role(config) == titles.UPDATE:
+                ids.append(titles.hex_id(title.app_id(config), config))
+            return titledb.lookup([titledb.index(version.dat_sha1, dat)], *ids)
+
+        return details
 
     def own_order(library: Library, platform: str) -> bool:
         dats = library.dats.get(platform)
@@ -403,6 +445,13 @@ def build_router(
             "targets": {k: v.model_dump() for k, v in settings.platforms.targets.items()},
             "archive_extensions": settings.platforms.archive_extensions,
             "dat_sources": {k: v.model_dump() for k, v in settings.dats.sources.items()},
+            "titledb": {
+                "label": settings.titledb.label,
+                "short_label": settings.titledb.short_label,
+                "website": settings.titledb.website,
+                "entry_prefix": settings.titledb.entry_prefix,
+                "featured": settings.titledb.featured,
+            },
             "ranking": {
                 "criteria": list(RANKING_CRITERIA),
                 "labels": RANKING_LABELS,
@@ -547,7 +596,7 @@ def build_router(
         return {
             e.id: e.version
             for e in registry.entries(conn, library, folder.platform)
-            if e.version is not None
+            if e.version is not None and not e.titledb
         }
 
     def statistics_games(folder: FolderEntry, version: sqlite3.Row) -> statistics.DatGames:
@@ -1266,7 +1315,8 @@ def build_router(
             settings, conn, label, store.ranking_for(folder), produces(store.load(), folder, conn)
         )
         names = dat_names(conn)
-        return [game_dict(g, names) for g in games]
+        details = title_details(conn)
+        return [game_dict(g, names, details) for g in games]
 
     @router.put("/folders/{label}/keep")
     def keep(label: str, body: KeepChoice, conn: Conn):
@@ -1282,7 +1332,7 @@ def build_router(
         )
         if game is None:
             raise not_found("no such game")
-        return game_dict(game, dat_names(conn))
+        return game_dict(game, dat_names(conn), title_details(conn))
 
     @router.put("/folders/{label}/leave")
     def leave(label: str, body: LeaveAlone, conn: Conn):
@@ -1298,7 +1348,7 @@ def build_router(
         )
         if game is None:
             raise not_found("no such game")
-        return game_dict(game, dat_names(conn))
+        return game_dict(game, dat_names(conn), title_details(conn))
 
     @router.put("/folders/{label}/ranking")
     def save_ranking(label: str, body: FolderRanking):
@@ -1586,6 +1636,7 @@ def build_router(
                 "own_order": own_order(library, pid),
                 "versions": [dict(v) for v in registry.versions(conn, pid)],
                 "folders": [f.label for f in library.folders if f.platform == pid],
+                "titledb": title_ids(pid),
                 "downloads": [
                     {
                         "source": source_id,
@@ -1614,6 +1665,17 @@ def build_router(
     @router.post("/dats/{platform}/download")
     def dat_download(platform: str, conn: Conn, source: str = "libretro"):
         version_id = registry_call(lambda: registry.download(conn, platform, source))
+        return {"version_id": version_id}
+
+    @router.get("/titledb/files")
+    def titledb_files():
+        """Every titledb region file ("US.en")."""
+        return registry_call(registry.titledb_files)
+
+    @router.post("/dats/{platform}/titledb")
+    def titledb_download(platform: str, conn: Conn, file: str):
+        """A titledb region file for a title-ID platform (Switch)."""
+        version_id = registry_call(lambda: registry.download_titledb(conn, platform, file))
         return {"version_id": version_id}
 
     @router.post("/dats/{platform}/upload")

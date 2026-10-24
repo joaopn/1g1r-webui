@@ -252,15 +252,18 @@ def build_groups(
     return sorted(groups.values(), key=lambda g: g.name.lower())
 
 
-def build_title_groups(settings: Settings, identities: list[tuple[str, str, str]]) -> list[Group]:
+def build_title_groups(
+    settings: Settings, identities: list[tuple[str, str, str, str]]
+) -> list[Group]:
     """Title-ID platforms: one game per base title ID, holding its base files, update and
-    DLC. The identity names carry the ID (titles.identity_name)."""
+    DLC. The identity names carry the ID (titles.identity_name); the fourth item is the
+    titledb file that named it ("" for none)."""
     config = settings.title_ids
     if config is None:
         return []
     groups: dict[str, Group] = {}
     names: dict[str, str] = {}
-    for rel_path, game, method in sorted(identities):
+    for rel_path, game, method, dat_sha1 in sorted(identities):
         title = titles.from_name(game, config)
         if title is None:
             continue
@@ -281,6 +284,7 @@ def build_title_groups(settings: Settings, identities: list[tuple[str, str, str]
                 role=role,
                 title_version=title.version,
                 title_display=title.display,
+                dat_sha1=dat_sha1 or "",
             )
         )
     for key, group in groups.items():

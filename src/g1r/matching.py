@@ -239,7 +239,7 @@ def game_rows(
     triples = [(r["rel_path"], r["game_name"], r["method"]) for r in identities]
     quads = [(*t, r["dat_sha1"]) for t, r in zip(triples, identities, strict=True)]
     groups = (
-        build_title_groups(settings, triples)
+        build_title_groups(settings, quads)
         if view.title_ids
         else build_groups(settings, dats, quads, view.names_from)
     )

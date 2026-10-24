@@ -304,6 +304,26 @@ class DatsConfig(_Strict):
         return self
 
 
+class TitleDbConfig(_Strict):
+    label: str
+    short_label: str
+    website: str
+    url_template: str
+    languages_url: str
+    entry_prefix: str
+    file_pattern: str
+    featured: list[str]
+    timeout_seconds: float = Field(gt=0)
+    max_download_bytes: int = Field(gt=0)
+    languages_ttl_seconds: float = Field(gt=0)
+    name_replacements: dict[str, str]
+    release_format: str
+    release_display: str
+    game_category: str
+    demo_category: str
+    version_format: str
+
+
 class IgirConfig(_Strict):
     binary: str
     cache_dir: str
@@ -738,6 +758,7 @@ class Settings(_Strict):
     ignored_filenames: list[str]
     platforms: PlatformsConfig
     dats: DatsConfig
+    titledb: TitleDbConfig
     igir: IgirConfig
     archives: ArchivesConfig
     chdman: ChdmanConfig

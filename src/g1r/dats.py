@@ -40,6 +40,8 @@ class DatGame:
     # Release year and publisher, where the DAT has them (FBNeo, some Logiqx DATs).
     year: str | None = None
     manufacturer: str | None = None
+    # Comma-separated language codes, where the DAT has them (titledb).
+    languages: str | None = None
 
 
 @dataclass
@@ -105,6 +107,7 @@ def _parse_xml(data: bytes) -> Dat:
             or next((r.get("serial") for r in game_el.iter("rom") if r.get("serial")), None),
             year=game_el.findtext("year"),
             manufacturer=game_el.findtext("manufacturer"),
+            languages=game_el.findtext("languages"),
         )
         for rom in game_el.iter("rom"):
             game.roms.append(

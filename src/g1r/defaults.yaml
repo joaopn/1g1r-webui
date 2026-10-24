@@ -738,6 +738,36 @@ dats:
   # online lookups. Each platform has one active version per source.
   priority: [nointro, upload, redump, fbneo, libretro, tosec, hasheous]
 
+# Switch names and details from blawar/titledb (MIT): one JSON file per eShop country and
+# language, keyed by eShop ID, each entry carrying its title ID. A downloaded file is kept
+# as a small DAT (one game per title ID, no checksums) and is one entry of the platform's
+# order, named "<entry_prefix><file>"; the first file listing a title ID names it.
+titledb:
+  label: titledb (GitHub)
+  short_label: titledb
+  website: "https://github.com/blawar/titledb"
+  url_template: "https://raw.githubusercontent.com/blawar/titledb/master/{file}.json"
+  # Country -> languages: every "<country>.<language>" file there is.
+  languages_url: "https://raw.githubusercontent.com/blawar/titledb/master/languages.json"
+  entry_prefix: "titledb:"
+  file_pattern: '^[A-Z]{2}\.[a-z]{2}$'
+  # Offered as buttons; the others are picked from a list.
+  featured: [US.en, JP.en]
+  timeout_seconds: 600
+  # A region file is about 90 MB.
+  max_download_bytes: 268435456
+  # The languages list is fetched again after this many seconds.
+  languages_ttl_seconds: 86400
+  # Marks dropped or replaced in names; square brackets would end the name in a file's
+  # stored identity, so they become parentheses.
+  name_replacements: {"™": "", "®": "", "©": "", "[": "(", "]": ")"}
+  release_format: "%Y%m%d"
+  release_display: "%Y-%m-%d"
+  game_category: Games
+  demo_category: Demo
+  # The DAT's description: "<file> as of <date>".
+  version_format: "%Y-%m-%d"
+
 igir:
   binary: igir
   # igir's checksum caches, one file per folder, relative to the data directory. igir saves

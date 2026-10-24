@@ -15,7 +15,7 @@ import zipfile
 from collections import Counter
 from collections.abc import Callable, Collection, Iterable, Iterator
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path, PurePosixPath
 
 from g1r import (
@@ -29,6 +29,7 @@ from g1r import (
     journal,
     mounts,
     nca,
+    titledb,
     titles,
 )
 from g1r.config import Settings
@@ -498,21 +499,27 @@ class Scanner:
         }
         if self.settings.platforms.profiles[folder.platform].excess_files:
             run_igir["excess"] = True
+        every = [e for e in self.registry.entries(conn, library, folder.platform) if e.on]
         if self.settings.platforms.profiles[folder.platform].title_ids:
-            self._title_ids(root, final, found, progress)
-        entries = [e for e in self.registry.entries(conn, library, folder.platform) if e.on]
+            names = self.registry.titledb_titles(conn, library, folder.platform)
+            self._title_ids(root, final, found, progress, names)
+        # titledb files name title IDs; they hold no checksums to match files against.
+        entries = [e for e in every if not e.titledb]
         dats = [(e, self.registry.load(e.version)) for e in entries if e.version is not None]
+        first = next((e.version for e in every if e.version is not None), None)
         if not dats and found.identified:
             # Title IDs identify without a DAT.
             progress.stage("Saving")
             self._store_identity(conn, label, final, found)
             found.cache.save(conn, {f.rel_path for f in files})
+            self._record_dat(conn, label, first)
             identified = sum(1 for f in candidates if f.rel_path not in waiting)
             return f"{len(found.identified)} of {identified} files identified by title ID"
         if not dats:
             progress.stage("Saving")
             self._store_identity(conn, label, final, found)
             found.cache.save(conn, {f.rel_path for f in files})
+            self._record_dat(conn, label, first)
             return (
                 f"inventory only, {len(files)} files: this platform has no active DAT, so "
                 f"nothing was identified (add one in Settings → DATs)"
@@ -574,10 +581,7 @@ class Scanner:
         self._apply_manual(conn, label, final, found, dat_of_name)
         self._store_identity(conn, label, final, found)
         found.cache.save(conn, {f.rel_path for f in files})
-        conn.execute(
-            "UPDATE scan SET dat_sha1 = ? WHERE folder_label = ? AND status = 'running'",
-            (dats[0][0].version["sha1"], label),
-        )
+        self._record_dat(conn, label, first)
         summary = [f"{len(found.identified)} of {len(roms)} ROM files identified"]
         by_dat = Counter(found.dat_of[rel] for rel in found.identified if found.dat_of.get(rel))
         if len(by_dat) > 1:
@@ -839,11 +843,23 @@ class Scanner:
                     dat=found.dat_of.get(original, NO_DAT),
                 )
 
-    def _title_ids(self, root: Path, files, found: "Found", progress) -> None:
+    @staticmethod
+    def _record_dat(conn, label: str, version: sqlite3.Row | None) -> None:
+        """The first DAT of the order the scan ran with (a later change asks for a scan)."""
+        if version is not None:
+            conn.execute(
+                "UPDATE scan SET dat_sha1 = ? WHERE folder_label = ? AND status = 'running'",
+                (version["sha1"], label),
+            )
+
+    def _title_ids(
+        self, root: Path, files, found: "Found", progress, names: list[dict] | None = None
+    ) -> None:
         """Switch: every file with a title ID (read inside it) is identified by it; the
         identity's name carries the ID, which matching groups by. With the user's prod.keys,
         an NSP without a cnmt.xml gets its version from the encrypted content metadata, and
-        every one its shown version."""
+        every one its shown version. The name is the first titledb file's (in the order)
+        listing the title ID, an update's its base game's; without one, the file name."""
         config = self.settings.title_ids
         if config is None:
             return
@@ -870,8 +886,20 @@ class Scanner:
                 continue
             value = found.cache.get(f, name, lambda f=f: read(f))
             title = None if value is None else titles.Title(*value)
-            if title is not None:
-                found.identify(f.rel_path, {titles.identity_name(title, config)}, METHOD_TITLE_ID)
+            if title is None:
+                continue
+            ids = [titles.hex_id(title.title_id, config)]
+            if title.role(config) == titles.UPDATE:
+                ids.append(titles.hex_id(title.app_id(config), config))
+            known = titledb.lookup(names or [], *ids)
+            if known is not None:
+                title = replace(title, name=known.name)
+            found.identify(
+                f.rel_path,
+                {titles.identity_name(title, config)},
+                METHOD_TITLE_ID,
+                dat=known.sha1 if known is not None else NO_DAT,
+            )
 
     def _suggest(
         self, dat_of_name, dats: list[Dat], unmatched: list[InventoryFile], found: "Found", progress
