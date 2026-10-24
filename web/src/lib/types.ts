@@ -401,6 +401,8 @@ export type Game = {
   kept: string | null;
   candidates: string[];
   versions: Version[];
+  /** Title-ID games: the updates and DLC of the game, listed on the Updates & DLC tab. */
+  extras?: { updates: number; dlc: number };
 };
 
 export type DatRow = {
@@ -595,7 +597,14 @@ export type MissingGame = {
 
 export type Missing = { dat: DatVersion; covered: number; total: number; rows: MissingGame[] };
 
-export type UpdateCounts = { total: number; proposed: number; unknown: number };
+/** `unreadable`: updates without a readable version (prod.keys read it); `dlc`: DLC listed. */
+export type UpdateCounts = {
+  total: number;
+  proposed: number;
+  unknown: number;
+  unreadable: number;
+  dlc: number;
+};
 
 /** One update of a title-ID game (the Updates tab). */
 export type UpdateRow = {
@@ -610,7 +619,10 @@ export type UpdateRow = {
   /** The version shown to players ("1.0.2"), read with prod.keys. */
   display_version: string | null;
   size: number | null;
-  status: "newest" | "older" | "kept" | "version unknown" | "left alone" | "discarded";
+  status: "newest" | "older" | "kept" | "version unknown" | "left alone" | "discarded" | "dlc";
+  role: "update" | "dlc";
+  /** What the file says of itself (its content archives against titledb's list). */
+  notes: string[];
   reason: string;
   /** Where the proposed move takes it; null when it stays. */
   operation: string | null;

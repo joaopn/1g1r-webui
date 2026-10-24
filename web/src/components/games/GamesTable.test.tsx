@@ -303,3 +303,14 @@ test("a game's versions are listed by file name, revisions after the first relea
     "Gradius (USA) (Rev 10).zip",
   ]);
 });
+
+test("a title-ID game counts its updates and DLC, linking to the Updates & DLC tab", () => {
+  const game: Game = { ...GAMES[0], extras: { updates: 2, dlc: 1 } };
+  render(
+    <MemoryRouter>
+      <GamesTable label="switch" games={[game]} meta={META} onKeep={vi.fn()} onLeave={vi.fn()} />
+    </MemoryRouter>,
+  );
+  const link = screen.getByRole("link", { name: "+2 updates · 1 DLC" });
+  expect(link).toHaveAttribute("href", "/folders/switch/updates");
+});

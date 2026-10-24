@@ -105,7 +105,7 @@ ui:
     size: {rem: 5.5, min: 4.5, max: 10}
     ignored_by: {rem: 10, min: 6, max: 24}
   ignored_columns_default: [name, file, size, ignored_by]
-  # The Updates table (Switch sets): each game's updates, newest first.
+  # The Updates & DLC table (Switch sets): each game's updates, newest first, then its DLC.
   updates_columns:
     game: {rem: 12, min: 8, max: 40}
     name: {rem: 14, min: 8, max: 40}
@@ -117,6 +117,8 @@ ui:
     title_id: {rem: 10, min: 6, max: 14}
     # Wide enough for "newest, kept · newer released".
     status: {rem: 15, min: 8, max: 30}
+    # The content check ("content complete").
+    notes: {rem: 10, min: 5, max: 24}
     size: {rem: 5.5, min: 4.5, max: 10}
   updates_columns_default: [game, name, release, latest, display_version, status, size]
   # The Statistics table: the set, its platform, and one DATs column holding a bar per DAT

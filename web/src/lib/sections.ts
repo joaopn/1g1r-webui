@@ -6,7 +6,7 @@ import type { FolderCard, FolderInfo } from "@/lib/types";
 export const SECTIONS = [
   { id: "conversion", label: "Conversion", icon: FileCog },
   { id: "matching", label: "Matching & 1G1R", icon: ListChecks },
-  { id: "updates", label: "Updates", icon: Layers },
+  { id: "updates", label: "Updates & DLC", icon: Layers },
   { id: "discarded", label: "Discarded", icon: Archive },
   { id: "ignored", label: "Ignored", icon: EyeOff },
 ] as const satisfies readonly { id: string; label: string; icon: LucideIcon }[];

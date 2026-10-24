@@ -706,8 +706,9 @@ function GameRows({
           );
         }
         return (
-          <Cell key={id} title={game.name} className="font-medium">
-            {game.name}
+          <Cell key={id} title={game.name} className="flex items-baseline gap-2 font-medium">
+            <span className="min-w-0 truncate">{game.name}</span>
+            <Extras game={game} label={ctx.label} />
           </Cell>
         );
       case "first":
@@ -1111,3 +1112,24 @@ function FilterButton({
     </Popover>
   );
 }
+
+/** A title-ID game's updates and DLC: counted here, listed on the Updates & DLC tab. */
+function Extras({ game, label }: { game: Game; label: string }) {
+  const parts = [
+    ...(game.extras?.updates ? [plural(game.extras.updates, "update")] : []),
+    ...(game.extras?.dlc ? [`${formatCount(game.extras.dlc)} DLC`] : []),
+  ];
+  if (parts.length === 0) return null;
+  return (
+    <Link
+      to={`/folders/${label}/updates`}
+      onClick={(event) => event.stopPropagation()}
+      className="shrink-0 font-normal text-muted-foreground text-xs underline-offset-2 hover:underline"
+      title="On the Updates & DLC tab"
+    >
+      +{parts.join(" · ")}
+    </Link>
+  );
+}
+
+const plural = (n: number, word: string) => `${formatCount(n)} ${word}${n === 1 ? "" : "s"}`;

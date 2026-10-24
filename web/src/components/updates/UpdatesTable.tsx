@@ -1,6 +1,8 @@
 import { ArchiveRestore, Check } from "lucide-react";
 import { useMemo } from "react";
+import { flagTone } from "@/components/games/columns";
 import { type DataColumn, DataTable, type RowView } from "@/components/table/DataTable";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatBytes } from "@/lib/format";
 import type { Meta, UpdateRow } from "@/lib/types";
@@ -15,6 +17,7 @@ const STATUS_WORDS: Record<UpdateRow["status"], string> = {
   "version unknown": "version unknown, kept",
   "left alone": "left alone",
   discarded: "in discarded/",
+  dlc: "DLC, kept",
 };
 
 const STATUS_TONES: Record<UpdateRow["status"], string> = {
@@ -24,6 +27,7 @@ const STATUS_TONES: Record<UpdateRow["status"], string> = {
   "version unknown": "text-muted-foreground",
   "left alone": "text-muted-foreground",
   discarded: "text-muted-foreground",
+  dlc: "text-status-good",
 };
 
 const VIEWS: RowView<Row>[] = [
@@ -32,6 +36,7 @@ const VIEWS: RowView<Row>[] = [
   { id: "kept", label: "Older kept", test: (r) => r.status === "kept" },
   { id: "unknown", label: "Version unknown", test: (r) => r.status === "version unknown" },
   { id: "newer", label: "Newer released", test: (r) => r.newer },
+  { id: "dlc", label: "DLC", test: (r) => r.role === "dlc" },
   { id: "discarded", label: "Discarded", test: (r) => r.status === "discarded" },
 ];
 
@@ -75,7 +80,9 @@ export function UpdatesTable({
         label: "Update",
         sortValue: (r) => r.release ?? -1,
         render: (r) =>
-          r.release === null ? (
+          r.role === "dlc" ? (
+            <span className="text-muted-foreground">DLC</span>
+          ) : r.release === null ? (
             <span className="text-muted-foreground">unknown</span>
           ) : (
             <span className="tabular-nums">{r.release}</span>
@@ -143,6 +150,18 @@ export function UpdatesTable({
             : r.reason,
       },
       {
+        id: "notes",
+        label: "Flags",
+        sortValue: (r) => r.notes.join(", "),
+        render: (r) =>
+          r.notes.map((note) => (
+            <Badge key={note} variant="outline" className={cn("mr-1 font-normal", flagTone(note))}>
+              {note}
+            </Badge>
+          )),
+        title: (r) => r.notes.join(", ") || undefined,
+      },
+      {
         id: "size",
         label: "Size",
         className: "text-right",
@@ -193,7 +212,7 @@ export function UpdatesTable({
   return (
     <DataTable
       name="updates"
-      label="Updates"
+      label="Updates & DLC"
       noun="updates"
       rows={rows}
       rowKey={(r) => r.rel_path}

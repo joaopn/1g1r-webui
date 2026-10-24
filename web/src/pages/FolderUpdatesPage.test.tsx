@@ -32,6 +32,8 @@ const row = (rel_path: string, status: UpdateRow["status"], release: number | nu
     group_key: "tid:0100AAAA00010000",
     game: "Super Game",
     rel_path,
+    role: "update",
+    notes: release === 2 ? ["content complete"] : [],
     title_id: "0100AAAA00010800",
     version: null,
     release,
@@ -49,8 +51,20 @@ const row = (rel_path: string, status: UpdateRow["status"], release: number | nu
   }) satisfies UpdateRow;
 
 const UPDATES = {
-  updates: [row("update 2.nsp", "newest", 2), row("update 1.nsp", "older", 1)],
-  counts: { total: 2, proposed: 1, unknown: 0, newer: 1 },
+  updates: [
+    row("update 2.nsp", "newest", 2),
+    row("update 1.nsp", "older", 1),
+    {
+      ...row("pack.nsp", "dlc", null),
+      role: "dlc",
+      title_id: "0100AAAA00011001",
+      newer: false,
+      latest_version: null,
+      latest_release: null,
+      latest_date: null,
+    } satisfies UpdateRow,
+  ],
+  counts: { total: 2, proposed: 1, unknown: 0, unreadable: 1, dlc: 1, newer: 1 },
 };
 
 afterEach(() => {
@@ -91,6 +105,13 @@ test("older updates are proposed, and a Keep click keeps one", async () => {
   expect(screen.getByTestId("update-update 1.nsp")).not.toHaveTextContent("newer released");
   expect(screen.getByText("games with a newer update")).toBeInTheDocument();
   expect(screen.getByRole("radio", { name: /Newer released/ })).toBeInTheDocument();
+  // DLC: listed, kept, no Keep button; prod.keys suggested for the unreadable update.
+  const pack = screen.getByTestId("update-pack.nsp");
+  expect(pack).toHaveTextContent("DLC, kept");
+  expect(within(pack).queryByRole("button", { name: /Keep/ })).toBeNull();
+  expect(screen.getByTestId("unreadable-updates")).toHaveTextContent(
+    "1 update has no readable version",
+  );
   expect(await screen.findByText("· not added")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Add" })).toBeEnabled();
   const older = screen.getByTestId("update-update 1.nsp");

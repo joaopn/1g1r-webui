@@ -13,14 +13,22 @@ import { SwitchKeys } from "@/components/updates/SwitchKeys";
 import { UpdatesTable } from "@/components/updates/UpdatesTable";
 import { ApiError, api, json } from "@/lib/api";
 import { formatCount, formatFiles } from "@/lib/format";
-import { invalidateFolder, useFolder, useFolderCard, useMeta, useUpdates } from "@/lib/queries";
+import {
+  invalidateFolder,
+  useConsoleKeys,
+  useFolder,
+  useFolderCard,
+  useMeta,
+  useUpdates,
+} from "@/lib/queries";
 import type { Updates } from "@/lib/types";
 import { FolderHeader } from "@/pages/FolderHeader";
 
 const errorText = (err: unknown) => (err instanceof ApiError ? err.message : String(err));
 
-/** Updates (title-ID sets, Switch): 1G1R keeps every update; here the older ones of a game
- * are proposed for discarded/updates/, unless kept. */
+/** Updates & DLC (title-ID sets, Switch): 1G1R never acts on them and Matching lists base
+ * files only; here the older updates of a game are proposed for discarded/updates/, unless
+ * kept, and DLC are listed, always kept. */
 export function FolderUpdatesPage() {
   const { label = "" } = useParams();
   const card = useFolderCard(label);
@@ -28,6 +36,7 @@ export function FolderUpdatesPage() {
   const folder = useFolder(label, false);
   const titleIds = folder.data?.title_ids ?? false;
   const updates = useUpdates(label, titleIds);
+  const keys = useConsoleKeys();
   const restore = useRestore(label);
   const [moving, setMoving] = useState(false);
   const keep = useMutation({
@@ -63,14 +72,21 @@ export function FolderUpdatesPage() {
         }
       >
         <p className="text-muted-foreground">
-          1G1R keeps every update and DLC. Here, updates older than a game's newest are proposed for{" "}
-          <code className="text-xs">{f.discarded_to}updates/</code>, restorable. Keep the ones you
-          need (some mods need an older update).
+          Matching & 1G1R lists base games only; their updates and DLC are here. Updates older than
+          a game's newest are proposed for <code className="text-xs">{f.discarded_to}updates/</code>
+          , restorable. Keep the ones you need (some mods need an older update).
         </p>
         <p className="text-muted-foreground">
           The version is read from the file's cnmt.xml, else with your prod.keys. When one of a
-          game's updates has none, nothing of that game is proposed.
+          game's updates has none, nothing of that game is proposed. DLC is always kept.
         </p>
+        {data && data.counts.unreadable > 0 && keys.data && keys.data.prod_keys === null ? (
+          <p className="text-status-info" data-testid="unreadable-updates">
+            {formatCount(data.counts.unreadable)}{" "}
+            {data.counts.unreadable === 1 ? "update has" : "updates have"} no readable version: add
+            prod.keys below to read them.
+          </p>
+        ) : null}
         <p className="text-muted-foreground">
           Latest: the newest update released, from titledb (downloaded in Settings → Platform DATs).
           It is shown only; nothing is downloaded.
@@ -82,15 +98,18 @@ export function FolderUpdatesPage() {
         <p className="text-status-bad">{errorText(updates.error)}</p>
       ) : !data ? (
         <p className="text-muted-foreground">Loading updates…</p>
-      ) : data.counts.total === 0 ? (
-        <p className="text-muted-foreground">No update found in this set. Scan to look again.</p>
+      ) : data.counts.total + data.counts.dlc === 0 ? (
+        <p className="text-muted-foreground">
+          No update or DLC found in this set. Scan to look again.
+        </p>
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
             <StatCard value={formatCount(data.counts.total)} label="updates" />
             <StatCard value={formatCount(proposed)} label="older, to discard" />
             <StatCard value={formatCount(data.counts.unknown)} label="version unknown" />
             <StatCard value={formatCount(data.counts.newer)} label="games with a newer update" />
+            <StatCard value={formatCount(data.counts.dlc)} label="DLC" />
           </div>
           <UpdatesTable
             updates={data.updates}

@@ -83,7 +83,7 @@ test("a Switch set has an Updates tab, checked when no older update is proposed 
       summary: { roms: 3 },
       progress: { to_convert: 0, to_process: 0 },
       needs: null,
-      updates: { total: 2, proposed, unknown },
+      updates: { total: 2, proposed, unknown, unreadable: 0, dlc: 0 },
       warnings: [] as FolderWarning[],
     }) as FolderCard;
   const tabs = (c: FolderCard) => {
@@ -110,14 +110,17 @@ test("a Switch set has an Updates tab, checked when no older update is proposed 
   expect(tabs(card(1))).toEqual([
     ["Conversion", true],
     ["Matching & 1G1R", true],
-    ["Updates", false],
+    ["Updates & DLC", false],
     ["Discarded", false],
     ["Ignored", false],
   ]);
-  expect(tabs(card(0))[2]).toEqual(["Updates", true]);
+  expect(tabs(card(0))[2]).toEqual(["Updates & DLC", true]);
   // A version still unknown (no prod.keys yet) is work left, and so is a scan due.
-  expect(tabs(card(0, 1))[2]).toEqual(["Updates", false]);
-  expect(tabs({ ...card(0), needs: "identify" } as FolderCard)[2]).toEqual(["Updates", false]);
+  expect(tabs(card(0, 1))[2]).toEqual(["Updates & DLC", false]);
+  expect(tabs({ ...card(0), needs: "identify" } as FolderCard)[2]).toEqual([
+    "Updates & DLC",
+    false,
+  ]);
 });
 
 test("other sets have no Updates tab", () => {
@@ -126,5 +129,5 @@ test("other sets have no Updates tab", () => {
       <FolderHeader folder={FOLDER} meta={META} section="matching" />
     </MemoryRouter>,
   );
-  expect(screen.queryByRole("link", { name: "Updates" })).toBeNull();
+  expect(screen.queryByRole("link", { name: "Updates & DLC" })).toBeNull();
 });
