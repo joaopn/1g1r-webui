@@ -4,8 +4,10 @@ from http import HTTPStatus
 import pytest
 from fastapi.testclient import TestClient
 
-from g1r import titledb
+from g1r import db, titledb
+from g1r.dat_registry import DatRegistry
 from g1r.dats import parse_dat_bytes
+from g1r.library import LibraryStore
 from g1r.web.app import create_app
 from tests.test_switch import BASE_ID, DLC_ID, FIRST_UPDATE, UPDATE_ID, nsp
 
@@ -192,6 +194,14 @@ def test_region_files_name_title_ids_in_their_order(switch):
     assert client.get("/api/folders/switch/dat-search?q=Super").json() == []
     stats = client.get("/api/statistics").json()
     assert all(not row["coverage"] for row in stats["folders"] if row["label"] == "switch")
+
+    # A restart's check of the DATs' names leaves titledb files alone.
+    settings = client.app.state.settings
+    conn = db.open_database(settings)
+    conn.execute("UPDATE dat_version SET matches_platform = 0")
+    DatRegistry(settings, LibraryStore(settings)).recheck_names(conn)
+    conn.close()
+    assert all(v["matches_platform"] for v in switch_row(client)["versions"])
 
     removed = client.delete("/api/dats/sources/titledb").json()
     assert removed == {"versions": 2, "platforms": ["switch"]}

@@ -330,6 +330,8 @@ function TitledbDownloads({ row, meta }: { row: DatRow; meta: Meta }) {
             <Download className="size-3.5" aria-hidden="true" /> {file}
           </Button>
         ))}
+      </div>
+      <div className="mt-1.5 flex flex-nowrap items-center gap-1.5">
         <select
           aria-label={`Another ${meta.titledb.short_label} file for ${platform?.name}`}
           className="h-8 rounded-md border border-input bg-background px-2 text-sm"

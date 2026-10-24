@@ -150,7 +150,8 @@ export function FolderMatchingPage() {
                   <span className="font-medium">{dats.length > 1 ? `${index + 1}. ` : "DAT "}</span>
                   {entry.dat?.header_name}{" "}
                   <span className="text-muted-foreground">
-                    · {entry.label} · {entry.dat?.version ?? "?"}
+                    {entry.label !== entry.dat?.header_name ? `· ${entry.label} ` : ""}·{" "}
+                    {entry.dat?.version ?? "?"}
                   </span>{" "}
                   {source?.identification_only ? (
                     <Badge

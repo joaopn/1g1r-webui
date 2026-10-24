@@ -220,13 +220,18 @@ class DatRegistry:
     def recheck_names(self, conn: sqlite3.Connection) -> None:
         """At start-up: whether each stored DAT's name is its platform's follows the current
         rule, so a side set taken for the platform before (B7) shows "name differs"."""
-        for row in conn.execute("SELECT id, platform, header_name FROM dat_version").fetchall():
+        rows = conn.execute("SELECT id, platform, header_name, source FROM dat_version").fetchall()
+        for row in rows:
             profile = self.settings.platforms.profiles.get(row["platform"])
             if profile is None:
                 continue
+            # A titledb file is named after itself, never after the platform.
+            matches = self.is_titledb(row["source"]) or header_matches(
+                self.settings, profile, row["header_name"]
+            )
             conn.execute(
                 "UPDATE dat_version SET matches_platform = ? WHERE id = ?",
-                (int(header_matches(self.settings, profile, row["header_name"])), row["id"]),
+                (int(matches), row["id"]),
             )
 
     def _maybe_activate(self, conn, platform: str, version_id: int) -> None:
