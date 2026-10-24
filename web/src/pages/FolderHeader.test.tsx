@@ -115,8 +115,9 @@ test("a Switch set has an Updates tab, checked when no older update is proposed 
     ["Ignored", false],
   ]);
   expect(tabs(card(0))[2]).toEqual(["Updates", true]);
-  // A version still unknown (no prod.keys yet) is work left.
+  // A version still unknown (no prod.keys yet) is work left, and so is a scan due.
   expect(tabs(card(0, 1))[2]).toEqual(["Updates", false]);
+  expect(tabs({ ...card(0), needs: "identify" } as FolderCard)[2]).toEqual(["Updates", false]);
 });
 
 test("other sets have no Updates tab", () => {
