@@ -290,7 +290,7 @@ export function AppShell() {
         <aside
           data-testid="sidebar-collapsed"
           aria-label="Sidebar (collapsed)"
-          className="sticky top-0 z-30 hidden h-screen w-0 shrink-0 border-border border-r md:block"
+          className="sticky top-0 z-30 hidden h-screen w-3 shrink-0 border-border border-r bg-sidebar md:block"
         >
           <CollapseButton collapsed onToggle={toggleCollapsed} />
         </aside>
