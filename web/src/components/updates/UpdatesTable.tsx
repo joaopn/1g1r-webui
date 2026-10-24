@@ -153,6 +153,8 @@ export function UpdatesTable({
     testId: (g) => `updates-game-${g.group_key}`,
     // Games with an update to discard start open.
     opens: (g) => g.to_discard > 0,
+    // The game's name, versions and what it holds take the File name column too.
+    joins: { game: ["name"] },
   };
   const columns = useMemo<DataColumn<Row>[]>(
     () => [

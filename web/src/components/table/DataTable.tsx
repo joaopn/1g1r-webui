@@ -60,6 +60,9 @@ export type RowGroup<T, G> = {
   testId?: (group: G) => string;
   /** Groups that start open (the others start closed). */
   opens?: (group: G) => boolean;
+  /** Columns whose group cell also takes the columns listed (when shown right after it),
+   * e.g. a name with room to spare: column id -> the column ids it takes. */
+  joins?: Record<string, string[]>;
 };
 
 const FILTER_PREFIX = "f.";
@@ -343,6 +346,24 @@ export function DataTable<T, G = never>({
     </div>
   );
 
+  /** The shown columns right after this one that its group cell takes. */
+  function taken(group: RowGroup<T, G>, index: number): string[] {
+    const wanted = group.joins?.[shownColumns[index].id] ?? [];
+    const found: string[] = [];
+    for (const column of shownColumns.slice(index + 1)) {
+      if (!wanted.includes(column.id)) break;
+      found.push(column.id);
+    }
+    return found;
+  }
+
+  /** The group row's cell in this column is taken by a cell before it. */
+  function covered(group: RowGroup<T, G>, index: number): boolean {
+    return shownColumns
+      .slice(0, index)
+      .some((_, at) => taken(group, at).includes(shownColumns[index].id));
+  }
+
   function renderGroup(group: RowGroup<T, G>, g: G, children: T[], key: string) {
     const open = isOpen(key);
     const name = group.name(g);
@@ -358,43 +379,50 @@ export function DataTable<T, G = never>({
         )}
       >
         <div className={grid}>
-          {shownColumns.map((column, index) => (
-            <div
-              key={column.id}
-              className={cn(
-                "min-w-0 truncate",
-                index === 0 && "flex items-center gap-1.5",
-                column.className,
-              )}
-              title={group.title?.(g, column.id)}
-            >
-              {index === 0 ? (
-                expandable ? (
-                  <button
-                    type="button"
-                    aria-expanded={open}
-                    aria-label={`${name}: ${open ? "collapse" : "show"}`}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      toggle(key);
-                    }}
-                    className="flex shrink-0 rounded-sm p-0.5 hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
-                  >
-                    <ChevronRight
-                      className={cn(
-                        "size-4 text-muted-foreground transition-transform duration-200 motion-reduce:transition-none",
-                        open && "rotate-90",
-                      )}
-                      aria-hidden="true"
-                    />
-                  </button>
-                ) : (
-                  <span className="size-5 shrink-0" aria-hidden="true" />
-                )
-              ) : null}
-              {group.cell(g, column.id, children)}
-            </div>
-          ))}
+          {shownColumns.map((column, index) =>
+            covered(group, index) ? null : (
+              <div
+                key={column.id}
+                className={cn(
+                  "min-w-0 truncate",
+                  index === 0 && "flex items-center gap-1.5",
+                  column.className,
+                )}
+                style={
+                  taken(group, index).length > 0
+                    ? { gridColumn: `span ${taken(group, index).length + 1}` }
+                    : undefined
+                }
+                title={group.title?.(g, column.id)}
+              >
+                {index === 0 ? (
+                  expandable ? (
+                    <button
+                      type="button"
+                      aria-expanded={open}
+                      aria-label={`${name}: ${open ? "collapse" : "show"}`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        toggle(key);
+                      }}
+                      className="flex shrink-0 rounded-sm p-0.5 hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
+                    >
+                      <ChevronRight
+                        className={cn(
+                          "size-4 text-muted-foreground transition-transform duration-200 motion-reduce:transition-none",
+                          open && "rotate-90",
+                        )}
+                        aria-hidden="true"
+                      />
+                    </button>
+                  ) : (
+                    <span className="size-5 shrink-0" aria-hidden="true" />
+                  )
+                ) : null}
+                {group.cell(g, column.id, children)}
+              </div>
+            ),
+          )}
         </div>
         {actions ? <span className={cn("shrink-0", actionsClassName)} aria-hidden="true" /> : null}
       </div>
