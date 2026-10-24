@@ -64,6 +64,9 @@ ui:
     dat_name: {rem: 17, min: 8, max: 48}
     region: {rem: 6.5, min: 4.5, max: 16}
     languages: {rem: 6, min: 4, max: 14}
+    # From titledb (Switch).
+    publisher: {rem: 9, min: 5, max: 24}
+    release: {rem: 6.5, min: 5, max: 10}
     revision: {rem: 5, min: 4, max: 10}
     flags: {rem: 7, min: 5, max: 14}
     size: {rem: 5.5, min: 4.5, max: 10}

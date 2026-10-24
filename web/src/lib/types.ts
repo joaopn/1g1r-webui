@@ -64,6 +64,15 @@ export type Meta = {
     string,
     { label: string; short_label: string; identification_only: boolean; website?: string }
   >;
+  /** Switch names from titledb: each region file ("US.en") is an order entry
+   * "<entry_prefix><file>"; `featured` files get a button of their own. */
+  titledb: {
+    label: string;
+    short_label: string;
+    website: string;
+    entry_prefix: string;
+    featured: string[];
+  };
   ranking: { criteria: string[]; labels: Record<string, string>; default: Ranking };
   label_pattern: string;
   discarded_root: string;
@@ -284,6 +293,9 @@ export type Version = {
   probability: number;
   regions: string[];
   languages: string[];
+  /** From titledb (title-ID platforms), when a titledb file lists the title. */
+  publisher: string | null;
+  release: string | null;
   revision: string | null;
   prerelease: boolean;
   rerelease: boolean;
@@ -402,6 +414,8 @@ export type DatRow = {
   folders: string[];
   /** Where this platform's DAT can be downloaded from, one button each. */
   downloads: { source: string; label: string; identification_only: boolean }[];
+  /** Its games have title IDs (Switch): titledb region files name them. */
+  titledb: boolean;
 };
 
 export type SettingsData = {

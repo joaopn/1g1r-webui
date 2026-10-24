@@ -37,6 +37,7 @@ export const keys = {
   run: (label: string) => ["run", label] as const,
   settings: ["settings"] as const,
   dats: ["dats"] as const,
+  titledbFiles: ["titledb-files"] as const,
   datOrder: ["dat-order"] as const,
   consoleKeys: ["console-keys"] as const,
   notifications: ["notifications"] as const,
@@ -62,6 +63,14 @@ export const useSettingsData = () =>
   useQuery({ queryKey: keys.settings, queryFn: () => api<SettingsData>("/settings") });
 export const useDats = () =>
   useQuery({ queryKey: keys.dats, queryFn: () => api<DatRow[]>("/dats") });
+/** Every titledb region file ("US.en"), read only when asked for (it is a download). */
+export const useTitledbFiles = (enabled: boolean) =>
+  useQuery({
+    queryKey: keys.titledbFiles,
+    queryFn: () => api<string[]>("/titledb/files"),
+    enabled,
+    staleTime: Number.POSITIVE_INFINITY,
+  });
 export const useConsoleKeys = () =>
   useQuery({ queryKey: keys.consoleKeys, queryFn: () => api<KeyStatus>("/keys") });
 export const useGames = (label: string) =>

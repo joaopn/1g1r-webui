@@ -17,8 +17,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ApiError, api, json, upload } from "@/lib/api";
+import { sourceInfo, titledbFile } from "@/lib/dats";
 import { formatCount, formatWhen } from "@/lib/format";
-import { keys, queryClient, useDats, useMeta, useSettingsData } from "@/lib/queries";
+import {
+  keys,
+  queryClient,
+  useDats,
+  useMeta,
+  useSettingsData,
+  useTitledbFiles,
+} from "@/lib/queries";
 import type { DatRow, Meta } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -130,7 +138,8 @@ function DatRowView({ row, meta }: { row: DatRow; meta: Meta }) {
               {actives.map((entry, index) => {
                 const dat = entry.dat;
                 if (!dat) return null;
-                const source = meta.dat_sources[dat.source];
+                const source = sourceInfo(meta, dat.source);
+                const titledb = titledbFile(meta, dat.source) !== null;
                 return (
                   <li key={entry.id} className={cn("space-y-1", !entry.on && "opacity-60")}>
                     <div>
@@ -151,7 +160,7 @@ function DatRowView({ row, meta }: { row: DatRow; meta: Meta }) {
                           identification only
                         </Badge>
                       ) : null}
-                      {!dat.has_parent_clone && !source?.identification_only ? (
+                      {!dat.has_parent_clone && !source?.identification_only && !titledb ? (
                         <Badge variant="outline">no parent/clone</Badge>
                       ) : null}
                       {!dat.matches_platform ? (
@@ -206,12 +215,12 @@ function DatRowView({ row, meta }: { row: DatRow; meta: Meta }) {
                 <li key={v.id} className="flex items-center gap-2">
                   {activeIds.has(v.id) ? (
                     <span className="font-medium">
-                      ● {meta.dat_sources[v.source]?.label} {v.version ?? ""}
+                      ● {sourceInfo(meta, v.source)?.label} {v.version ?? ""}
                     </span>
                   ) : (
                     <>
                       <span>
-                        {meta.dat_sources[v.source]?.label} {v.version ?? ""}
+                        {sourceInfo(meta, v.source)?.label} {v.version ?? ""}
                       </span>
                       <Button
                         variant="link"
@@ -266,9 +275,92 @@ function DatRowView({ row, meta }: { row: DatRow; meta: Meta }) {
               }}
             />
           </div>
+          {row.titledb ? <TitledbDownloads row={row} meta={meta} /> : null}
         </div>
       </div>
     </details>
+  );
+}
+
+/** titledb region files for a title-ID platform: a button for each featured file, any other
+ * picked from the list (read from titledb when the list is opened). */
+function TitledbDownloads({ row, meta }: { row: DatRow; meta: Meta }) {
+  const [picking, setPicking] = useState(false);
+  const [chosen, setChosen] = useState("");
+  const files = useTitledbFiles(picking);
+  const platform = meta.platforms[row.platform];
+  const have = new Set(
+    row.versions.map((v) => titledbFile(meta, v.source)).filter((f) => f !== null),
+  );
+  const download = useMutation({
+    mutationFn: (file: string) =>
+      api(`/dats/${row.platform}/titledb?file=${encodeURIComponent(file)}`, { method: "POST" }),
+    onSuccess: (_, file) => {
+      toast.success(`${platform?.name}: ${meta.titledb.short_label} ${file} downloaded`);
+      queryClient.invalidateQueries({ queryKey: keys.dats });
+      queryClient.invalidateQueries({ queryKey: keys.folders });
+    },
+    onError: (err) => toast.error(`${row.platform}: ${errorText(err)}`),
+  });
+  const others = (files.data ?? []).filter((f) => !meta.titledb.featured.includes(f));
+  const hint = (file: string) =>
+    have.has(file)
+      ? `${file} is downloaded: again for a newer version (used once you choose it under Versions)`
+      : `Download ${file}`;
+  return (
+    <div className="mt-3" data-testid={`titledb-${row.platform}`}>
+      <h3 className={HEADING}>Names from titledb</h3>
+      <p className="mb-1.5 text-muted-foreground text-xs">
+        Names, publishers and release dates by title ID, one file per eShop region. The first file
+        in the order listing a game names it. Source:{" "}
+        <a className="underline" href={meta.titledb.website} target="_blank" rel="noreferrer">
+          {meta.titledb.label}
+        </a>
+      </p>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {meta.titledb.featured.map((file) => (
+          <Button
+            key={file}
+            variant="outline"
+            size="sm"
+            onClick={() => download.mutate(file)}
+            disabled={download.isPending}
+            title={hint(file)}
+          >
+            <Download className="size-3.5" aria-hidden="true" /> {file}
+          </Button>
+        ))}
+        <select
+          aria-label={`Another ${meta.titledb.short_label} file for ${platform?.name}`}
+          className="h-8 rounded-md border border-input bg-background px-2 text-sm"
+          value={chosen}
+          onFocus={() => setPicking(true)}
+          onPointerDown={() => setPicking(true)}
+          onChange={(event) => setChosen(event.target.value)}
+        >
+          <option value="">
+            {files.isFetching ? "Loading…" : files.isError ? "List unavailable" : "Other region…"}
+          </option>
+          {others.map((file) => (
+            <option key={file} value={file} title={hint(file)}>
+              {file}
+            </option>
+          ))}
+        </select>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => download.mutate(chosen)}
+          disabled={!chosen || download.isPending}
+          aria-label={chosen ? `Download ${chosen}` : "Download the chosen file"}
+        >
+          <Download className="size-3.5" aria-hidden="true" /> Download
+        </Button>
+        {download.isPending ? (
+          <span className="text-muted-foreground text-xs">Downloading {download.variables}…</span>
+        ) : null}
+      </div>
+    </div>
   );
 }
 
@@ -363,13 +455,18 @@ const platformCount = (count: number) =>
 /** One button per source with stored DATs: removes all of them, on every platform. */
 function RemoveDatsBox({ rows, meta }: { rows: DatRow[]; meta: Meta }) {
   const [removing, setRemoving] = useState<string | null>(null);
-  const stored = Object.entries(meta.dat_sources)
+  // titledb's region files are one source here.
+  const sourceOf = (source: string) =>
+    titledbFile(meta, source) === null ? source : meta.titledb.short_label;
+  const sources: [string, { label: string; short_label: string }][] = [
+    ...Object.entries(meta.dat_sources),
+    [meta.titledb.short_label, meta.titledb],
+  ];
+  const stored = sources
     .map(([id, source]) => {
-      const having = rows.filter((r) => r.versions.some((v) => v.source === id));
-      const count = rows.reduce(
-        (sum, r) => sum + r.versions.filter((v) => v.source === id).length,
-        0,
-      );
+      const mine = (r: DatRow) => r.versions.filter((v) => sourceOf(v.source) === id);
+      const having = rows.filter((r) => mine(r).length > 0);
+      const count = rows.reduce((sum, r) => sum + mine(r).length, 0);
       return { id, label: source.label, short: source.short_label, count, platforms: having };
     })
     .filter((s) => s.count > 0);
@@ -381,7 +478,7 @@ function RemoveDatsBox({ rows, meta }: { rows: DatRow[]; meta: Meta }) {
       }),
     onSuccess: (result, source) => {
       toast.success(
-        `Removed ${datCount(result.versions)} (${meta.dat_sources[source]?.short_label})`,
+        `Removed ${datCount(result.versions)} (${stored.find((s) => s.id === source)?.short})`,
       );
       setRemoving(null);
       queryClient.invalidateQueries({ queryKey: keys.dats });

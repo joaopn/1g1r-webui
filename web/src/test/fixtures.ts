@@ -141,6 +141,13 @@ export const META: Meta = {
       identification_only: true,
     },
   },
+  titledb: {
+    label: "titledb (GitHub)",
+    short_label: "titledb",
+    website: "https://github.com/blawar/titledb",
+    entry_prefix: "titledb:",
+    featured: ["US.en", "JP.en"],
+  },
   ranking: {
     criteria: ["prerelease", "region", "language", "revision", "original"],
     labels: {
@@ -174,6 +181,8 @@ const version = (
   probability: 1,
   regions,
   languages: [],
+  publisher: null,
+  release: null,
   revision: null,
   prerelease: false,
   rerelease: false,

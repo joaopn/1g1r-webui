@@ -510,6 +510,18 @@ function versionCell(id: ColumnId, version: Version | null, ctx: CellContext) {
           {version.languages.join(", ")}
         </Cell>
       );
+    case "publisher":
+      return (
+        <Cell key={id} className="text-muted-foreground">
+          {version.publisher ?? ""}
+        </Cell>
+      );
+    case "release":
+      return (
+        <Cell key={id} className="text-muted-foreground tabular-nums">
+          {version.release ?? ""}
+        </Cell>
+      );
     case "revision":
       return (
         <Cell key={id} className="text-muted-foreground">

@@ -41,6 +41,7 @@ const row = (platform: string, versions: DatVersion[]): DatRow => ({
   versions,
   folders: [],
   downloads: [],
+  titledb: platform === "switch",
 });
 
 function renderPage() {
@@ -56,8 +57,11 @@ function renderPage() {
         ? [
             row("nes", [version(1, "nes", "nointro"), version(2, "nes", "nointro")]),
             row("gb", [version(3, "gb", "nointro"), version(4, "gb", "libretro")]),
+            row("switch", [version(5, "switch", "titledb:US.en")]),
           ]
-        : {};
+        : url.endsWith("/titledb/files")
+          ? ["GB.en", "JP.en", "JP.ja", "US.en"]
+          : {};
     return new Response(JSON.stringify(body), { status: 200 });
   });
   queryClient.clear();
@@ -79,6 +83,7 @@ test("Remove DATs: one button per stored source, each removing it after a confir
   expect(buttons.map((b) => b.textContent?.trim())).toEqual([
     "libretro· 1 DAT",
     "No-Intro· 3 DATs",
+    "titledb· 1 DAT",
   ]);
 
   await userEvent.click(buttons[1]);
@@ -90,4 +95,25 @@ test("Remove DATs: one button per stored source, each removing it after a confir
   await userEvent.click(within(dialog).getByRole("button", { name: "Remove 3 DATs" }));
   const removal = calls.find((c) => c.init?.method === "DELETE");
   expect(removal?.url).toMatch(/\/dats\/sources\/nointro$/);
+});
+
+test("titledb: a button per featured region file, any other picked from the list", async () => {
+  const calls = renderPage();
+  const box = await screen.findByTestId("titledb-switch");
+  // Only the title-ID platform offers it.
+  expect(screen.queryByTestId("titledb-nes")).toBeNull();
+  await userEvent.click(within(box).getByRole("button", { name: /JP\.en/ }));
+  expect(calls.some((c) => c.url.endsWith("/dats/switch/titledb?file=JP.en"))).toBe(true);
+
+  // The list is read from titledb only once it is opened.
+  expect(calls.some((c) => c.url.endsWith("/titledb/files"))).toBe(false);
+  const select = within(box).getByRole("combobox");
+  await userEvent.click(select);
+  await within(box).findByRole("option", { name: "JP.ja" });
+  expect(within(box).queryByRole("option", { name: "US.en" })).toBeNull();
+  const download = within(box).getByRole("button", { name: "Download the chosen file" });
+  expect(download).toBeDisabled();
+  await userEvent.selectOptions(select, "GB.en");
+  await userEvent.click(within(box).getByRole("button", { name: "Download GB.en" }));
+  expect(calls.some((c) => c.url.endsWith("/dats/switch/titledb?file=GB.en"))).toBe(true);
 });

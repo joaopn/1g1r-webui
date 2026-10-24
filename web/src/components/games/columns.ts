@@ -27,6 +27,8 @@ export type ColumnId =
   | "dat_name"
   | "region"
   | "languages"
+  | "publisher"
+  | "release"
   | "revision"
   | "flags"
   | "size"
@@ -47,6 +49,8 @@ export const COLUMNS: Column[] = [
   { id: "dat_name", label: "DAT name", sortable: true, level: "version" },
   { id: "region", label: "Region", sortable: true, level: "version" },
   { id: "languages", label: "Languages", sortable: true, level: "version" },
+  { id: "publisher", label: "Publisher", sortable: true, level: "version" },
+  { id: "release", label: "Release", sortable: true, level: "version" },
   { id: "revision", label: "Revision", sortable: true, level: "version" },
   { id: "flags", label: "Flags", sortable: true, level: "version" },
   { id: "size", label: "Size", sortable: true, level: "version" },
@@ -136,6 +140,8 @@ function fileRow(
         probability: 0,
         regions: [],
         languages: [],
+        publisher: null,
+        release: null,
         revision: null,
         prerelease: false,
         rerelease: false,
@@ -283,6 +289,10 @@ export function sortValue(game: Row, id: ColumnId): SortValue {
       return version.regions.join(", ");
     case "languages":
       return version.languages.join(",");
+    case "publisher":
+      return (version.publisher ?? "").toLowerCase();
+    case "release":
+      return version.release ?? "";
     case "revision":
       return version.revision ?? "";
     case "flags":
