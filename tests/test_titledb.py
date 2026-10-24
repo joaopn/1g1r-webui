@@ -1,4 +1,5 @@
 import json
+import sqlite3
 from http import HTTPStatus
 
 import pytest
@@ -221,14 +222,21 @@ def test_region_files_name_title_ids_in_their_order(switch):
         "2019-03-15",
         ["en", "fr"],
     )
-    # An update has no entry of its own: its game's name and details.
-    assert found["update.nsp"]["game_name"].startswith("Super Game: (Deluxe) [")
-    assert found["update.nsp"]["publisher"] == "Big Publisher"
-    assert found["pack.nsp"]["game_name"].startswith("Super Game: Pack [")
+    # An update has no entry of its own: its game's name. Updates and DLC are listed on the
+    # Updates & DLC tab, with their content notes.
+    names = dict(
+        sqlite3.connect(client.app.state.settings.paths.database_path).execute(
+            "SELECT rel_path, game_name FROM identity"
+        )
+    )
+    assert names["update.nsp"].startswith("Super Game: (Deluxe) [")
+    assert names["pack.nsp"].startswith("Super Game: Pack [")
+    extras = {r["rel_path"]: r for r in client.get("/api/folders/switch/updates").json()["updates"]}
+    assert extras["update.nsp"]["game"] == "Super Game: (Deluxe)"
     # Their content archives against titledb's lists (no list for the DLC: nothing said).
     assert "content complete" in base["notes"]
-    assert "content incomplete: 1 missing" in found["update.nsp"]["notes"]
-    assert not any(n.startswith("content") for n in found["pack.nsp"]["notes"])
+    assert "content incomplete: 1 missing" in extras["update.nsp"]["notes"]
+    assert not any(n.startswith("content") for n in extras["pack.nsp"]["notes"])
     # Listed only in the second file; listed nowhere: the file name, no details.
     assert found["jp.nsp"]["game"] == "Japan Game"
     assert found["jp.nsp"]["dat"]["label"] == "titledb JP.ja"
@@ -283,7 +291,7 @@ def test_region_files_name_title_ids_in_their_order(switch):
 
     # titledb knows a newer update than the folder's newest: shown, nothing proposed.
     found = client.get("/api/folders/switch/updates").json()
-    (update,) = found["updates"]
+    (update,) = [r for r in found["updates"] if r["role"] == "update"]
     assert (update["status"], update["operation"], update["newer"]) == ("newest", None, True)
     assert (update["latest_version"], update["latest_release"], update["latest_date"]) == (
         2 * FIRST_UPDATE,

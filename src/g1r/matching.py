@@ -390,6 +390,9 @@ def table(
     """`games`: the folder's game rows when the caller already has them."""
     if games is None:
         games = game_rows(settings, conn, label, ranking, folder_view)
+    # A title-ID game without a base file (a DLC or an update alone) is the Updates & DLC
+    # tab's, not a game of this table.
+    games = [g for g in games if ranked_rows(g)]
     tests = {
         "all": lambda g: True,
         "several": lambda g: len(ranked_rows(g)) > 1,

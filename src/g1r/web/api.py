@@ -26,6 +26,7 @@ from g1r import (
     journal,
     matching,
     mounts,
+    nca,
     notifications,
     scanner,
     statistics,
@@ -224,7 +225,10 @@ def game_dict(
     """`dats`: sha1 -> what to say about that DAT (`dat_names`); `details`: what titledb
     says about a version identified by title ID."""
     dats = dats or {}
-    known = {row.version.rel_path: details(row.version) if details else None for row in game.rows}
+    # Title IDs: the table lists base files; updates and DLC are the Updates & DLC tab's.
+    shown = matching.ranked_rows(game)
+    extras = [r for r in game.rows if r.version.role and not r.discarded and r not in shown]
+    known = {row.version.rel_path: details(row.version) if details else None for row in shown}
     nothing = titledb.Title("", None, None, (), "")
     return {
         "key": game.group.key,
@@ -265,8 +269,12 @@ def game_dict(
                 "role": row.version.role or None,
                 "discard_reason": row.discard_reason if row.operation else None,
             }
-            for row in game.rows
+            for row in shown
         ],
+        "extras": {
+            "updates": sum(1 for r in extras if r.version.role == titles.UPDATE),
+            "dlc": sum(1 for r in extras if r.version.role == titles.DLC),
+        },
     }
 
 
@@ -482,10 +490,14 @@ def build_router(
     cards_lock = threading.Lock()
 
     def update_counts(rows: list[updates.UpdateRow]) -> dict:
+        found = [r for r in rows if r.role == titles.UPDATE]
         return {
-            "total": len(rows),
-            "proposed": sum(1 for r in rows if r.operation),
-            "unknown": sum(1 for r in rows if r.status == updates.STATUS_UNKNOWN),
+            "total": len(found),
+            "proposed": sum(1 for r in found if r.operation),
+            "unknown": sum(1 for r in found if r.status == updates.STATUS_UNKNOWN),
+            # Without a readable version (prod.keys read it).
+            "unreadable": updates.unreadable(found),
+            "dlc": len(rows) - len(found),
         }
 
     def card_figures(conn, library: Library, library_json: str, folder: FolderEntry) -> dict:
@@ -540,6 +552,8 @@ def build_router(
     def list_folders(conn: Conn):
         library = store.load()
         library_json = library.model_dump_json()
+        # Cached by its modification time: no file read per request.
+        prod_keys = nca.load_keys(settings) is not None
         result = []
         for folder in library.folders:
             figures = card_figures(conn, library, library_json, folder)
@@ -586,6 +600,11 @@ def build_router(
                         dat=dat,
                         unmatched=figures["summary"]["unmatched"],
                         hasheous_offered=not library.lookups.hasheous,
+                        unreadable_updates=(
+                            figures["updates"]["unreadable"]
+                            if figures["updates"] and not prod_keys
+                            else 0
+                        ),
                     ),
                 }
             )
@@ -1283,7 +1302,7 @@ def build_router(
 
     @router.put("/folders/{label}/updates/keep")
     def keep_updates(label: str, body: UpdateKeep, conn: Conn):
-        rows = {r.rel_path for r in update_rows(conn, label)}
+        rows = {r.rel_path for r in update_rows(conn, label) if r.role == titles.UPDATE}
         if not set(body.rel_paths) <= rows:
             raise not_found("some of these files are not updates of this set")
         updates.set_keep(conn, label, body.rel_paths, body.keep)
@@ -1394,7 +1413,8 @@ def build_router(
         )
         names = dat_names(conn)
         details = title_details(conn)
-        return [game_dict(g, names, details) for g in games]
+        # A title-ID game without a base file is the Updates & DLC tab's.
+        return [game_dict(g, names, details) for g in games if matching.ranked_rows(g)]
 
     @router.put("/folders/{label}/keep")
     def keep(label: str, body: KeepChoice, conn: Conn):

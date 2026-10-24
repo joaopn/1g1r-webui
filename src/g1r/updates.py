@@ -1,13 +1,15 @@
-"""The Updates tab of a title-ID folder (Switch): each game's updates, newest first.
+"""The Updates & DLC tab of a title-ID folder (Switch): each game's updates, newest first,
+then its DLC.
 
-1G1R keeps every update. Here the updates older than a game's newest are proposed for
-discarded/<label>/updates/, unless the user keeps them (older updates can matter, e.g. for
-mods). A version is only what the file's content metadata says; when an update of a game
-with several has no version read, nothing of that game is proposed.
+1G1R never acts on updates or DLC; the Matching table lists base files only. Here the
+updates older than a game's newest are proposed for discarded/<label>/updates/, unless the
+user keeps them (older updates can matter, e.g. for mods); DLC are listed and always kept. A
+version is only what the file's content metadata says; when an update of a game with several
+has no version read, nothing of that game is proposed.
 """
 
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from g1r import titledb, titles
 from g1r.config import Settings
@@ -19,6 +21,7 @@ STATUS_KEPT = "kept"
 STATUS_UNKNOWN = "version unknown"
 STATUS_LEFT_ALONE = "left alone"
 STATUS_DISCARDED = "discarded"
+STATUS_DLC = "dlc"
 
 
 @dataclass
@@ -26,6 +29,8 @@ class UpdateRow:
     group_key: str
     game: str
     rel_path: str
+    # titles.UPDATE or titles.DLC.
+    role: str
     title_id: str
     version: int | None
     # Which update it is (the version in update steps: 1 for the first update).
@@ -46,6 +51,8 @@ class UpdateRow:
     latest_date: str | None = None
     # The game's newest update here, and titledb knows a newer one.
     newer: bool = False
+    # What the file says of itself (its content archives against titledb's list).
+    notes: list[str] = field(default_factory=list)
 
 
 def keeps(conn: sqlite3.Connection, label: str) -> set[str]:
@@ -75,8 +82,9 @@ def rows(
     kept: set[str],
     latest: dict[str, titledb.Latest] | None = None,
 ) -> list[UpdateRow]:
-    """Every update of these games (matching.game_rows of the folder): by game, newest first,
-    those without a version last. `latest`: titledb's newest update per base title ID."""
+    """Every update of these games (matching.game_rows of the folder), by game, newest first
+    and those without a version last, then the game's DLC. `latest`: titledb's newest update
+    per base title ID."""
     config = settings.title_ids
     latest = latest or {}
     result = []
@@ -121,6 +129,7 @@ def rows(
                     game.group.key,
                     game.group.name,
                     row.version.rel_path,
+                    titles.UPDATE,
                     titles.hex_id(title.title_id, config) if title and config else "",
                     version,
                     version // config.version_step if config and version is not None else None,
@@ -137,7 +146,47 @@ def rows(
                     and version is not None
                     and known_latest is not None
                     and known_latest.version > version,
+                    list(row.notes),
                 )
             )
-    result.sort(key=lambda r: (r.game.lower(), r.version is None, -(r.version or 0), r.rel_path))
+        for row in game.rows:
+            if row.version.role != titles.DLC:
+                continue
+            title = titles.from_name(row.version.game_name, config) if config else None
+            result.append(
+                UpdateRow(
+                    game.group.key,
+                    game.group.name,
+                    row.version.rel_path,
+                    titles.DLC,
+                    titles.hex_id(title.title_id, config) if title and config else "",
+                    row.version.title_version,
+                    None,
+                    row.version.title_display,
+                    row.size,
+                    STATUS_DLC,
+                    "DLC is always kept",
+                    None,
+                    row.discarded,
+                    notes=list(row.notes),
+                )
+            )
+    result.sort(
+        key=lambda r: (
+            r.game.lower(),
+            r.role != titles.UPDATE,
+            r.version is None,
+            -(r.version or 0),
+            r.rel_path,
+        )
+    )
     return result
+
+
+def unreadable(rows: list[UpdateRow]) -> int:
+    """Updates in the folder whose version could not be read (prod.keys read it)."""
+    return sum(
+        1
+        for r in rows
+        if r.role == titles.UPDATE and r.version is None and r.status != STATUS_DISCARDED
+    )

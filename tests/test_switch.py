@@ -113,13 +113,23 @@ def test_1g1r_keeps_the_game_its_updates_and_dlc(switch):
     games = {g["name"]: g for g in client.get("/api/folders/switch/games").json()}
     game = games["Super Game (USA)"]
     assert (game["status"], game["reason"]) == ("single", "its updates and DLC are kept")
-    assert all(v["keep"] and v["operation"] is None for v in game["versions"])
-    roles = {v["rel_path"]: v["role"] for v in game["versions"]}
-    assert roles["Super Game update 1.nsp"] == "update"
-    assert roles["Super Game - Pack.nsp"] == "dlc"
-    # DLC without its game: left alone.
-    other = games["Other Game - Pack"]
-    assert other["status"] == "left alone" and not any(v["operation"] for v in other["versions"])
+    # Matching lists the base file only; its updates and DLC are counted, and listed on the
+    # Updates & DLC tab.
+    assert [v["rel_path"] for v in game["versions"]] == ["Super Game (USA).nsp"]
+    assert game["extras"] == {"updates": 2, "dlc": 1}
+    assert game["versions"][0]["keep"] and game["versions"][0]["operation"] is None
+    rows = client.get("/api/folders/switch/updates").json()["updates"]
+    roles = {r["rel_path"]: (r["role"], r["status"]) for r in rows}
+    assert roles["Super Game update 1.nsp"][0] == "update"
+    assert roles["Super Game - Pack.nsp"] == ("dlc", "dlc")
+    # DLC without its game: not a game of the Matching table; listed with the DLC, kept.
+    assert "Other Game - Pack" not in games
+    assert roles["Other Game - Pack.nsp"] == ("dlc", "dlc")
+    refused = client.put(
+        "/api/folders/switch/updates/keep",
+        json={"rel_paths": ["Super Game - Pack.nsp"], "keep": True},
+    )
+    assert refused.status_code == HTTPStatus.NOT_FOUND
     # A name alone identifies nothing.
     assert sorted(f["rel_path"] for f in client.get("/api/folders/switch/unmatched").json()) == [
         "no id.nsp"
@@ -127,7 +137,7 @@ def test_1g1r_keeps_the_game_its_updates_and_dlc(switch):
     # Updates and DLC are no versions: one base file is not "several versions".
     card = next(f for f in client.get("/api/folders").json() if f["label"] == "switch")
     assert card["counts"]["several"] == 0
-    assert card["updates"] == {"total": 2, "proposed": 1, "unknown": 0}
+    assert card["updates"] == {"total": 2, "proposed": 1, "unknown": 0, "unreadable": 0, "dlc": 2}
     plan = client.post("/api/folders/switch/apply/preview", json={}).json()
     assert plan["moves"] == []
 
@@ -230,7 +240,19 @@ def test_an_update_without_a_readable_version_keeps_the_whole_game(folder_of, ma
     found = client.get("/api/folders/switch/updates").json()
     assert {r["status"] for r in found["updates"]} == {"version unknown"}
     assert not any(r["operation"] for r in found["updates"])
-    assert found["counts"] == {"total": 2, "proposed": 0, "unknown": 2, "newer": 0}
+    assert found["counts"] == {
+        "total": 2,
+        "proposed": 0,
+        "unknown": 2,
+        "unreadable": 1,
+        "dlc": 0,
+        "newer": 0,
+    }
+    # Home says so, pointing at the tab where prod.keys are added.
+    card = next(f for f in client.get("/api/folders").json() if f["label"] == "switch")
+    (hint,) = [w for w in card["warnings"] if "readable version" in w["text"]]
+    assert hint["level"] == "info" and hint["text"].startswith("1 update without")
+    assert hint["link"] == {"to": "/folders/switch/updates", "text": "Add prod.keys"}
 
 
 def test_a_lone_update_is_the_newest_without_a_version(folder_of, make_settings):

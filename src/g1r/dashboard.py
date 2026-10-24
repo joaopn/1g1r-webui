@@ -69,8 +69,11 @@ def warnings(
     dat: sqlite3.Row | None,
     unmatched: int = 0,
     hasheous_offered: bool = False,
+    unreadable_updates: int = 0,
 ) -> list[dict]:
-    """`hasheous_offered`: Hasheous is switched off, so it is not looking files up."""
+    """`hasheous_offered`: Hasheous is switched off, so it is not looking files up.
+    `unreadable_updates`: updates (Switch) whose version could not be read, without
+    prod.keys."""
     found: list[dict] = []
 
     def add(level: str, text: str, link: dict | None = None) -> None:
@@ -113,7 +116,17 @@ def warnings(
             f"Unmatched: {_files(unmatched)}. Hasheous may identify some.",
             {"to": LOOKUPS_PAGE, "text": "Switch on Hasheous"},
         )
+    if unreadable_updates:
+        add(
+            INFO,
+            f"{_updates(unreadable_updates)} without a readable version.",
+            {"to": f"/folders/{label}/updates", "text": "Add prod.keys"},
+        )
     return found
+
+
+def _updates(n: int) -> str:
+    return f"{n} update" if n == 1 else f"{n} updates"
 
 
 def _files(n: int) -> str:
