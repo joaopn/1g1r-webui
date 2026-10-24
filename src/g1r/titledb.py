@@ -157,6 +157,44 @@ def _index(sha1: str, dat: Dat) -> dict[str, Title]:
     }
 
 
+@dataclass(frozen=True)
+class Latest:
+    """The newest update titledb knows for a title ID: its version and release date."""
+
+    version: int
+    date: str | None
+
+
+def versions_json(latest: dict[str, Latest]) -> bytes:
+    """What is kept of versions.json: each title ID's newest version and its date."""
+    return json.dumps({k: [v.version, v.date] for k, v in sorted(latest.items())}).encode()
+
+
+def read_versions(data: bytes) -> dict[str, Latest]:
+    """`versions_json`'s output read back."""
+    return {k: Latest(version, date) for k, (version, date) in json.loads(data).items()}
+
+
+def latest_versions(data: bytes) -> dict[str, Latest]:
+    """versions.json (title ID -> {version: date}) as each title ID's newest version."""
+    try:
+        found = json.loads(data)
+    except ValueError as exc:
+        raise TitleDbError(f"versions.json is not JSON: {exc}") from exc
+    if not isinstance(found, dict):
+        raise TitleDbError("versions.json is not a title ID -> versions map")
+    result = {}
+    for title_id, versions in found.items():
+        if not isinstance(versions, dict):
+            continue
+        numbered = {int(v): d for v, d in versions.items() if str(v).isdigit()}
+        if numbered:
+            newest = max(numbered)
+            date = numbered[newest]
+            result[title_id.upper()] = Latest(newest, date if isinstance(date, str) else None)
+    return result
+
+
 def lookup(ordered: list[dict[str, Title]], *title_ids: str) -> Title | None:
     """The first file in the order listing the first of these title IDs any file lists."""
     for title_id in title_ids:

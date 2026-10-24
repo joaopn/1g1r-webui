@@ -9,7 +9,7 @@ with several has no version read, nothing of that game is proposed.
 import sqlite3
 from dataclasses import dataclass
 
-from g1r import titles
+from g1r import titledb, titles
 from g1r.config import Settings
 from g1r.matching import REASON_UPDATES, STATUS_LEFT, GameRow, discard_path
 
@@ -39,6 +39,13 @@ class UpdateRow:
     operation: str | None
     # Set once a move took it to discarded/: the journal operation's id (restore).
     discarded: int | None
+    # The newest update titledb knows for the game: its version, which update it is, and
+    # its release date (None without titledb, or when it knows no update).
+    latest_version: int | None = None
+    latest_release: int | None = None
+    latest_date: str | None = None
+    # The game's newest update here, and titledb knows a newer one.
+    newer: bool = False
 
 
 def keeps(conn: sqlite3.Connection, label: str) -> set[str]:
@@ -61,10 +68,17 @@ def set_keep(conn: sqlite3.Connection, label: str, rel_paths: list[str], keep: b
         )
 
 
-def rows(settings: Settings, label: str, games: list[GameRow], kept: set[str]) -> list[UpdateRow]:
+def rows(
+    settings: Settings,
+    label: str,
+    games: list[GameRow],
+    kept: set[str],
+    latest: dict[str, titledb.Latest] | None = None,
+) -> list[UpdateRow]:
     """Every update of these games (matching.game_rows of the folder): by game, newest first,
-    those without a version last."""
+    those without a version last. `latest`: titledb's newest update per base title ID."""
     config = settings.title_ids
+    latest = latest or {}
     result = []
     for game in games:
         updates = [r for r in game.rows if r.version.role == titles.UPDATE]
@@ -76,6 +90,11 @@ def rows(settings: Settings, label: str, games: list[GameRow], kept: set[str]) -
         for row in updates:
             version = row.version.title_version
             title = titles.from_name(row.version.game_name, config) if config else None
+            known_latest = (
+                latest.get(titles.hex_id(title.app_id(config), config))
+                if title and config
+                else None
+            )
             operation = None
             if row.discarded:
                 status, reason = STATUS_DISCARDED, "in discarded/updates/"
@@ -111,6 +130,13 @@ def rows(settings: Settings, label: str, games: list[GameRow], kept: set[str]) -
                     reason,
                     operation,
                     row.discarded,
+                    known_latest.version if known_latest else None,
+                    known_latest.version // config.version_step if known_latest else None,
+                    known_latest.date if known_latest else None,
+                    status == STATUS_NEWEST
+                    and version is not None
+                    and known_latest is not None
+                    and known_latest.version > version,
                 )
             )
     result.sort(key=lambda r: (r.game.lower(), r.version is None, -(r.version or 0), r.rel_path))

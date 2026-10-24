@@ -310,6 +310,8 @@ class TitleDbConfig(_Strict):
     website: str
     url_template: str
     languages_url: str
+    versions_url: str
+    versions_file: str
     entry_prefix: str
     file_pattern: str
     featured: list[str]

@@ -752,6 +752,10 @@ titledb:
   url_template: "https://raw.githubusercontent.com/blawar/titledb/master/{file}.json"
   # Country -> languages: every "<country>.<language>" file there is.
   languages_url: "https://raw.githubusercontent.com/blawar/titledb/master/languages.json"
+  # Every update version released per title ID, with its date; fetched with each region
+  # file and kept as <dats directory>/<platform>/<versions_file>.
+  versions_url: "https://raw.githubusercontent.com/blawar/titledb/master/versions.json"
+  versions_file: titledb-versions.json
   entry_prefix: "titledb:"
   file_pattern: '^[A-Z]{2}\.[a-z]{2}$'
   # Offered as buttons; the others are picked from a list.

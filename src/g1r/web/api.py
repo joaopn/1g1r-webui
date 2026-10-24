@@ -1194,10 +1194,17 @@ def build_router(
         games = matching.game_rows(
             settings, conn, label, store.ranking_for(folder), produces(store.load(), folder, conn)
         )
-        return updates.rows(settings, label, games, updates.keeps(conn, label))
+        latest = registry.titledb_latest(folder.platform)
+        return updates.rows(settings, label, games, updates.keeps(conn, label), latest)
 
     def updates_dict(rows: list[updates.UpdateRow]) -> dict:
-        return {"updates": [asdict(r) for r in rows], "counts": update_counts(rows)}
+        # Games whose newest update here is older than one titledb knows (not on Home:
+        # the card's figures are not refreshed with titledb's versions).
+        newer = sum(1 for r in rows if r.newer)
+        return {
+            "updates": [asdict(r) for r in rows],
+            "counts": update_counts(rows) | {"newer": newer},
+        }
 
     @router.get("/folders/{label}/updates")
     def folder_updates(label: str, conn: Conn):

@@ -203,7 +203,7 @@ def test_an_update_without_a_readable_version_keeps_the_whole_game(folder_of, ma
     found = client.get("/api/folders/switch/updates").json()
     assert {r["status"] for r in found["updates"]} == {"version unknown"}
     assert not any(r["operation"] for r in found["updates"])
-    assert found["counts"] == {"total": 2, "proposed": 0, "unknown": 2}
+    assert found["counts"] == {"total": 2, "proposed": 0, "unknown": 2, "newer": 0}
 
 
 def test_a_lone_update_is_the_newest_without_a_version(folder_of, make_settings):

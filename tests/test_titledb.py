@@ -38,6 +38,15 @@ JP = {
 }
 
 
+# Every update released per title ID (titledb's versions.json): the game has two.
+SECOND_UPDATE_DATE = "2020-02-02"
+VERSIONS = {
+    BASE_ID.lower(): {str(FIRST_UPDATE): "2020-01-01", str(2 * FIRST_UPDATE): SECOND_UPDATE_DATE},
+    JP_ONLY_ID.lower(): {},
+    "junk": "not a map",
+}
+
+
 def body(data) -> bytes:
     return json.dumps(data).encode()
 
@@ -92,7 +101,8 @@ def switch(make_settings, roms_root):
 
     def fetch(url, timeout=None):
         fetched.append(url)
-        for name, data in (("languages", LANGUAGES), ("US.en", US), ("JP.ja", JP)):
+        files = (("languages", LANGUAGES), ("versions", VERSIONS), ("US.en", US), ("JP.ja", JP))
+        for name, data in files:
             if url.endswith(f"/{name}.json"):
                 return body(data)
         raise OSError(f"no such file: {url}")
@@ -203,6 +213,28 @@ def test_region_files_name_title_ids_in_their_order(switch):
     conn.close()
     assert all(v["matches_platform"] for v in switch_row(client)["versions"])
 
+    # titledb knows a newer update than the folder's newest: shown, nothing proposed.
+    found = client.get("/api/folders/switch/updates").json()
+    (update,) = found["updates"]
+    assert (update["status"], update["operation"], update["newer"]) == ("newest", None, True)
+    assert (update["latest_version"], update["latest_release"], update["latest_date"]) == (
+        2 * FIRST_UPDATE,
+        2,
+        SECOND_UPDATE_DATE,
+    )
+    assert found["counts"]["newer"] == 1
+
     removed = client.delete("/api/dats/sources/titledb").json()
     assert removed == {"versions": 2, "platforms": ["switch"]}
     assert [e["id"] for e in switch_row(client)["order"]] == ["hasheous"]
+    # Its versions went with it.
+    update = client.get("/api/folders/switch/updates").json()["updates"][0]
+    assert (update["latest_version"], update["newer"]) == (None, False)
+
+
+def test_versions_json_keeps_each_title_ids_newest_update():
+    latest = titledb.latest_versions(body(VERSIONS))
+    assert latest == {BASE_ID: titledb.Latest(2 * FIRST_UPDATE, SECOND_UPDATE_DATE)}
+    assert titledb.read_versions(titledb.versions_json(latest)) == latest
+    with pytest.raises(titledb.TitleDbError):
+        titledb.latest_versions(b"[]")
