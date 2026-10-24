@@ -63,7 +63,7 @@ Files are read bare or inside `.zip`/`.7z`. Every file is converted to its platf
 | Nintendo 64 | `z64`, `v64`, `n64` | zip (`z64`) | No-Intro |
 | Nintendo DS | `nds` | zip | No-Intro |
 | NES | `nes` | zip | No-Intro |
-| Nintendo Switch | `nsp`, `nsz`, `xci`, `xcz` | bare file | none, title ID |
+| Nintendo Switch | `nsp`, `nsz`, `xci`, `xcz` | `nsp` | none, title ID |
 | PC Engine / TurboGrafx-16 | `pce` | zip | No-Intro |
 | PlayStation | `chd`, `cue`/`bin`, `iso` | chd | Redump |
 | PlayStation 2 | `chd`, `cue`/`bin`, `iso`, `cso` | chd | Redump |
@@ -80,7 +80,7 @@ Files are read bare or inside `.zip`/`.7z`. Every file is converted to its platf
 The target can be changed per platform in Settings.
 
 - 3DS: encrypted images are decrypted with your own console's keys (`boot9.bin`, `seeddb.bin`), added in the UI. No keys are included. A decrypted image is kept only if it matches the hashes its partitions carry; no DAT is needed.
-- Switch: no public DAT exists, so files are identified by title ID. DLC are kept; updates can be discarded.
+- Switch: no public DAT exists, so files are identified by the title ID and version inside each file. 1G1R keeps every update and DLC; older updates can be discarded on the Updates tab. With your own `prod.keys` (added in the UI, none included), versions are also read from files without a `cnmt.xml`. NSZ, XCI and XCZ are converted to NSP; each NCA is checked against its content ID. A card image holding several titles is not converted.
 
 ## Backend
 

@@ -9,6 +9,7 @@ export const STATUS_ORDER: ConversionStatus[] = [
   "make rvz",
   "byteswap",
   "decrypt",
+  "make nsp",
   "flagged",
   "part",
   "done",
@@ -22,6 +23,7 @@ export const STATUS_LABELS: Record<ConversionStatus, string> = {
   "make rvz": "make RVZ",
   byteswap: "fix byte order",
   decrypt: "decrypt",
+  "make nsp": "make NSP",
   part: "track",
   flagged: "flagged",
   done: "done",
@@ -40,7 +42,8 @@ export const converting = (row: ConversionRow) =>
   row.status === "make chd" ||
   row.status === "make rvz" ||
   row.status === "byteswap" ||
-  row.status === "decrypt";
+  row.status === "decrypt" ||
+  row.status === "make nsp";
 
 /** The quick views above the table; add one here and it appears in the bar with its count. */
 export const CONVERSION_VIEWS: ConversionView[] = [

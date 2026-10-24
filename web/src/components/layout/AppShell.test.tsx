@@ -41,6 +41,7 @@ const FOLDERS = [
       "make rvz": 0,
       byteswap: 0,
       decrypt: 0,
+      "make nsp": 0,
       flagged: 0,
       part: 0,
       repack: 0,

@@ -205,6 +205,8 @@ class PlatformsConfig(_Strict):
     archive_extensions: list[str]
     # Disc image formats that are a container of their own (a target can produce them).
     disc_formats: list[str]
+    # Switch packages, each a container of its own (NSP is a target).
+    package_formats: list[str] = Field(default_factory=list)
     # Images already stripped of data (scrubbed, trimmed): never converted further, only
     # flagged. Shell patterns on the file name, case-insensitive.
     lossy_patterns: list[str] = Field(default_factory=list)
@@ -216,7 +218,7 @@ class PlatformsConfig(_Strict):
         missing = [p for p in self.enabled if p not in self.profiles]
         if missing:
             raise ValueError(f"platforms.enabled lists platforms without a profile: {missing}")
-        containers = {*self.archive_extensions, *self.disc_formats, PLAIN}
+        containers = {*self.archive_extensions, *self.disc_formats, *self.package_formats, PLAIN}
         for target_id, target in self.targets.items():
             if target.produces not in containers:
                 raise ValueError(f"target {target_id}: unknown container {target.produces}")
@@ -637,6 +639,33 @@ class NcaConfig(_Strict):
     max_read_bytes: int = Field(gt=0)
 
 
+class SwitchPackageConfig(_Strict):
+    ncz_header_bytes: int = Field(gt=0)
+    section_magic: str
+    block_magic: str
+    count: str
+    section: str
+    block_header: str
+    block_size: str
+    ctr_crypto_types: list[int]
+    counter_prefix_bytes: int = Field(gt=0)
+    ncz_suffix: str
+    nca_suffix: str
+    cnmt_suffix: str
+    xci_magic_offset: int = Field(ge=0)
+    xci_magic: str
+    xci_hfs0: str
+    xci_hfs0_offset: int = Field(ge=0)
+    hfs0_magic: str
+    hfs0_header: str
+    hfs0_entry: str
+    secure_partition: str
+    max_entries: int = Field(gt=0)
+    pfs0_align: int = Field(gt=0)
+    content_id_digits: int = Field(gt=0)
+    chunk_bytes: int = Field(gt=0)
+
+
 class TosecConfig(_Strict):
     # Country codes -> the region names ranking uses.
     countries: dict[str, str]
@@ -725,6 +754,7 @@ class Settings(_Strict):
     decryption: DecryptionConfig
     title_ids: TitleIdConfig | None = None
     nca: NcaConfig
+    switch_package: SwitchPackageConfig
     names: NamesConfig
     statistics: StatisticsConfig
     grouping: GroupingConfig

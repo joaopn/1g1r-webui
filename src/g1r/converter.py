@@ -19,7 +19,18 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path, PurePosixPath
 
-from g1r import archives, cards, conversion, cso, decrypt, discs, hashing, moves, stopping
+from g1r import (
+    archives,
+    cards,
+    conversion,
+    cso,
+    decrypt,
+    discs,
+    hashing,
+    moves,
+    stopping,
+    switch_package,
+)
 from g1r.config import Settings
 
 CRC_FORMAT = "08x"
@@ -148,6 +159,8 @@ class Converter:
                 self._decrypt(step, temp)
             elif step.recipe == conversion.RECIPE_REPACK:
                 self._repack(step, temp)
+            elif step.recipe == conversion.RECIPE_NSP:
+                self._nsp(step, temp)
             elif step.member is None:
                 self._wrap(step.source, temp)
             else:
@@ -366,6 +379,14 @@ class Converter:
                 ) from exc
         finally:
             shutil.rmtree(work, ignore_errors=True)
+
+    def _nsp(self, step, temp: Path) -> None:
+        """A Switch NSZ or XCI/XCZ written as an NSP, read back to prove every NCA."""
+        try:
+            switch_package.build(step.source, temp, self.settings, stopping.check)
+        except switch_package.PackageError as exc:
+            temp.unlink(missing_ok=True)
+            raise moves.MoveError(f"{step.source.name}: {exc}; nothing was changed") from exc
 
     def _trailing_fill(self, step) -> tuple[int, int] | None:
         """`cards.trailing_fill` of the original, read again (an unpacked copy is gone): a

@@ -217,6 +217,9 @@ platforms:
   archive_extensions: [zip, 7z]
   # Disc image formats that are a container of their own (what a disc target produces).
   disc_formats: [chd, rvz]
+  # Switch packages, each a container of its own: NSP is the target; NSZ (compressed NCAs),
+  # XCI (a game card dump) and XCZ are converted to it (switch_package.py).
+  package_formats: [nsp, nsz, xci, xcz]
   # Images already stripped of data are never converted further (design §4), only flagged.
   lossy_patterns: ["*.nkit.*", "*.wbfs", "*.ciso"]
 
@@ -235,6 +238,10 @@ platforms:
       label: RVZ (Dolphin)
       description: Dolphin's lossless compressed disc format, made with dolphin-tool.
       produces: rvz
+    nsp:
+      label: NSP
+      description: The Switch's own install package. NSZ and XCI are converted to it, every content archive kept byte for byte.
+      produces: nsp
     chd:
       label: CHD (compressed disc image)
       description: One lossless compressed file per disc, made with chdman. Read by DuckStation, Beetle, Flycast, PCSX2 and PPSSPP.
@@ -484,9 +491,9 @@ platforms:
       aliases: ["nsw", "nintendo switch"]
       dat_name: Nintendo - Nintendo Switch
       rom_extensions: [nsp, nsz, xci, xcz]
-      # Emulators read these as they are, never from a zip.
-      targets: [plain]
-      default_target: plain
+      # One format: NSP (maintainer, 2026-10-24: "we are not supporting XCI or NSZ").
+      targets: [nsp]
+      default_target: nsp
       title_ids: true
       # No public Switch DAT exists: files are identified by title ID.
       dat_download: false
@@ -1094,6 +1101,44 @@ nca:
   ticket_common: 0
   # Bounds on what is read from one file.
   max_read_bytes: 4194304
+
+# Switch packages converted to NSP (switch_package.py). An NSZ is a PFS0 like an NSP whose
+# NCZ members are NCAs decrypted and compressed with zstd (nsz's format): the first
+# ncz_header_bytes are the NCA's own, then "NCZSECTN", a section count and one entry per
+# section (offset, size, crypto type, padding: u64 each; key, counter: 16 bytes each), an
+# optional "NCZBLOCK" header (version, type, unused, block size exponent: u8; block count:
+# u32; decompressed size: u64; one u32 compressed size per block), then the zstd data. The
+# sections of crypto type ctr_crypto_types are encrypted again with AES-CTR (counter: the
+# entry's first 8 bytes, then the NCA offset / 16). An XCI holds a root HFS0 at the offset
+# its header gives; its "secure" partition (an HFS0) holds the NCAs. Every NCA is proven by
+# its name: the first half of its SHA-256 (content ID), read back from the written NSP.
+switch_package:
+  ncz_header_bytes: 0x4000
+  section_magic: NCZSECTN
+  block_magic: NCZBLOCK
+  count: "<Q"
+  section: "<QQQ8x16s16s"
+  block_header: "<BBBBIQ"
+  block_size: "<I"
+  ctr_crypto_types: [3, 4]
+  counter_prefix_bytes: 8
+  ncz_suffix: .ncz
+  nca_suffix: .nca
+  cnmt_suffix: .cnmt.nca
+  xci_magic_offset: 0x100
+  xci_magic: HEAD
+  xci_hfs0: "<QQ"
+  xci_hfs0_offset: 0x130
+  hfs0_magic: HFS0
+  hfs0_header: "<4sIII"
+  hfs0_entry: "<QQII8x32s"
+  secure_partition: secure
+  max_entries: 4096
+  # The written PFS0's header is padded to a multiple of this.
+  pfs0_align: 0x10
+  # A content ID is this many hex digits of the SHA-256.
+  content_id_digits: 32
+  chunk_bytes: 4194304
 
 # CSO (CISO v0/v1), the PlayStation 2 and PSP compressed ISO: a header, then one index entry
 # per block plus one (the end), each the block's offset >> the header's index shift. A block

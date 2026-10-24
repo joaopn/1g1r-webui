@@ -18,6 +18,8 @@ dependencies = [
     "pyctr~=0.7.6",
     # AES for reading Switch NCAs with the user's own prod.keys (BSD; pyctr needs it too).
     "pycryptodomex~=3.24.1",
+    # zstd, to decompress NSZ/XCZ to NSP (BSD).
+    "zstandard~=0.25.0",
 ]
 
 [project.optional-dependencies]

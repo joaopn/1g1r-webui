@@ -13,7 +13,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
-from g1r import cards, cso, decrypt, discs
+from g1r import cards, cso, decrypt, discs, switch_package
 from g1r.config import PLAIN, Settings, TargetConfig
 
 REASON_ORIGINALS = "originals"
@@ -29,6 +29,8 @@ MAKE_RVZ = "make rvz"
 BYTESWAP = "byteswap"
 # An encrypted 3DS card image decrypted with the user's own keys.
 DECRYPT = "decrypt"
+# A Switch NSZ or XCI/XCZ rewritten as an NSP.
+MAKE_NSP = "make nsp"
 # What a card image's header says, as the Conversion table explains it.
 NOTE_TEXT = {
     cards.ENCRYPTED: (
@@ -41,8 +43,20 @@ NOTE_TEXT = {
 # A track file a cue sheet's conversion takes along.
 PART = "part"
 FLAGGED = "flagged"
-STATUSES = (WRAP, UNWRAP, REPACK, MAKE_CHD, MAKE_RVZ, BYTESWAP, DECRYPT, FLAGGED, PART, DONE)
-CONVERTING = (WRAP, UNWRAP, REPACK, MAKE_CHD, MAKE_RVZ, BYTESWAP, DECRYPT)
+STATUSES = (
+    WRAP,
+    UNWRAP,
+    REPACK,
+    MAKE_CHD,
+    MAKE_RVZ,
+    BYTESWAP,
+    DECRYPT,
+    MAKE_NSP,
+    FLAGGED,
+    PART,
+    DONE,
+)
+CONVERTING = (WRAP, UNWRAP, REPACK, MAKE_CHD, MAKE_RVZ, BYTESWAP, DECRYPT, MAKE_NSP)
 # The only archive the app writes; other targets are listed but never produced here.
 ZIP = "zip"
 ZIP_SUFFIX = f".{ZIP}"
@@ -63,6 +77,8 @@ RECIPE_ARCHIVE_DISC = "archive-disc"
 RECIPE_BYTESWAP = "byteswap"
 # A bare card image decrypted (decrypt.decrypt_cci), proved by a DAT entry's SHA1.
 RECIPE_DECRYPT = "decrypt"
+# A Switch package rewritten as an NSP (switch_package.build), proved by content IDs.
+RECIPE_NSP = "nsp"
 
 
 @dataclass
@@ -89,6 +105,8 @@ class ConversionRow:
     output_member: str | None = None
     # Decrypt: the card image format (settings.card_images), whose hashes prove the output.
     card_image: str | None = None
+    # An NSP: the size it will have (read from the package), for the free-space check.
+    output_bytes: int | None = None
 
 
 def waiting(rows: list[ConversionRow]) -> set[str]:
@@ -142,6 +160,7 @@ def rows(
     rom_extensions = {e.lower() for e in profile.rom_extensions}
     part_extensions = {e.lower() for e in profile.part_extensions}
     disc_formats = {e.lower() for e in settings.platforms.disc_formats}
+    package_formats = {e.lower() for e in settings.platforms.package_formats}
     to_disc = target.produces in disc_formats
     files = conn.execute(
         "SELECT rel_path, size, kind FROM folder_file WHERE folder_label = ? "
@@ -204,7 +223,10 @@ def rows(
     for f in files:
         rel = f["rel_path"]
         row = ConversionRow(
-            rel, f["size"], container_of(rel, f["kind"], disc_formats), members.get(rel, [])
+            rel,
+            f["size"],
+            container_of(rel, f["kind"], disc_formats | package_formats),
+            members.get(rel, []),
         )
         roms = [m for m in row.members if is_rom(m["name"])]
         ext = _ext(rel)
@@ -213,6 +235,14 @@ def rows(
         elif lossy(PurePosixPath(rel).name):
             row.status = FLAGGED
             row.note = "already stripped of data (scrubbed or trimmed): never converted further"
+        elif row.container in package_formats:
+            if row.container == target.produces:
+                row.status = DONE
+            elif target.produces in package_formats:
+                _make_nsp(settings, label, row, root, delete_originals)
+            else:
+                row.status = FLAGGED
+                row.note = f"the app cannot make {target.produces} from a {row.container}"
         elif rel in locked and row.container == PLAIN:
             _decrypt(settings, label, row, profile, locked[rel], seeds, None, delete_originals)
         elif (
@@ -387,6 +417,60 @@ def _disc(settings, label, row, recipe, source, profile, target, delete_original
         row.reversible = False
     else:
         row.originals_to = originals_path(settings, label, row.rel_path)
+
+
+def _make_nsp(settings, label, row, root: Path | None, delete_originals) -> None:
+    """An NSZ or XCI/XCZ: its NCAs written as an NSP beside it. Read from the folder when it
+    is there (the NSP's size; a card holding several titles is flagged)."""
+    if root is not None:
+        try:
+            members = _package_plan(root / row.rel_path, row.size, settings)
+        except switch_package.PackageError as exc:
+            row.status, row.note = FLAGGED, str(exc)
+            return
+        row.output_bytes = sum(m.out_size for m in members)
+    row.status, row.recipe = MAKE_NSP, RECIPE_NSP
+    row.output = str(PurePosixPath(row.rel_path).with_suffix(f".{switch_package.NSP}"))
+    row.verify = "every NCA read back from the NSP hashes to its content ID (its name)"
+    if row.container in (switch_package.NSZ, switch_package.XCZ):
+        row.note = "NCZs decompressed to the NCAs they were made from"
+    if row.container in (switch_package.XCI, switch_package.XCZ):
+        row.note = "; ".join(
+            filter(
+                None,
+                [
+                    row.note,
+                    "the card's game data repacked (card header and update partition left out)",
+                ],
+            )
+        )
+    _originals(settings, label, row, delete_originals)
+
+
+def _package_plan(path: Path, size: int, settings) -> list:
+    try:
+        mtime = path.stat().st_mtime_ns
+    except OSError as exc:
+        raise switch_package.PackageError(f"the file could not be read: {exc.strerror}") from exc
+    return _cached_plan(path, size, mtime, settings)
+
+
+def _cached_plan(path: Path, size: int, mtime: int, settings) -> list:
+    kept = _PLANS.get(path)
+    if kept is None or kept[0] != (size, mtime):
+        try:
+            found = switch_package.plan(path, settings)
+        except switch_package.PackageError as exc:
+            found = exc
+        kept = _PLANS[path] = ((size, mtime), found)
+    if isinstance(kept[1], switch_package.PackageError):
+        raise kept[1]
+    return kept[1]
+
+
+# The latest package plan of each path, with its size and mtime: proposals are made on every
+# request, and reading a package's headers each time is wasted.
+_PLANS: dict = {}
 
 
 def _cannot_decrypt(settings, profile, card: tuple[bool, str], seeds) -> str | None:

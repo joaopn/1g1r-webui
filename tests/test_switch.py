@@ -70,7 +70,7 @@ def test_titles_are_read_from_inside_the_file(make_settings, tmp_path):
     assert titles.read_title(path, path.name, c) is None
     path = tmp_path / f"Super Game [{BASE_ID}].xci"
     path.write_bytes(nsp(make_settings, BASE_ID, 0, "Application"))
-    assert titles.read_title(path, path.name, c) is None
+    assert titles.read_title(path, path.name, c) is None  # converted to NSP first
 
 
 def scan(client) -> dict:
@@ -99,7 +99,6 @@ def switch(folder_of, make_settings, roms_root):
         "Super Game update 2.nsp": nsp(make_settings, UPDATE_ID, SECOND_UPDATE),
         "Super Game - Pack.nsp": nsp(make_settings, DLC_ID, 0, "AddOnContent"),
         "Other Game - Pack.nsp": nsp(make_settings, OTHER_DLC_ID),
-        f"Super Game (USA) [{BASE_ID}].xci": b"cart",
         "no id.nsp": b"?",
     }
     for name, data in files.items():
@@ -109,7 +108,7 @@ def switch(folder_of, make_settings, roms_root):
 
 def test_1g1r_keeps_the_game_its_updates_and_dlc(switch):
     client, folder, roms_root = switch
-    assert scan(client)["message"] == "5 of 7 files identified by title ID"
+    assert scan(client)["message"] == "5 of 6 files identified by title ID"
     games = {g["name"]: g for g in client.get("/api/folders/switch/games").json()}
     game = games["Super Game (USA)"]
     assert (game["status"], game["reason"]) == ("single", "its updates and DLC are kept")
@@ -120,10 +119,9 @@ def test_1g1r_keeps_the_game_its_updates_and_dlc(switch):
     # DLC without its game: left alone.
     other = games["Other Game - Pack"]
     assert other["status"] == "left alone" and not any(v["operation"] for v in other["versions"])
-    # An XCI is not read (no PFS0), and a name tag alone identifies nothing.
+    # A name alone identifies nothing.
     assert sorted(f["rel_path"] for f in client.get("/api/folders/switch/unmatched").json()) == [
-        f"Super Game (USA) [{BASE_ID}].xci",
-        "no id.nsp",
+        "no id.nsp"
     ]
     # Updates and DLC are no versions: one base file is not "several versions".
     card = next(f for f in client.get("/api/folders").json() if f["label"] == "switch")

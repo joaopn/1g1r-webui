@@ -289,6 +289,8 @@ def _conversion_space(row: conversion.ConversionRow, sources, member) -> int:
     """Bytes the conversion needs free: the output (at most its data's size), and for a
     disc the tracks extracted back for the check (plus, from an archive, the unpacked copy)."""
     total = sum(s["size"] for s in sources)
+    if row.recipe == conversion.RECIPE_NSP and row.output_bytes:
+        return row.output_bytes
     if row.recipe in (conversion.RECIPE_UNWRAP, conversion.RECIPE_BYTESWAP) and member:
         return member["size"]
     if row.recipe == conversion.RECIPE_DECRYPT and member:

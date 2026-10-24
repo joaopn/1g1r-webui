@@ -465,6 +465,7 @@ export type ConversionStatus =
   | "make rvz"
   | "byteswap"
   | "decrypt"
+  | "make nsp"
   | "flagged"
   | "part"
   | "done";
