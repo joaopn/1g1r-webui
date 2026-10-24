@@ -200,7 +200,7 @@ def test_parse_igir_report(tmp_path):
     }
 
 
-@pytest.mark.skipif(shutil.which("igir") is None, reason="igir is only in the Docker image")
+@pytest.mark.skipif(shutil.which("igir") is None, reason="igir is in the image, its build runs it")
 def test_real_igir_report(env, roms_root):
     settings, store, registry, conn, _ = env
     real = scanner.Scanner(settings, store, registry)

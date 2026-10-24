@@ -35,13 +35,15 @@ def keys_root(data_dir):
 
 
 @pytest.fixture
-def make_settings(data_dir, roms_root, extra_root):
-    """Settings with data and ROM mounts in a temp dir, plus optional overrides."""
+def make_settings(data_dir, roms_root, extra_root, tmp_path):
+    """Settings with data and ROM mounts in a temp dir, plus optional overrides. No clone
+    lists unless a test gives its own: the image's real ones would join test games."""
 
     def _make(override=None):
         data_dir.mkdir(parents=True, exist_ok=True)
         paths = {"roms_root": str(roms_root), "extra_mounts_root": str(extra_root)}
-        merged = deep_merge({"paths": paths}, override or {})
+        grouping = {"retool_clonelists_dir": str(tmp_path / "no-clonelists")}
+        merged = deep_merge({"paths": paths, "grouping": grouping}, override or {})
         return load_settings({DATA_DIR_ENV: str(data_dir)}, merged)
 
     return _make

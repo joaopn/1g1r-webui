@@ -11,7 +11,7 @@ COPY web/ ./
 RUN npx biome ci . && npx tsc --noEmit && npx vitest run && npm run build
 
 # --- Stage 2: tools and the Python app.
-FROM node:24-trixie-slim
+FROM node:24-trixie-slim AS app
 
 ARG IGIR_VERSION=5.8.0
 ARG DOLPHIN_TOOL_VERSION=0.2606.2
@@ -58,6 +58,19 @@ RUN python3 -m venv /opt/app/venv \
  && /opt/app/venv/bin/pip install --no-cache-dir /opt/app \
  && rm -rf /opt/app/src
 COPY --from=web-build /web/dist /opt/app/web/dist
+
+# --- Stage 3: the backend tests, run against the image's own tools (igir, chdman, Retool's
+# clone lists), which the tests skip or stub elsewhere. Only a marker leaves this stage.
+FROM app AS backend-test
+COPY pyproject.toml README.md LICENSE /src/
+COPY src /src/src
+COPY tests /src/tests
+RUN /opt/app/venv/bin/pip install --no-cache-dir "/src[dev]" \
+ && cd /src && PYTHONDONTWRITEBYTECODE=1 /opt/app/venv/bin/python -m pytest -q -p no:cacheprovider \
+ && touch /backend-tests-passed
+
+FROM app
+COPY --from=backend-test /backend-tests-passed /opt/app/backend-tests-passed
 
 ENV G1R_DATA_DIR=/data
 # The port is set in config (server.port); EXPOSE only documents the default.
