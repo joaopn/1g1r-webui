@@ -48,13 +48,22 @@ const VIEWS: RowView<Row>[] = [
 const plural = (n: number, word: string) => `${formatCount(n)} ${word}${n === 1 ? "" : "s"}`;
 
 /** What a game's row says in the Status column, and its colour. */
+/** A game's colour: an update to discard (yellow), else behind titledb's newest update
+ * (blue), else on it (green); none when that cannot be told (no titledb). */
+function gameTone(g: UpdateGame): string {
+  if (g.to_discard > 0) return "text-status-warn";
+  if (g.newer) return "text-status-info";
+  return g.latest ? "text-status-good" : "";
+}
+
+/** What a game's row says in the Status column, in the game's colour. */
 function gameStatus(g: UpdateGame): { text: string; tone: string } {
-  if (g.to_discard > 0)
-    return { text: `${formatCount(g.to_discard)} older → discard`, tone: "text-status-warn" };
-  if (g.newer) return { text: "newer released", tone: "text-status-info" };
-  if (g.updates > 0) return { text: "newest kept", tone: "text-status-good" };
-  if (g.dlc > 0) return { text: "DLC kept", tone: "text-status-good" };
-  return { text: "no update or DLC", tone: "text-muted-foreground" };
+  const tone = gameTone(g);
+  if (g.to_discard > 0) return { text: `${formatCount(g.to_discard)} older → discard`, tone };
+  if (g.newer) return { text: "newer released", tone };
+  if (g.updates > 0) return { text: g.latest ? "latest update" : "newest kept", tone };
+  if (g.dlc > 0) return { text: "DLC kept", tone };
+  return { text: "no update", tone: tone || "text-muted-foreground" };
 }
 
 const newerTitle = (g: UpdateGame) =>
@@ -95,7 +104,7 @@ export function UpdatesTable({
     cell: (g, id) => {
       if (id === "game")
         return (
-          <span className={cn("font-medium", g.newer && "text-status-info")}>
+          <span className={cn("font-medium", gameTone(g))}>
             {g.game}
             {g.display_version ? <span className="font-normal"> ({g.display_version})</span> : null}
           </span>
@@ -132,6 +141,8 @@ export function UpdatesTable({
       return undefined;
     },
     testId: (g) => `updates-game-${g.group_key}`,
+    // Games with an update to discard start open.
+    opens: (g) => g.to_discard > 0,
   };
   const columns = useMemo<DataColumn<Row>[]>(
     () => [

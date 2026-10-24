@@ -40,7 +40,8 @@ export type RowFilter<T> = {
 
 /** Rows under a row per group (a game, its updates and DLC under it), like the Matching
  * table's games. Every group is listed, those without rows too (no chevron then); groups
- * start closed, and open by themselves while a search, a view or a filter narrows the rows
+ * start closed (unless `opens` says otherwise), and open by themselves while a search, a
+ * view or a filter narrows the rows
  * (then only groups with such rows, or whose name the search finds, are listed). A page
  * holds `page_size` groups. */
 export type RowGroup<T, G> = {
@@ -57,6 +58,8 @@ export type RowGroup<T, G> = {
   /** How groups sort by a column (rows sort within their group); none: the given order. */
   sortValue?: (group: G, columnId: string) => string | number | undefined;
   testId?: (group: G) => string;
+  /** Groups that start open (the others start closed). */
+  opens?: (group: G) => boolean;
 };
 
 const FILTER_PREFIX = "f.";
@@ -175,9 +178,12 @@ export function DataTable<T, G = never>({
         direction: order === "asc" ? 1 : -1,
       })
     : sorted.map((row) => ({ key: rowKey(row), group: undefined, rows: [row] }));
-  // Open by themselves while something narrows the rows.
-  const opensAlone = needle !== "" || narrowed;
-  const isOpen = (key: string) => opensAlone !== toggled.has(key);
+  // Open by themselves while something narrows the rows, or when the group says so.
+  const narrowing = needle !== "" || narrowed;
+  const startsOpen = new Set(
+    group?.opens ? group.groups.filter((g) => group.opens?.(g)).map(group.groupKey) : [],
+  );
+  const isOpen = (key: string) => (narrowing || startsOpen.has(key)) !== toggled.has(key);
   const pageSize = meta.ui.page_size;
   const pages = Math.max(1, Math.ceil(grouped.length / pageSize));
   const page = Math.min(pages, Math.max(1, Math.trunc(Number(params.get("page") ?? "1")) || 1));

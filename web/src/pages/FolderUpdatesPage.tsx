@@ -59,40 +59,48 @@ export function FolderUpdatesPage() {
   const data = updates.data;
   const proposed = data?.counts.proposed ?? 0;
 
+  const unreadable =
+    data && data.counts.unreadable > 0 && keys.data && keys.data.prod_keys === null
+      ? data.counts.unreadable
+      : 0;
+
   return (
     <div className="space-y-6">
       <FolderHeader folder={f} meta={meta.data} section="updates" card={card} />
+      {data && data.games.length > 0 ? (
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+          <StatCard value={formatCount(data.counts.total)} label="updates" />
+          <StatCard value={formatCount(proposed)} label="older, to discard" />
+          <StatCard value={formatCount(data.counts.unknown)} label="version unknown" />
+          <StatCard
+            value={formatCount(data.games.filter((g) => g.newer).length)}
+            label="games with a newer update"
+          />
+          <StatCard value={formatCount(data.counts.dlc)} label="DLC" />
+        </div>
+      ) : null}
+      <SwitchKeys label={label} />
       <Box
-        title="Older updates"
+        title="Discard old updates"
         actions={
-          <Button size="sm" disabled={proposed === 0} onClick={() => setMoving(true)}>
-            <Archive className="size-3.5" aria-hidden="true" />
-            Move {formatFiles(proposed)} to discarded/
+          <Button disabled={proposed === 0} onClick={() => setMoving(true)}>
+            <Archive className="size-4" aria-hidden="true" />
+            Discard{proposed > 0 ? ` (${formatFiles(proposed)})` : ""}
           </Button>
         }
       >
         <p className="text-muted-foreground">
-          Matching & 1G1R lists base games only; their updates and DLC are here. Updates older than
-          a game's newest are proposed for <code className="text-xs">{f.discarded_to}updates/</code>
-          , restorable. Keep the ones you need (some mods need an older update).
+          {proposed > 0
+            ? `${formatFiles(proposed)} older than their game's newest update. They move to discarded/ and can be restored; keep any you need (e.g. for mods).`
+            : "No old updates to discard."}
         </p>
-        <p className="text-muted-foreground">
-          The version is read from the file's cnmt.xml, else with your prod.keys. When one of a
-          game's updates has none, nothing of that game is proposed. DLC is always kept.
-        </p>
-        {data && data.counts.unreadable > 0 && keys.data && keys.data.prod_keys === null ? (
+        {unreadable > 0 ? (
           <p className="text-status-info" data-testid="unreadable-updates">
-            {formatCount(data.counts.unreadable)}{" "}
-            {data.counts.unreadable === 1 ? "update has" : "updates have"} no readable version: add
-            prod.keys below to read them.
+            {formatCount(unreadable)} {unreadable === 1 ? "update has" : "updates have"} no readable
+            version: add prod.keys to read them.
           </p>
         ) : null}
-        <p className="text-muted-foreground">
-          Latest: the newest update released, from titledb (downloaded in Settings → Platform DATs).
-          It is shown only; nothing is downloaded.
-        </p>
       </Box>
-      <SwitchKeys label={label} />
       <RunPanel label={label} meta={meta.data} />
       {updates.error ? (
         <p className="text-status-bad">{errorText(updates.error)}</p>
@@ -101,30 +109,21 @@ export function FolderUpdatesPage() {
       ) : data.games.length === 0 ? (
         <p className="text-muted-foreground">No game found in this set. Scan to look again.</p>
       ) : (
-        <>
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
-            <StatCard value={formatCount(data.counts.total)} label="updates" />
-            <StatCard value={formatCount(proposed)} label="older, to discard" />
-            <StatCard value={formatCount(data.counts.unknown)} label="version unknown" />
-            <StatCard value={formatCount(data.counts.newer)} label="games with a newer update" />
-            <StatCard value={formatCount(data.counts.dlc)} label="DLC" />
-          </div>
-          <UpdatesTable
-            updates={data.updates}
-            games={data.games}
-            meta={meta.data}
-            busy={keep.isPending || restore.isPending}
-            onKeep={(relPath, kept) => keep.mutate({ rel_paths: [relPath], keep: kept })}
-            onRestore={(id) => restore.mutate({ operation_ids: [id] })}
-          />
-        </>
+        <UpdatesTable
+          updates={data.updates}
+          games={data.games}
+          meta={meta.data}
+          busy={keep.isPending || restore.isPending}
+          onKeep={(relPath, kept) => keep.mutate({ rel_paths: [relPath], keep: kept })}
+          onRestore={(id) => restore.mutate({ operation_ids: [id] })}
+        />
       )}
       {moving ? (
         <GuardedDialog
           label={label}
           path="updates/discard"
           body={{}}
-          title={`Move older updates of ${label}`}
+          title={`Discard old updates of ${label}`}
           description={
             <>
               These updates move to <code className="text-xs">{f.discarded_to}updates/</code>.

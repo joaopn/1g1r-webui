@@ -77,6 +77,7 @@ const UPDATES = {
       dlc: 1,
       to_discard: 1,
       size: 21,
+      latest: false,
     },
     {
       group_key: "tid:0100BBBB00010000",
@@ -90,6 +91,21 @@ const UPDATES = {
       dlc: 0,
       to_discard: 0,
       size: 0,
+      latest: true,
+    },
+    {
+      group_key: "tid:0100CCCC00010000",
+      game: "Behind Game",
+      display_version: null,
+      version: null,
+      newer: true,
+      latest_release: 1,
+      latest_date: "2024-01-01",
+      updates: 0,
+      dlc: 0,
+      to_discard: 0,
+      size: 0,
+      latest: false,
     },
   ],
   counts: { total: 2, proposed: 1, unknown: 0, unreadable: 1, dlc: 1, newer: 1 },
@@ -126,21 +142,27 @@ test("older updates are proposed, and a Keep click keeps one", async () => {
       </MemoryRouter>
     </QueryClientProvider>,
   );
-  // Every game is a row, closed: its version, what it holds, what is to do.
+  // Every game is a row: its version, what it holds, what is to do. One with an update to
+  // discard is yellow and starts open.
   const game = await screen.findByTestId("updates-game-tid:0100AAAA00010000");
   expect(game).toHaveTextContent("Super Game (1.0.2)");
   expect(game).toHaveTextContent("2 updates · 1 DLC");
   expect(game).toHaveTextContent("1 older → discard");
-  // titledb knows a newer update: the game's name says so in colour.
-  expect(within(game).getByText("Super Game")).toHaveClass("text-status-info");
+  expect(within(game).getByText("Super Game")).toHaveClass("text-status-warn");
+  expect(screen.getByTestId("update-update 2.nsp")).toBeInTheDocument();
+  await userEvent.click(within(game).getByRole("button", { name: "Super Game: collapse" }));
   expect(screen.queryByTestId("update-update 2.nsp")).toBeNull();
-  // A game without updates or DLC: listed, nothing to open.
-  const lone = screen.getByTestId("updates-game-tid:0100BBBB00010000");
-  expect(lone).toHaveTextContent("no update or DLC");
-  expect(within(lone).queryByRole("button")).toBeNull();
-  expect(screen.getByText(/2 of 2 games/)).toBeInTheDocument();
-
   await userEvent.click(within(game).getByRole("button", { name: "Super Game: show" }));
+  // On titledb's newest update: green, nothing to open. Behind it: blue.
+  const lone = screen.getByTestId("updates-game-tid:0100BBBB00010000");
+  expect(lone).toHaveTextContent("no update");
+  expect(within(lone).getByText("Lone Game")).toHaveClass("text-status-good");
+  expect(within(lone).queryByRole("button")).toBeNull();
+  const behind = screen.getByTestId("updates-game-tid:0100CCCC00010000");
+  expect(within(behind).getByText("Behind Game")).toHaveClass("text-status-info");
+  expect(behind).toHaveTextContent("newer released");
+  expect(screen.getByText(/3 of 3 games/)).toBeInTheDocument();
+
   expect(screen.getByTestId("update-update 2.nsp")).toHaveTextContent("newest, kept");
   expect(screen.getByTestId("update-update 2.nsp")).toHaveTextContent("1.0.2");
   expect(screen.getByText("games with a newer update")).toBeInTheDocument();
@@ -164,7 +186,10 @@ test("older updates are proposed, and a Keep click keeps one", async () => {
   expect(screen.getByRole("button", { name: "Add" })).toBeEnabled();
   const older = screen.getByTestId("update-update 1.nsp");
   expect(older).toHaveTextContent("older → discard");
-  expect(screen.getByRole("button", { name: /Move 1 file to discarded/ })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "Discard (1 file)" })).toBeEnabled();
+  expect(screen.getByRole("region", { name: "Discard old updates" })).toHaveTextContent(
+    "1 file older than their game's newest update",
+  );
   await userEvent.click(within(older).getByRole("button", { name: "Keep update 1.nsp" }));
   await vi.waitFor(() => expect(puts).toEqual([{ rel_paths: ["update 1.nsp"], keep: true }]));
 });

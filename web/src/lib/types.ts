@@ -652,6 +652,8 @@ export type UpdateGame = {
   dlc: number;
   to_discard: number;
   size: number;
+  /** On titledb's newest update; null when that cannot be told (no titledb). */
+  latest: boolean | null;
 };
 
 /** `newer`: games whose newest update here is older than one titledb knows. */
