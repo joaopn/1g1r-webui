@@ -13,7 +13,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ApiError, api, json } from "@/lib/api";
-import { formatBytes, formatFiles } from "@/lib/format";
+import { formatFiles } from "@/lib/format";
 import { foldersByName } from "@/lib/platforms";
 import { keys, queryClient, useFolders, useMeta, useSettingsData } from "@/lib/queries";
 import { folderState } from "@/lib/sections";
@@ -60,7 +60,6 @@ export function RomsetManagementPage() {
   });
   if (!meta.data || !folders.data || !data.data)
     return <p className="text-muted-foreground">Loading…</p>;
-  const ui = meta.data.ui;
   const sets = foldersByName(folders.data, meta.data.platforms);
   const targets = data.data.targets;
 
@@ -80,7 +79,6 @@ export function RomsetManagementPage() {
                 <th className="px-3 py-2">Platform</th>
                 <th className="px-3 py-2">Folder</th>
                 <th className="px-3 py-2">Target format</th>
-                <th className="px-3 py-2">In discarded/</th>
                 <th className="px-3 py-2 text-right">Actions</th>
               </tr>
             </thead>
@@ -135,11 +133,6 @@ export function RomsetManagementPage() {
                           ))}
                         </select>
                       ) : null}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">
-                      {set.discarded.files > 0
-                        ? `${formatFiles(set.discarded.files)}, ${formatBytes(set.discarded.bytes, ui.byte_unit_base, ui.byte_units)}`
-                        : "nothing"}
                     </td>
                     <td className="px-3 py-2">
                       <div className="flex justify-end gap-2">
