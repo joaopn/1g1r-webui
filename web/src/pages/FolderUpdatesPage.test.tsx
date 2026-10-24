@@ -145,8 +145,10 @@ test("older updates are proposed, and a Keep click keeps one", async () => {
   // Every game is a row: its version, what it holds, what is to do. One with an update to
   // discard is yellow and starts open.
   const game = await screen.findByTestId("updates-game-tid:0100AAAA00010000");
-  expect(game).toHaveTextContent("Super Game (1.0.2)");
-  expect(game).toHaveTextContent("2 updates · 1 DLC");
+  // Its version, titledb's newer one, then what it holds, all in the game's cell.
+  expect(within(game).getAllByTitle(/titledb knows a newer update/)[0]).toHaveTextContent(
+    "Super Game (1.0.2, update 3 latest)2 updates · 1 DLC",
+  );
   expect(game).toHaveTextContent("1 older → discard");
   expect(within(game).getByText("Super Game")).toHaveClass("text-status-warn");
   expect(screen.getByTestId("update-update 2.nsp")).toBeInTheDocument();

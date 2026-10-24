@@ -66,6 +66,31 @@ function gameStatus(g: UpdateGame): { text: string; tone: string } {
   return { text: "no update", tone: tone || "text-muted-foreground" };
 }
 
+/** A game's name, its version and titledb's newest update when that is newer (titledb
+ * gives a release's update number, not the version shown to players), then what it holds:
+ * "80 DAYS (1.0.1, update 3 latest) 1 update". */
+function GameName({ game: g }: { game: UpdateGame }) {
+  const versions = [
+    ...(g.display_version ? [g.display_version] : []),
+    ...(g.newer && g.latest_release !== null ? [`update ${g.latest_release} latest`] : []),
+  ];
+  const holds = [
+    ...(g.updates ? [plural(g.updates, "update")] : []),
+    ...(g.dlc ? [`${formatCount(g.dlc)} DLC`] : []),
+  ];
+  return (
+    <>
+      <span className={cn("font-medium", gameTone(g))}>
+        {g.game}
+        {versions.length > 0 ? <span className="font-normal"> ({versions.join(", ")})</span> : null}
+      </span>
+      {holds.length > 0 ? (
+        <span className="ml-1.5 text-muted-foreground text-xs">{holds.join(" · ")}</span>
+      ) : null}
+    </>
+  );
+}
+
 const newerTitle = (g: UpdateGame) =>
   g.newer
     ? `titledb knows a newer update: update ${g.latest_release}${g.latest_date ? `, ${g.latest_date}` : ""}`
@@ -102,22 +127,7 @@ export function UpdatesTable({
     noun: "games",
     search: (g, needle) => g.game.toLocaleLowerCase().includes(needle),
     cell: (g, id) => {
-      if (id === "game")
-        return (
-          <span className={cn("font-medium", gameTone(g))}>
-            {g.game}
-            {g.display_version ? <span className="font-normal"> ({g.display_version})</span> : null}
-          </span>
-        );
-      if (id === "name")
-        return (
-          <span className="text-muted-foreground text-xs">
-            {[
-              ...(g.updates ? [plural(g.updates, "update")] : []),
-              ...(g.dlc ? [`${formatCount(g.dlc)} DLC`] : []),
-            ].join(" · ")}
-          </span>
-        );
+      if (id === "game") return <GameName game={g} />;
       if (id === "latest" && g.latest_release !== null)
         return (
           <span className={cn("tabular-nums", g.newer && "font-medium text-status-info")}>
