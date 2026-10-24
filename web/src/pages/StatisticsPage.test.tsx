@@ -322,3 +322,93 @@ test("a romset and its size open its default page, the discarded size its Discar
   expect(within(nes).getByTitle("The romset folder, as last scanned")).toHaveClass("text-center");
   expect(within(nes).getByTitle("In discarded/nes/")).toHaveClass("text-center");
 });
+
+test("titledb: one source for the region files, explained in DAT info, title IDs in the missing games", async () => {
+  const titledbDat = {
+    ...DAT,
+    source: "titledb",
+    header_name: "titledb US.en, titledb JP.ja",
+    version: "2026-10-24",
+  };
+  const stats: Statistics = {
+    ...STATS,
+    sources: [
+      ...STATS.sources,
+      { id: "titledb", label: "titledb (GitHub)", short_label: "titledb" },
+    ],
+    folders: [
+      {
+        ...STATS.folders[0],
+        label: "switch",
+        platform: "switch",
+        platform_short: "NSW",
+        coverage: { titledb: { covered: 2, total: 3, dat: titledbDat } },
+      },
+    ],
+    dat_info: [
+      {
+        id: "titledb",
+        label: "titledb (GitHub)",
+        dats: 2,
+        identification_only: false,
+        checksums: [],
+        categories: ["Games", "Demo"],
+        parent_clone: false,
+        bios: false,
+        serials: true,
+        years: true,
+        publishers: true,
+        title_ids: true,
+      },
+    ],
+  };
+  const missing: Missing = {
+    dat: titledbDat,
+    covered: 2,
+    total: 3,
+    rows: [
+      {
+        ...MISSING.rows[0],
+        key: "0100ABCD00010000",
+        name: "Missing Game",
+        versions: 1,
+        years: "2021-01-01",
+        serials: "0100ABCD00010000",
+        entries: ["Missing Game"],
+      },
+    ],
+  };
+  vi.stubGlobal("fetch", async (url: string) => {
+    const body = url.endsWith("/meta")
+      ? META
+      : url.endsWith("/statistics")
+        ? stats
+        : url.endsWith("/statistics/switch/titledb/missing")
+          ? missing
+          : null;
+    return new Response(JSON.stringify(body));
+  });
+  queryClient.clear();
+  render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>
+        <StatisticsPage />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+  const row = await screen.findByTestId("statistics-switch");
+  expect(within(row).getByTestId("coverage-switch-titledb")).toHaveTextContent("titledb66.6%");
+  const info = screen.getByTestId("dat-info");
+  expect(within(info).getByTestId("dat-info-titledb")).toHaveTextContent("none (title IDs)");
+  expect(
+    within(info).getByText(/the eShop's list, not a list of checked dumps/),
+  ).toBeInTheDocument();
+
+  await userEvent.click(within(row).getByTestId("coverage-switch-titledb"));
+  const dialog = await screen.findByTestId("missing-dialog");
+  expect(await within(dialog).findByTestId("missing-0100ABCD00010000")).toHaveTextContent(
+    "2021-01-01",
+  );
+  expect(within(dialog).getByRole("button", { name: /Title ID/ })).toBeInTheDocument();
+  expect(within(dialog).getByRole("button", { name: /Release/ })).toBeInTheDocument();
+});

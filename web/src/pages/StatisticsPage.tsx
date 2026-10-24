@@ -362,6 +362,8 @@ function MissingDialog({
 }) {
   const missing = useMissing(label, sourceId);
   const text = (value: string | null) => value ?? "";
+  // titledb gives release dates and title IDs where DATs give years and serials.
+  const titleIds = sourceId === TITLEDB;
   const columns: DataColumn<MissingGame>[] = [
     {
       id: "name",
@@ -370,7 +372,12 @@ function MissingDialog({
       sortValue: (g) => g.name.toLocaleLowerCase(),
       title: (g) => g.entries.join("\n"),
     },
-    { id: "years", label: "Year", render: (g) => text(g.years), sortValue: (g) => text(g.years) },
+    {
+      id: "years",
+      label: titleIds ? "Release" : "Year",
+      render: (g) => text(g.years),
+      sortValue: (g) => text(g.years),
+    },
     {
       id: "publishers",
       label: "Publisher",
@@ -394,7 +401,7 @@ function MissingDialog({
     },
     {
       id: "serials",
-      label: "Serial",
+      label: titleIds ? "Title ID" : "Serial",
       render: (g) => text(g.serials),
       sortValue: (g) => text(g.serials),
       title: (g) => g.serials ?? undefined,
@@ -444,7 +451,10 @@ function MissingDialog({
           rowTestId={(g) => `missing-${g.key}`}
           columns={columns}
           sizes={meta.ui.missing_columns}
-          defaultColumns={meta.ui.missing_columns_default.filter((id) => hasData(id))}
+          defaultColumns={(titleIds
+            ? [...meta.ui.missing_columns_default, "serials"]
+            : meta.ui.missing_columns_default
+          ).filter((id) => hasData(id))}
           defaultSort={{ id: "name", order: "asc" }}
           search={(g, needle) =>
             g.name.toLocaleLowerCase().includes(needle) ||
@@ -460,6 +470,9 @@ function MissingDialog({
     </DialogContent>
   );
 }
+
+// The Statistics source standing for every titledb region file (Switch).
+const TITLEDB = "titledb";
 
 // The missing games' columns a DAT may have no data for (No-Intro and Redump give no years).
 const OPTIONAL = ["years", "publishers", "regions", "languages", "serials", "notes"] as const;
@@ -502,6 +515,14 @@ function DatInfoSection({ stats }: { stats: Statistics }) {
             game, or when the DAT lists the same name. A source missing from a set: the platform has
             no DAT from it.
           </p>
+          {rows.some((d) => d.title_ids) ? (
+            <p data-testid="dat-info-title-ids">
+              titledb (Switch) is the eShop's list, not a list of checked dumps: its region files
+              are joined by title ID, and each base title ID that is not a demo is a game (DLC and
+              updates have IDs of their own and never count). A game is found when a file of the set
+              has its title ID, read inside the file; the file's content is not compared.
+            </p>
+          ) : null}
         </div>
         <div className="overflow-x-auto rounded-md border border-border">
           <table className="w-full text-left text-sm" aria-label="DAT sources">
@@ -527,7 +548,9 @@ function DatInfoSection({ stats }: { stats: Statistics }) {
                 >
                   <td className="px-3 py-1.5 font-medium">{d.label}</td>
                   <td className="px-3 py-1.5 tabular-nums">{formatCount(d.dats)}</td>
-                  <td className="px-3 py-1.5">{d.checksums.join(", ")}</td>
+                  <td className="px-3 py-1.5">
+                    {d.title_ids ? "none (title IDs)" : d.checksums.join(", ")}
+                  </td>
                   <td className="px-3 py-1.5">{d.categories.join(", ") || "none"}</td>
                   <td className="px-3 py-1.5">{yesNo(d.parent_clone)}</td>
                   <td className="px-3 py-1.5">{yesNo(d.bios)}</td>

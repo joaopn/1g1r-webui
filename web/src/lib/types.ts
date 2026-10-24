@@ -561,6 +561,8 @@ export type DatInfo = {
   serials: boolean;
   years: boolean;
   publishers: boolean;
+  /** titledb: games are title IDs, found by the ID read inside a file. */
+  title_ids?: boolean;
 };
 
 export type Statistics = {
