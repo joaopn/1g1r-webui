@@ -92,7 +92,7 @@ def switch(make_settings, roms_root):
 
     def fetch(url, timeout=None):
         fetched.append(url)
-        for name, data in (("languages", LANGUAGES), ("US.en", US), ("JP.en", JP)):
+        for name, data in (("languages", LANGUAGES), ("US.en", US), ("JP.ja", JP)):
             if url.endswith(f"/{name}.json"):
                 return body(data)
         raise OSError(f"no such file: {url}")
@@ -139,13 +139,13 @@ def test_region_files_name_title_ids_in_their_order(switch):
         "US.en",
         "US.es",
     ]
-    for file in ("US.en", "JP.en"):
+    for file in ("US.en", "JP.ja"):
         added = client.post(f"/api/dats/switch/titledb?file={file}")
         assert added.status_code == HTTPStatus.OK
     row = switch_row(client)
     assert row["titledb"] is True
-    assert [e["id"] for e in row["order"]] == ["titledb:US.en", "titledb:JP.en", "hasheous"]
-    assert [e["label"] for e in row["order"]][:2] == ["titledb US.en", "titledb JP.en"]
+    assert [e["id"] for e in row["order"]] == ["titledb:US.en", "titledb:JP.ja", "hasheous"]
+    assert [e["label"] for e in row["order"]][:2] == ["titledb US.en", "titledb JP.ja"]
     # Nothing is fetched twice for the list, and only Switch takes titledb.
     assert sum(url.endswith("/languages.json") for url in fetched) == 1
     refused = client.post("/api/dats/nes/titledb?file=US.en")
@@ -170,14 +170,14 @@ def test_region_files_name_title_ids_in_their_order(switch):
     assert found["pack.nsp"]["game_name"].startswith("Super Game: Pack [")
     # Listed only in the second file; listed nowhere: the file name, no details.
     assert found["jp.nsp"]["game"] == "Japan Game"
-    assert found["jp.nsp"]["dat"]["label"] == "titledb JP.en"
+    assert found["jp.nsp"]["dat"]["label"] == "titledb JP.ja"
     unlisted = found["Unlisted Game.nsp"]
     assert unlisted["game"] == "Unlisted Game" and unlisted["dat"] is None
     assert unlisted["publisher"] is None
     assert card(client)["needs"] is None
 
     # JP first: its names win, and the set asks for a scan.
-    order = ["titledb:JP.en", "titledb:US.en", "hasheous"]
+    order = ["titledb:JP.ja", "titledb:US.en", "hasheous"]
     assert client.put("/api/dats/switch/order", json={"order": order, "off": []}).status_code == (
         HTTPStatus.OK
     )
@@ -185,7 +185,7 @@ def test_region_files_name_title_ids_in_their_order(switch):
     scan(client)
     assert versions(client)["base.nsp"]["game"] == "Super Game JP"
     # Switched off: the next file names it.
-    off = {"order": order, "off": ["titledb:JP.en"]}
+    off = {"order": order, "off": ["titledb:JP.ja"]}
     client.put("/api/dats/switch/order", json=off)
     scan(client)
     assert versions(client)["base.nsp"]["game"] == "Super Game: (Deluxe)"

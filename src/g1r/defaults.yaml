@@ -755,7 +755,7 @@ titledb:
   entry_prefix: "titledb:"
   file_pattern: '^[A-Z]{2}\.[a-z]{2}$'
   # Offered as buttons; the others are picked from a list.
-  featured: [US.en, JP.en]
+  featured: [US.en, JP.ja]
   timeout_seconds: 600
   # A region file is about 90 MB.
   max_download_bytes: 268435456

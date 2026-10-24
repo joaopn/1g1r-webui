@@ -102,14 +102,14 @@ test("titledb: a button per featured region file, any other picked from the list
   const box = await screen.findByTestId("titledb-switch");
   // Only the title-ID platform offers it.
   expect(screen.queryByTestId("titledb-nes")).toBeNull();
-  await userEvent.click(within(box).getByRole("button", { name: /JP\.en/ }));
-  expect(calls.some((c) => c.url.endsWith("/dats/switch/titledb?file=JP.en"))).toBe(true);
+  await userEvent.click(within(box).getByRole("button", { name: /JP\.ja/ }));
+  expect(calls.some((c) => c.url.endsWith("/dats/switch/titledb?file=JP.ja"))).toBe(true);
 
   // The list is read from titledb only once it is opened.
   expect(calls.some((c) => c.url.endsWith("/titledb/files"))).toBe(false);
   const select = within(box).getByRole("combobox");
   await userEvent.click(select);
-  await within(box).findByRole("option", { name: "JP.ja" });
+  await within(box).findByRole("option", { name: "JP.en" });
   expect(within(box).queryByRole("option", { name: "US.en" })).toBeNull();
   const download = within(box).getByRole("button", { name: "Download the chosen file" });
   expect(download).toBeDisabled();

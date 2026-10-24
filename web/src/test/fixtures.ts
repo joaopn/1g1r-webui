@@ -146,7 +146,7 @@ export const META: Meta = {
     short_label: "titledb",
     website: "https://github.com/blawar/titledb",
     entry_prefix: "titledb:",
-    featured: ["US.en", "JP.en"],
+    featured: ["US.en", "JP.ja"],
   },
   ranking: {
     criteria: ["prerelease", "region", "language", "revision", "original"],
