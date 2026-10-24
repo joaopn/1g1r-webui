@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
   ChartColumn,
+  ChevronLeft,
   ChevronRight,
   Gamepad2,
   House,
@@ -22,7 +23,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/co
 import { foldersByName } from "@/lib/platforms";
 import { useFolders, useMeta } from "@/lib/queries";
 import { folderState, openingSection, sectionPath } from "@/lib/sections";
-import { isNumber, isStringArray, readJson, removeKey, writeJson } from "@/lib/storage";
+import { isBoolean, isNumber, isStringArray, readJson, removeKey, writeJson } from "@/lib/storage";
 import type { FolderCard, Meta } from "@/lib/types";
 import { clampRem, useDragWidth } from "@/lib/useDragWidth";
 import { cn } from "@/lib/utils";
@@ -30,6 +31,7 @@ import { cn } from "@/lib/utils";
 /** Groups somebody opened by hand stay open across visits; every group starts closed. */
 const OPEN_GROUPS_KEY = "g1r.sidebar.groups.v1";
 const WIDTH_KEY = "g1r.sidebar.width.v1";
+const COLLAPSED_KEY = "g1r.sidebar.collapsed.v1";
 
 /** `prefix`: the paths the entry stands for (a set's every tab), when wider than `to`. */
 type NavChild = { to: string; label: ReactNode; title: string; prefix?: string };
@@ -220,12 +222,41 @@ function Logo() {
   );
 }
 
+/** The round button sitting on the sidebar's edge line, near its top. */
+function CollapseButton({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
+  const label = collapsed ? "Expand the sidebar" : "Collapse the sidebar";
+  const Icon = collapsed ? ChevronRight : ChevronLeft;
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      aria-expanded={!collapsed}
+      title={label}
+      data-testid="sidebar-collapse"
+      onClick={onToggle}
+      className={cn(
+        "-right-3 absolute top-5 z-20 flex size-6 items-center justify-center rounded-full",
+        "border border-border bg-background text-muted-foreground shadow-sm transition-colors",
+        "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+      )}
+    >
+      <Icon className="size-3.5" aria-hidden="true" />
+    </button>
+  );
+}
+
 /** The frame every page renders in: a resizable sidebar on desktop, a sheet on narrow screens. */
 export function AppShell() {
   const meta = useMeta();
   const bounds = meta.data?.ui.sidebar;
   const [mobileOpen, setMobileOpen] = useState(false);
   const [adding, setAdding] = useState<Adding>(null);
+  const [collapsed, setCollapsed] = useState(() => readJson(COLLAPSED_KEY, false, isBoolean));
+  const toggleCollapsed = () => {
+    setCollapsed(!collapsed);
+    writeJson(COLLAPSED_KEY, !collapsed);
+  };
   const [stored, setStored] = useState<number | null>(() => {
     const value = readJson<number | null>(WIDTH_KEY, null, (v): v is number => isNumber(v));
     return value;
@@ -255,11 +286,24 @@ export function AppShell() {
 
   return (
     <div className="flex min-h-screen bg-background">
+      {collapsed ? (
+        <aside
+          data-testid="sidebar-collapsed"
+          aria-label="Sidebar (collapsed)"
+          className="sticky top-0 z-30 hidden h-screen w-0 shrink-0 border-border border-r md:block"
+        >
+          <CollapseButton collapsed onToggle={toggleCollapsed} />
+        </aside>
+      ) : null}
       <aside
         data-testid="sidebar"
         style={width === null ? undefined : { width: `${width}rem` }}
-        className="sticky top-0 hidden h-screen shrink-0 flex-col border-border border-r bg-sidebar px-3 py-4 md:flex"
+        className={cn(
+          "sticky top-0 z-30 hidden h-screen shrink-0 flex-col border-border border-r bg-sidebar px-3 py-4",
+          !collapsed && "md:flex",
+        )}
       >
+        <CollapseButton collapsed={false} onToggle={toggleCollapsed} />
         <div className="flex items-center gap-2 pb-4 pl-2.5">
           <Logo />
           <span className="min-w-0 flex-1 truncate font-semibold text-sidebar-foreground tracking-tight">

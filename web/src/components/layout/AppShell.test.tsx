@@ -176,6 +176,17 @@ test("the sidebar is resized with the keyboard and remembers its width", async (
   );
 });
 
+test("the round button on the sidebar's edge collapses it and remembers that", async () => {
+  renderShell();
+  await userEvent.click(await screen.findByRole("button", { name: "Collapse the sidebar" }));
+  expect(screen.getByTestId("sidebar")).not.toHaveClass("md:flex");
+  expect(window.localStorage.getItem("g1r.sidebar.collapsed.v1")).toBe("true");
+  await userEvent.click(screen.getByRole("button", { name: "Expand the sidebar" }));
+  expect(screen.getByTestId("sidebar")).toHaveClass("md:flex");
+  expect(screen.queryByTestId("sidebar-collapsed")).toBeNull();
+  expect(window.localStorage.getItem("g1r.sidebar.collapsed.v1")).toBe("false");
+});
+
 test("folders are listed by platform name, then label", () => {
   const folder = FOLDERS[0];
   const folders = [

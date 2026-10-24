@@ -41,6 +41,8 @@ export function removeKey(key: string): void {
 export const isStringArray = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every((item) => typeof item === "string");
 
+export const isBoolean = (value: unknown): value is boolean => typeof value === "boolean";
+
 export const isNumber = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value);
 
