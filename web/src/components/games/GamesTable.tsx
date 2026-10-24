@@ -52,6 +52,7 @@ import {
   filterGames,
   filterGamesExceptView,
   flagsOf,
+  flagTone,
   type GameFilter,
   loadColumns,
   loadWidths,
@@ -532,7 +533,7 @@ function versionCell(id: ColumnId, version: Version | null, ctx: CellContext) {
       return (
         <Cell key={id} title={flagsOf(version).join(", ")}>
           {flagsOf(version).map((flag) => (
-            <Badge key={flag} variant="outline" className="mr-1 font-normal">
+            <Badge key={flag} variant="outline" className={cn("mr-1 font-normal", flagTone(flag))}>
               {flag}
             </Badge>
           ))}

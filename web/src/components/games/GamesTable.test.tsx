@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import type { Game } from "@/lib/types";
 import { GAMES, META } from "@/test/fixtures";
-import { COLUMNS_KEY, methodLabel } from "./columns";
+import { COLUMNS_KEY, flagTone, methodLabel } from "./columns";
 import { GamesTable } from "./GamesTable";
 
 function renderTable(onKeep = vi.fn(), onLeave = vi.fn()) {
@@ -221,6 +221,12 @@ test("Matched by names the DAT that identified the version", () => {
       "Nintendo - Nintendo Entertainment System (Headered) (20261018)",
   });
   expect(methodLabel({ ...version, method: "hasheous", dat: null }).short).toBe("Hasheous");
+});
+
+test("content checked against titledb is coloured: complete good, incomplete a warning", () => {
+  expect(flagTone("content complete")).toContain("text-status-good");
+  expect(flagTone("content incomplete: 1 missing")).toContain("text-status-warn");
+  expect(flagTone("encrypted")).toBe("");
 });
 
 test("a file waiting for its conversion is its own row, linking to the Conversion tab", async () => {

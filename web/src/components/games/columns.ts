@@ -264,6 +264,13 @@ export function flagsOf(version: Version): string[] {
   ];
 }
 
+/** A flag's colour: a title-ID file's content archives checked against titledb's list. */
+export function flagTone(flag: string): string {
+  if (flag.startsWith("content incomplete")) return "border-status-warn text-status-warn";
+  if (flag === "content complete") return "border-status-good text-status-good";
+  return "";
+}
+
 type SortValue = string | number;
 
 /** What a game sorts by in a column. Version columns use the representative version. */
