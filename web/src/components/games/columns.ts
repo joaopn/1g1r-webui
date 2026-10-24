@@ -84,7 +84,7 @@ export const METHOD_LABELS: Record<string, { short: string; long: string }> = {
   },
   "title-id": {
     short: "title ID",
-    long: "identified by its title ID (from its ticket or its file name), without a DAT",
+    long: "identified by its title ID, read inside the file (content metadata or ticket)",
   },
   duplicate: {
     short: "copy",
@@ -167,11 +167,15 @@ export function methodLabel(version: Version): { short: string; long: string } {
   const known = METHOD_LABELS[version.method] ?? { short: version.method, long: version.method };
   const dat = version.dat;
   if (!dat) return known;
-  const which = `${dat.source_label}: ${dat.header_name}${dat.version ? ` (${dat.version})` : ""}`;
-  return {
-    short: version.method.startsWith("dat-") ? known.short.replace(/^DAT/, dat.label) : known.short,
-    long: `${known.long} · ${which}`,
-  };
+  const source = dat.source_label === dat.header_name ? "" : `${dat.source_label}: `;
+  const which = `${source}${dat.header_name}${dat.version ? ` (${dat.version})` : ""}`;
+  // A title ID is read from the file; the titledb file that named it follows.
+  const short = version.method.startsWith("dat-")
+    ? known.short.replace(/^DAT/, dat.label)
+    : version.method === "title-id"
+      ? `${known.short} · ${dat.label}`
+      : known.short;
+  return { short, long: `${known.long} · ${which}` };
 }
 
 /** File names compare without their extension and with numbers as numbers, so a game's

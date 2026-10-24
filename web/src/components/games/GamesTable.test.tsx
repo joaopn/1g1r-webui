@@ -221,6 +221,17 @@ test("Matched by names the DAT that identified the version", () => {
       "Nintendo - Nintendo Entertainment System (Headered) (20261018)",
   });
   expect(methodLabel({ ...version, method: "hasheous", dat: null }).short).toBe("Hasheous");
+  // A title ID named by a titledb file: both.
+  const titledb = {
+    source: "titledb:US.en",
+    label: "titledb US.en",
+    source_label: "titledb US.en",
+    version: "2026-10-24",
+    header_name: "titledb US.en",
+  };
+  const named = methodLabel({ ...version, method: "title-id", dat: titledb });
+  expect(named.short).toBe("title ID · titledb US.en");
+  expect(named.long).toMatch(/ · titledb US\.en \(2026-10-24\)$/);
 });
 
 test("content checked against titledb is coloured: complete good, incomplete a warning", () => {

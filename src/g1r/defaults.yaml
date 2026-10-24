@@ -68,10 +68,11 @@ ui:
     publisher: {rem: 9, min: 5, max: 24}
     release: {rem: 6.5, min: 5, max: 10}
     revision: {rem: 5, min: 4, max: 10}
-    flags: {rem: 7, min: 5, max: 14}
+    # A content note ("content incomplete: 1 missing") is cut short; its tooltip has it whole.
+    flags: {rem: 10, min: 5, max: 24}
     size: {rem: 5.5, min: 4.5, max: 10}
     match: {rem: 6.5, min: 3.5, max: 12}
-    method: {rem: 7, min: 4, max: 14}
+    method: {rem: 9, min: 4, max: 16}
     proposed: {rem: 7, min: 5, max: 24}
   # Shown on a first visit; each browser remembers its own choice afterwards.
   game_columns_default: [keep, game, status, file, region, size, match, proposed]
