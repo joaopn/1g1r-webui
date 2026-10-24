@@ -54,8 +54,8 @@ export function FolderConversionPage() {
         <span className="text-muted-foreground">
           · every other file is converted to it, or discarded · set for every {platformName} folder
           in{" "}
-          <Link to="/settings/conversion-targets" className="underline underline-offset-2">
-            Settings → Conversion targets
+          <Link to="/settings/romsets" className="underline underline-offset-2">
+            Settings → Romset management
           </Link>
         </span>
       </ScanPanel>

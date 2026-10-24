@@ -390,8 +390,8 @@ export function HomePage() {
           {hidden > 0 ? (
             <p className="text-muted-foreground text-sm">
               {formatCount(hidden)} hidden {hidden === 1 ? "set is" : "sets are"} left out (
-              <Link to="/settings/folders" className="underline underline-offset-2">
-                Settings → Folders
+              <Link to="/settings/romsets" className="underline underline-offset-2">
+                Settings → Romset management
               </Link>
               ).
             </p>

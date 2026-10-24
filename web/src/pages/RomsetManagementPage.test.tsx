@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { queryClient } from "@/lib/queries";
 import { META } from "@/test/fixtures";
-import { SetsSettingsPage } from "./SetsSettingsPage";
+import { RomsetManagementPage } from "./RomsetManagementPage";
 
 const SET = {
   label: "nes",
@@ -43,14 +43,16 @@ function renderPage() {
               running: false,
             },
           ]
-        : {};
+        : url.endsWith("/settings")
+          ? { targets: { nes: "zip", gb: "zip" } }
+          : {};
     return new Response(JSON.stringify(body), { status: 200 });
   });
   queryClient.clear();
   render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter>
-        <SetsSettingsPage />
+        <RomsetManagementPage />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -73,4 +75,13 @@ test("every set is listed, hidden ones too, and can be hidden, shown or removed"
   expect(calls.some((c) => c.url.endsWith("/folders/nes") && c.init?.method === "DELETE")).toBe(
     true,
   );
+});
+
+test("each set picks its platform's target format", async () => {
+  const calls = renderPage();
+  const select = await screen.findByRole("combobox", { name: "Target format for nes" });
+  expect(screen.getByText("Romset management")).toBeInTheDocument();
+  await userEvent.selectOptions(select, "plain");
+  const put = calls.find((c) => c.url.endsWith("/settings/targets"));
+  expect(JSON.parse(String(put?.init?.body))).toEqual({ targets: { nes: "plain" } });
 });

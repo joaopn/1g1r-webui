@@ -18,7 +18,6 @@ import {
 } from "@/components/ui/dialog";
 import { ApiError, api, json, upload } from "@/lib/api";
 import { formatCount, formatWhen } from "@/lib/format";
-import { platformsByName } from "@/lib/platforms";
 import { keys, queryClient, useDats, useMeta, useSettingsData } from "@/lib/queries";
 import type { DatRow, Meta } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -45,68 +44,6 @@ export function Page({
       </header>
       {children}
     </div>
-  );
-}
-
-export function PlatformsSettingsPage() {
-  const meta = useMeta();
-  const data = useSettingsData();
-  const saveTarget = useMutation({
-    mutationFn: (targets: Record<string, string>) =>
-      api("/settings/targets", json("PUT", { targets })),
-    onSuccess: () => {
-      toast.success("Target format saved");
-      queryClient.invalidateQueries({ queryKey: keys.settings });
-      queryClient.invalidateQueries({ queryKey: keys.folders });
-    },
-    onError: (err) => toast.error(errorText(err)),
-  });
-  if (!meta.data || !data.data) return <p className="text-muted-foreground">Loading…</p>;
-  const targets = data.data.targets;
-  return (
-    <Page
-      title="Conversion targets"
-      intro="The target format applies to every folder of that platform."
-    >
-      <div className="overflow-x-auto rounded-lg border border-border bg-card">
-        <table className="w-full text-sm">
-          <thead className="border-border border-b text-left text-muted-foreground text-xs uppercase tracking-wide">
-            <tr>
-              <th className="px-3 py-2">Platform</th>
-              <th className="px-3 py-2">ROM extensions</th>
-              <th className="px-3 py-2">Target format</th>
-            </tr>
-          </thead>
-          <tbody>
-            {platformsByName(meta.data.platforms).map(([id, p]) => (
-              <tr key={id} className="border-border border-b last:border-b-0 hover:bg-accent/30">
-                <td className="px-3 py-2">
-                  <span className="flex items-center gap-2">
-                    <PlatformIcon platform={p} widthRem={meta.data.ui.platform_icon_width_rem} />{" "}
-                    {p.name}
-                  </span>
-                </td>
-                <td className="px-3 py-2 text-muted-foreground">{p.rom_extensions.join(", ")}</td>
-                <td className="px-3 py-2">
-                  <select
-                    aria-label={`Target format for ${p.name}`}
-                    className="h-8 rounded-md border border-input bg-background px-2 text-sm"
-                    value={targets[id]}
-                    onChange={(event) => saveTarget.mutate({ [id]: event.target.value })}
-                  >
-                    {p.targets.map((t) => (
-                      <option key={t} value={t} title={meta.data?.targets[t]?.description}>
-                        {meta.data?.targets[t]?.label ?? t}
-                      </option>
-                    ))}
-                  </select>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </Page>
   );
 }
 

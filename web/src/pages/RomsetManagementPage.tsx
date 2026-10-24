@@ -15,17 +15,22 @@ import {
 import { ApiError, api, json } from "@/lib/api";
 import { formatBytes, formatFiles } from "@/lib/format";
 import { foldersByName } from "@/lib/platforms";
-import { keys, queryClient, useFolders, useMeta } from "@/lib/queries";
+import { keys, queryClient, useFolders, useMeta, useSettingsData } from "@/lib/queries";
 import { folderState } from "@/lib/sections";
 import type { FolderCard } from "@/lib/types";
 import { Page } from "@/pages/SettingsPages";
 
 const errorText = (err: unknown) => (err instanceof ApiError ? err.message : String(err));
 
-/** Every set, hidden ones included: show or hide each, or remove it from the library. */
-export function SetsSettingsPage() {
+/**
+ * Every set, hidden ones included: its platform's target format, show or hide it, or remove it
+ * from the library. The target format is per platform, so changing it on one set changes it on
+ * every set of that platform.
+ */
+export function RomsetManagementPage() {
   const meta = useMeta();
   const folders = useFolders();
+  const data = useSettingsData();
   const [removing, setRemoving] = useState<FolderCard | null>(null);
   const refresh = () => queryClient.invalidateQueries({ queryKey: keys.folders });
   const hide = useMutation({
@@ -43,27 +48,40 @@ export function SetsSettingsPage() {
     },
     onError: (err) => toast.error(errorText(err)),
   });
-  if (!meta.data || !folders.data) return <p className="text-muted-foreground">Loading…</p>;
+  const saveTarget = useMutation({
+    mutationFn: (targets: Record<string, string>) =>
+      api("/settings/targets", json("PUT", { targets })),
+    onSuccess: () => {
+      toast.success("Target format saved");
+      queryClient.invalidateQueries({ queryKey: keys.settings });
+      refresh();
+    },
+    onError: (err) => toast.error(errorText(err)),
+  });
+  if (!meta.data || !folders.data || !data.data)
+    return <p className="text-muted-foreground">Loading…</p>;
   const ui = meta.data.ui;
   const sets = foldersByName(folders.data, meta.data.platforms);
+  const targets = data.data.targets;
 
   return (
     <Page
-      title="Folders"
-      intro="Each platform folder you added (a set), with its label. Hidden ones leave the sidebar and Home but stay added: their folder cannot be added again until removed. Removing one touches no file."
+      title="Romset management"
+      intro="Each platform folder you added (a set), with its label. The target format applies to every set of that platform. Hidden sets leave the sidebar and Home but stay added: their folder cannot be added again until removed. Removing one touches no file."
     >
       {sets.length === 0 ? (
         <p className="text-muted-foreground text-sm">No sets yet.</p>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-border bg-card">
           <table className="w-full text-sm">
-            <thead className="text-left text-muted-foreground text-xs uppercase">
+            <thead className="whitespace-nowrap text-left text-muted-foreground text-xs uppercase">
               <tr>
-                <th className="px-4 py-2">Set</th>
-                <th className="px-4 py-2">Platform</th>
-                <th className="px-4 py-2">Folder</th>
-                <th className="px-4 py-2">In discarded/</th>
-                <th className="px-4 py-2 text-right">Actions</th>
+                <th className="px-3 py-2">Set</th>
+                <th className="px-3 py-2">Platform</th>
+                <th className="px-3 py-2">Folder</th>
+                <th className="px-3 py-2">Target format</th>
+                <th className="px-3 py-2">In discarded/</th>
+                <th className="px-3 py-2 text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -76,7 +94,7 @@ export function SetsSettingsPage() {
                       set.hidden ? "border-border border-t opacity-60" : "border-border border-t"
                     }
                   >
-                    <td className="px-4 py-2 font-medium">
+                    <td className="px-3 py-2 font-medium">
                       {set.label}
                       {set.hidden ? (
                         <span className="ml-2 font-normal text-muted-foreground text-xs">
@@ -84,21 +102,46 @@ export function SetsSettingsPage() {
                         </span>
                       ) : null}
                     </td>
-                    <td className="px-4 py-2">
+                    <td className="px-3 py-2">
                       <span className="flex items-center gap-2">
                         <PlatformIcon platform={platform} state={folderState(set)} />
                         {platform?.name ?? set.platform}
                       </span>
+                      <span
+                        className="mt-0.5 block text-muted-foreground text-xs"
+                        title="ROM extensions"
+                      >
+                        {platform?.rom_extensions.join(", ")}
+                      </span>
                     </td>
-                    <td className="px-4 py-2">
+                    <td className="px-3 py-2">
                       <code className="text-xs">{set.location ?? set.path}</code>
                     </td>
-                    <td className="px-4 py-2 text-muted-foreground">
+                    <td className="px-3 py-2">
+                      {platform ? (
+                        <select
+                          aria-label={`Target format for ${set.label}`}
+                          className="h-8 rounded-md border border-input bg-background px-2 text-sm"
+                          value={targets[set.platform]}
+                          disabled={saveTarget.isPending}
+                          onChange={(event) =>
+                            saveTarget.mutate({ [set.platform]: event.target.value })
+                          }
+                        >
+                          {platform.targets.map((t) => (
+                            <option key={t} value={t} title={meta.data?.targets[t]?.description}>
+                              {meta.data?.targets[t]?.label ?? t}
+                            </option>
+                          ))}
+                        </select>
+                      ) : null}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">
                       {set.discarded.files > 0
                         ? `${formatFiles(set.discarded.files)}, ${formatBytes(set.discarded.bytes, ui.byte_unit_base, ui.byte_units)}`
                         : "nothing"}
                     </td>
-                    <td className="px-4 py-2">
+                    <td className="px-3 py-2">
                       <div className="flex justify-end gap-2">
                         <Button
                           variant="outline"
