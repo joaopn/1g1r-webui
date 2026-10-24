@@ -839,7 +839,7 @@ class Scanner:
                 )
 
     def _title_ids(self, root: Path, files, found: "Found", progress) -> None:
-        """Switch: every file with a title ID (ticket or name) is identified by it; the
+        """Switch: every file with a title ID (read inside it) is identified by it; the
         identity's name carries the ID, which matching groups by."""
         config = self.settings.title_ids
         if config is None:

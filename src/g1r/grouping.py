@@ -46,8 +46,10 @@ class Version:
     # A clone in the DAT's parent/clone data; a BIOS set (arcade).
     clone: bool = False
     bios: bool = False
-    # Title-ID platforms (Switch): titles.BASE, titles.UPDATE or titles.DLC.
+    # Title-ID platforms (Switch): titles.BASE, titles.UPDATE or titles.DLC, and the version
+    # its content metadata gives (None: not read).
     role: str = ""
+    title_version: int | None = None
     # Its DAT lists fewer ROMs for this game than another DAT of the platform does (one disk
     # of a multi-disk game): never kept over a complete version.
     incomplete: bool = False
@@ -268,7 +270,9 @@ def build_title_groups(settings: Settings, identities: list[tuple[str, str, str]
             names[key] = title.name
         group = groups.setdefault(key, Group(key=key, name="", source=SOURCE_TITLE_ID))
         parsed = parse_name(title.name, settings.names)
-        group.versions.append(Version(rel_path, game, method, parsed, game, role=role))
+        group.versions.append(
+            Version(rel_path, game, method, parsed, game, role=role, title_version=title.version)
+        )
     for key, group in groups.items():
         group.name = names[key]
         group.versions.sort(key=lambda v: (v.role != titles.BASE, v.game_name))

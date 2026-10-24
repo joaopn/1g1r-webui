@@ -891,8 +891,10 @@ byte_orders:
 
 # Nintendo Switch title IDs (platforms.profiles.<id>.title_ids). A base game's ID has the
 # low_hex bits zero; its update adds update_low_hex; its DLC sit dlc_step_hex above it. An
-# NSP/NSZ (PFS0) is read for its ticket ("<rights ID>.tik", the title ID first); otherwise
-# the file name's "[0100...]" tag says it. The name is the file name up to its first tag.
+# NSP/NSZ (PFS0) is read for its unencrypted content metadata ("<id>.cnmt.xml": Id and
+# Version), else its ticket ("<rights ID>.tik", the title ID first, no version). The file
+# name is never read for either; the name shown is the file name up to its first tag. The
+# patterns read back the identity names the scan stores ("<name> [<ID>][v<version>]").
 title_ids:
   digits: 16
   radix: 16
@@ -908,6 +910,8 @@ title_ids:
   pfs0_entry: "<QQII"
   max_entries: 4096
   ticket_suffix: .tik
+  cnmt_xml_suffix: .cnmt.xml
+  max_cnmt_xml_bytes: 1048576
   pfs0_extensions: [nsp, nsz]
 
 # Card image formats whose header the scan reads (platforms.profiles.<id>.card_image).

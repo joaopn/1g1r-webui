@@ -21,6 +21,7 @@ TITLES = {
     journal.SCOPE_UNMATCHED: "Unmatched files",
     journal.SCOPE_EMPTY: "Empty discarded/",
     journal.SCOPE_SET_ASIDE: "Moved to discarded/",
+    journal.SCOPE_UPDATES: "Older updates",
     journal.RESTORE: "Restore",
 }
 
@@ -30,7 +31,12 @@ def _run_kind(row: sqlite3.Row) -> str:
         return journal.RESTORE
     if row["scope"] == journal.CONVERT:
         return CONVERSION
-    if row["scope"] in (journal.SCOPE_UNMATCHED, journal.SCOPE_EMPTY, journal.SCOPE_SET_ASIDE):
+    if row["scope"] in (
+        journal.SCOPE_UNMATCHED,
+        journal.SCOPE_EMPTY,
+        journal.SCOPE_SET_ASIDE,
+        journal.SCOPE_UPDATES,
+    ):
         return row["scope"]
     return APPLY_1G1R
 

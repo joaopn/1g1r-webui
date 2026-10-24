@@ -575,6 +575,8 @@ class TitleIdConfig(_Strict):
     pfs0_entry: str
     max_entries: int = Field(gt=0)
     ticket_suffix: str
+    cnmt_xml_suffix: str
+    max_cnmt_xml_bytes: int = Field(gt=0)
     pfs0_extensions: list[str]
 
 

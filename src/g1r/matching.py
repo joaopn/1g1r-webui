@@ -39,9 +39,9 @@ FILTERS = {
 REASON_DISCARDED = journal.REASON_1G1R
 # Identical copies of the version kept go here instead of 1g1r/.
 REASON_DUPLICATES = journal.REASON_DUPLICATES
-# A title-ID game's updates (Switch: game + DLC is what 1G1R keeps).
+# A title-ID game's updates that a newer one replaces (the Updates tab, never 1G1R).
 REASON_UPDATES = journal.REASON_UPDATES
-# Title-ID versions that are not ranked against the base game.
+# Title-ID files that are not ranked against the base game: 1G1R always keeps them.
 EXTRA_ROLES = (titles.UPDATE, titles.DLC)
 # discarded/ subfolders whose files stay versions in the table.
 VERSION_REASONS = (REASON_DISCARDED, REASON_DUPLICATES, REASON_UPDATES)
@@ -246,8 +246,9 @@ def game_rows(
     result = []
     for group in groups:
         # Ranking and picks see only the versions still in the folder, and (title IDs) only
-        # the base game: its DLC are kept and its updates proposed, whatever is kept.
-        extras = {v.rel_path: v.role for v in group.versions if v.role in EXTRA_ROLES}
+        # the base game: its updates and DLC are kept, whatever is kept (the Updates tab
+        # handles older updates).
+        extras = {v.rel_path for v in group.versions if v.role in EXTRA_ROLES}
         present = Group(
             group.key,
             group.name,
@@ -267,14 +268,7 @@ def game_rows(
                 set(),
             )
         if extras and status == STATUS_SINGLE:
-            # One base game: what is left to say depends on its updates.
-            updates = [r for r, role in extras.items() if role == titles.UPDATE]
-            if any(r not in gone for r in updates):
-                status, reason = STATUS_DECIDED, "one base game: its DLC are kept, updates proposed"
-            elif updates:
-                status, reason = STATUS_APPLIED, "its updates are in discarded/"
-            else:
-                reason = "its DLC are kept"
+            reason = "its updates and DLC are kept"
         if group.versions and all(v.bios for v in group.versions):
             # Every arcade game needs its BIOS set: never proposed for discarding.
             status, reason, winner, candidates = (
@@ -285,7 +279,9 @@ def game_rows(
             )
         if len(ranked.versions) == 1 and len(present.versions) > 1 and status == STATUS_SINGLE:
             status, reason = STATUS_DECIDED, "identical copies of one version"
-        if status == STATUS_SINGLE and any(v.rel_path in gone for v in group.versions):
+        if status == STATUS_SINGLE and any(
+            v.rel_path in gone and v.rel_path not in extras for v in group.versions
+        ):
             status, reason = STATUS_APPLIED, "the other versions are in discarded/"
         set_of = {v.rel_path: c for c in copies for v in c}
         rows = []
@@ -293,16 +289,13 @@ def game_rows(
             keep = winner is not None and version.rel_path == winner.rel_path
             operation = None
             discard_reason = REASON_DISCARDED
-            role = extras.get(version.rel_path)
-            if role is not None:
-                keep = role == titles.DLC
-                if role == titles.UPDATE and version.rel_path not in gone and status != STATUS_LEFT:
-                    discard_reason = REASON_UPDATES
-                    operation = discard_path(settings, label, version.rel_path, discard_reason)
+            extra = version.rel_path in extras
+            if extra:
+                keep = version.rel_path not in gone
             mine = set_of.get(version.rel_path, [])
             twin_of_kept = winner is not None and winner in mine
             stands_in = bool(mine) and mine[0] is version
-            if role is None and version in present.versions and not keep and status != STATUS_LEFT:
+            if not extra and version in present.versions and not keep and status != STATUS_LEFT:
                 if twin_of_kept:
                     discard_reason = REASON_DUPLICATES
                     operation = discard_path(settings, label, version.rel_path, discard_reason)
@@ -391,7 +384,7 @@ def table(
         games = game_rows(settings, conn, label, ranking, folder_view)
     tests = {
         "all": lambda g: True,
-        "several": lambda g: len(g.rows) > 1,
+        "several": lambda g: len(ranked_rows(g)) > 1,
         "proposals": lambda g: g.has_proposals,
         "undecided": lambda g: g.status == STATUS_UNDECIDED,
         "left": lambda g: g.status == STATUS_LEFT,
@@ -416,6 +409,11 @@ def table(
     page = min(max(1, page), pages)
     start = (page - 1) * size
     return Table(selected[start : start + size], len(selected), page, pages, counts, reclaim)
+
+
+def ranked_rows(game: GameRow) -> list[Row]:
+    """The rows 1G1R chooses among: a title-ID game's updates and DLC are not versions."""
+    return [r for r in game.rows if r.version.role not in EXTRA_ROLES]
 
 
 def find_game(settings, conn, label, ranking, group_key, view=None) -> GameRow | None:

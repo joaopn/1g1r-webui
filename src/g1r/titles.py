@@ -2,12 +2,15 @@
 
 A title ID is 16 hex digits. A base game's ends in the `low_hex` bits all zero; its update
 is the same ID plus `update_low_hex`; its DLC are numbered in the next block of
-`dlc_step_hex`. The ID is read from an NSP/NSZ ticket (PFS0 file names: the rights ID's
-first digits are the title ID) or, failing that, from the file name's "[0100...]" tag.
+`dlc_step_hex`. Everything is read from inside the NSP/NSZ (a PFS0 container), never from
+its file name, which is arbitrary: the unencrypted content metadata `<id>.cnmt.xml` when the
+dump has one (title ID and version), else the ticket's name (the rights ID's first digits are
+the title ID; no version). The file name gives only the name shown.
 """
 
 import re
 import struct
+import xml.etree.ElementTree as ElementTree
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
@@ -47,6 +50,7 @@ def identity_name(title: Title, config: TitleIdConfig) -> str:
 
 
 def from_name(file_name: str, config: TitleIdConfig) -> Title | None:
+    """A stored identity's name (`identity_name`) read back."""
     found = re.search(config.name_pattern, file_name)
     if not found:
         return None
@@ -56,8 +60,8 @@ def from_name(file_name: str, config: TitleIdConfig) -> Title | None:
     return Title(int(found[1], config.radix), int(version[1]) if version else None, name)
 
 
-def from_ticket(path: Path, config: TitleIdConfig) -> int | None:
-    """The title ID of an NSP/NSZ's ticket, from the PFS0 file names (no keys needed)."""
+def _pfs0(path: Path, config: TitleIdConfig) -> tuple[int, list[tuple[str, int, int]]] | None:
+    """A PFS0's member names with their (offset, size), and where member data starts."""
     header = struct.calcsize(config.pfs0_header)
     entry = struct.calcsize(config.pfs0_entry)
     try:
@@ -65,12 +69,24 @@ def from_ticket(path: Path, config: TitleIdConfig) -> int | None:
             magic, count, table_size, _ = struct.unpack(config.pfs0_header, handle.read(header))
             if magic != config.pfs0_magic.encode() or count > config.max_entries:
                 return None
-            handle.read(entry * count)
+            entries = [struct.unpack(config.pfs0_entry, handle.read(entry)) for _ in range(count)]
             table = handle.read(table_size)
     except (OSError, struct.error):
         return None
-    for raw in table.split(b"\0"):
-        name = raw.decode("ascii", errors="replace")
+    members = []
+    for offset, size, name_at, _ in entries:
+        end = table.find(b"\0", name_at)
+        raw = table[name_at : end if end >= 0 else len(table)]
+        members.append((raw.decode("ascii", errors="replace"), offset, size))
+    return header + entry * len(entries) + table_size, members
+
+
+def from_ticket(path: Path, config: TitleIdConfig) -> int | None:
+    """The title ID of an NSP/NSZ's ticket, from the PFS0 file names (no keys needed)."""
+    found = _pfs0(path, config)
+    if found is None:
+        return None
+    for name, _, _ in found[1]:
         if name.lower().endswith(config.ticket_suffix):
             rights = PurePosixPath(name).stem
             if re.fullmatch(f"[0-9A-Fa-f]{{{config.rights_id_digits}}}", rights):
@@ -78,14 +94,39 @@ def from_ticket(path: Path, config: TitleIdConfig) -> int | None:
     return None
 
 
-def read_title(path: Path, file_name: str, config: TitleIdConfig) -> Title | None:
-    named = from_name(file_name, config)
-    ticket = (
-        from_ticket(path, config)
-        if path.suffix.lower().lstrip(".") in config.pfs0_extensions
-        else None
+def from_cnmt_xml(path: Path, config: TitleIdConfig) -> tuple[int, int] | None:
+    """(title ID, version) from the NSP/NSZ's unencrypted `<id>.cnmt.xml`, if it has one."""
+    found = _pfs0(path, config)
+    if found is None:
+        return None
+    start, members = found
+    xml = next(
+        (
+            (offset, size)
+            for name, offset, size in members
+            if name.lower().endswith(config.cnmt_xml_suffix)
+        ),
+        None,
     )
-    if ticket is None:
-        return named
+    if xml is None or xml[1] > config.max_cnmt_xml_bytes:
+        return None
+    try:
+        with path.open("rb") as handle:
+            handle.seek(start + xml[0])
+            root = ElementTree.fromstring(handle.read(xml[1]))
+        return int(root.findtext("Id", ""), 0), int(root.findtext("Version", ""), 0)
+    except (OSError, ElementTree.ParseError, ValueError):
+        return None
+
+
+def read_title(path: Path, file_name: str, config: TitleIdConfig) -> Title | None:
+    """The file's title from its contents; its name only for the name shown."""
+    if path.suffix.lower().lstrip(".") not in config.pfs0_extensions:
+        return None
     stem = PurePosixPath(file_name).stem
-    return Title(ticket, named.version if named else None, named.name if named else stem)
+    name = re.split(config.name_end_pattern, stem, maxsplit=1)[0].strip() or stem
+    meta = from_cnmt_xml(path, config)
+    if meta is not None:
+        return Title(meta[0], meta[1], name)
+    ticket = from_ticket(path, config)
+    return None if ticket is None else Title(ticket, None, name)

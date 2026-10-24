@@ -51,6 +51,8 @@ REMOVE = "remove"
 SCOPE_UNMATCHED = "unmatched"
 SCOPE_EMPTY = "empty"
 SCOPE_SET_ASIDE = "set-aside"
+# Older updates of title-ID games (the Updates tab).
+SCOPE_UPDATES = "updates"
 # Files the user moved out (unmatched, flagged, unsupported) go to this discarded/ subfolder.
 REASON_MANUAL = "manual"
 
@@ -165,6 +167,23 @@ def busy(conn: sqlite3.Connection, label: str) -> str | None:
 
 def plan_discards(conn: sqlite3.Connection, label: str, root: Path, games) -> list[Move]:
     """The proposed 1G1R moves of these games (matching.GameRow), as scanned."""
+    return plan_moves(
+        conn,
+        label,
+        root,
+        [
+            (row.version.rel_path, game.group.key, row.discard_reason, row.operation)
+            for game in games
+            for row in game.rows
+            if row.operation
+        ],
+    )
+
+
+def plan_moves(
+    conn: sqlite3.Connection, label: str, root: Path, moves: list[tuple[str, str, str, str]]
+) -> list[Move]:
+    """Moves of files as scanned: (rel_path, group key, reason, destination) each."""
     scanned = {
         r["rel_path"]: r
         for r in conn.execute(
@@ -173,22 +192,21 @@ def plan_discards(conn: sqlite3.Connection, label: str, root: Path, games) -> li
         )
     }
     plan = []
-    for game in games:
-        for row in game.rows:
-            f = scanned.get(row.version.rel_path)
-            if not row.operation or f is None:
-                continue
-            plan.append(
-                Move(
-                    f["rel_path"],
-                    game.group.key,
-                    row.discard_reason,
-                    root / f["rel_path"],
-                    Path(row.operation),
-                    f["size"],
-                    f["mtime_ns"],
-                )
+    for rel_path, group_key, reason, destination in moves:
+        f = scanned.get(rel_path)
+        if f is None:
+            continue
+        plan.append(
+            Move(
+                f["rel_path"],
+                group_key,
+                reason,
+                root / f["rel_path"],
+                Path(destination),
+                f["size"],
+                f["mtime_ns"],
             )
+        )
     plan.sort(key=lambda m: m.rel_path)
     return plan
 
@@ -645,18 +663,20 @@ def carry_over(
         "INSERT INTO archive_member VALUES (?, ?, ?, ?, ?)",
         [(label, new, *member) for member in members],
     )
-    conn.execute(
-        "UPDATE keep_choice SET rel_path = ? WHERE folder_label = ? AND rel_path = ?",
-        (new, label, old),
-    )
+    for table in ("keep_choice", "update_keep"):
+        conn.execute(
+            f"UPDATE {table} SET rel_path = ? WHERE folder_label = ? AND rel_path = ?",
+            (new, label, old),
+        )
 
 
 def _drop_output(conn, label: str, output: str, original: str) -> None:
     """A conversion's output was removed: its original takes its rows and picks back."""
-    conn.execute(
-        "UPDATE keep_choice SET rel_path = ? WHERE folder_label = ? AND rel_path = ?",
-        (original, label, output),
-    )
+    for table in ("keep_choice", "update_keep"):
+        conn.execute(
+            f"UPDATE {table} SET rel_path = ? WHERE folder_label = ? AND rel_path = ?",
+            (original, label, output),
+        )
     conn.execute(
         "DELETE FROM manual_identity WHERE folder_label = ? AND rel_path = ?", (label, output)
     )

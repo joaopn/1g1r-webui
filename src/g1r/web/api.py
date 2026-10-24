@@ -29,6 +29,7 @@ from g1r import (
     scanner,
     statistics,
     unmatched,
+    updates,
 )
 from g1r.config import RANKING_CRITERIA, RankingConfig, Settings
 from g1r.dat_registry import DatRegistry, RegistryError, name_style
@@ -129,6 +130,18 @@ class RestoreScope(BaseModel):
 class KeepChoice(BaseModel):
     group_key: str
     rel_path: str | None
+
+
+class UpdateKeep(BaseModel):
+    rel_paths: list[str]
+    keep: bool
+
+
+class UpdatesScope(BaseModel):
+    # Proposed older updates to move to discarded/<label>/updates/; None = every one.
+    rel_paths: list[str] | None = None
+    token: str | None = None
+    confirm: str | None = None
 
 
 class LeaveAlone(BaseModel):
@@ -277,6 +290,8 @@ def build_router(
             "ignored_patterns": store.ignored_patterns(folder),
             "ignored_patterns_default": folder.ignored_patterns is None,
             "ignored_files": folder.ignored_files,
+            # Identified by title ID (Switch): the set has an Updates tab.
+            "title_ids": title_ids(folder.platform),
         }
 
     def parts_of(folder: FolderEntry) -> frozenset[str]:
@@ -417,6 +432,13 @@ def build_router(
     cards: dict[str, tuple[str, dict]] = {}
     cards_lock = threading.Lock()
 
+    def update_counts(rows: list[updates.UpdateRow]) -> dict:
+        return {
+            "total": len(rows),
+            "proposed": sum(1 for r in rows if r.operation),
+            "unknown": sum(1 for r in rows if r.status == updates.STATUS_UNKNOWN),
+        }
+
     def card_figures(conn, library: Library, library_json: str, folder: FolderEntry) -> dict:
         key = json.dumps(
             [
@@ -437,6 +459,7 @@ def build_router(
             settings, conn, folder.label, ranking, produces(library, folder, conn, waiting)
         )
         table = matching.table(settings, conn, folder.label, ranking, games=games)
+        kept = updates.keeps(conn, folder.label)
         parts = parts_of(folder)
         figures = {
             "summary": scanner.folder_summary(conn, folder.label, parts, waiting),
@@ -456,6 +479,9 @@ def build_router(
                     ]
                 ),
             ),
+            "updates": update_counts(updates.rows(settings, folder.label, games, kept))
+            if title_ids(folder.platform)
+            else None,
         }
         with cards_lock:
             cards[folder.label] = (key, figures)
@@ -492,6 +518,8 @@ def build_router(
                     "reclaim_bytes": figures["reclaim_bytes"],
                     "conversion": figures["conversion"],
                     "progress": figures["progress"],
+                    # Title-ID sets: their updates (the Updates tab), else None.
+                    "updates": figures["updates"],
                     "discarded": discarded.totals(settings, folder.label),
                     "converting": journal.running_conversion(conn, folder.label),
                     # An apply or a restore runs: Home polls until it ends.
@@ -1106,6 +1134,67 @@ def build_router(
             body,
             lambda: set_aside_plan(conn, label, body),
             "there is nothing to move",
+        )
+
+    # Updates (title-ID folders) ------------------------------------------------------
+
+    def update_rows(conn, label: str) -> list[updates.UpdateRow]:
+        folder = folder_or_404(label)
+        if not title_ids(folder.platform):
+            raise not_found("this set has no updates: its platform has no title IDs")
+        games = matching.game_rows(
+            settings, conn, label, store.ranking_for(folder), produces(store.load(), folder, conn)
+        )
+        return updates.rows(settings, label, games, updates.keeps(conn, label))
+
+    def updates_dict(rows: list[updates.UpdateRow]) -> dict:
+        return {"updates": [asdict(r) for r in rows], "counts": update_counts(rows)}
+
+    @router.get("/folders/{label}/updates")
+    def folder_updates(label: str, conn: Conn):
+        return updates_dict(update_rows(conn, label))
+
+    @router.put("/folders/{label}/updates/keep")
+    def keep_updates(label: str, body: UpdateKeep, conn: Conn):
+        rows = {r.rel_path for r in update_rows(conn, label)}
+        if not set(body.rel_paths) <= rows:
+            raise not_found("some of these files are not updates of this set")
+        updates.set_keep(conn, label, body.rel_paths, body.keep)
+        return updates_dict(update_rows(conn, label))
+
+    def updates_plan(conn, label: str, body: UpdatesScope):
+        folder = folder_or_404(label)
+        proposed = [r for r in update_rows(conn, label) if r.operation]
+        if body.rel_paths is not None:
+            wanted = set(body.rel_paths)
+            if not wanted <= {r.rel_path for r in proposed}:
+                raise conflict("some of these files are not proposed for discarded/ any more")
+            proposed = [r for r in proposed if r.rel_path in wanted]
+        root, gone = folder_root(folder), discarded.folder_root(settings, label)
+        plan = journal.plan_moves(
+            conn,
+            label,
+            root,
+            [(r.rel_path, r.group_key, matching.REASON_UPDATES, r.operation) for r in proposed],
+        )
+        return plan, journal.preflight(plan, root, gone)
+
+    @router.post("/folders/{label}/updates/discard/preview")
+    def updates_preview(label: str, body: UpdatesScope, conn: Conn):
+        converted_first(conn, label)
+        return guarded_preview(conn, label, *updates_plan(conn, label, body))
+
+    @router.post("/folders/{label}/updates/discard", status_code=HTTPStatus.ACCEPTED)
+    def updates_apply(label: str, body: UpdatesScope, request: Request, conn: Conn):
+        converted_first(conn, label)
+        return start_guarded(
+            request,
+            conn,
+            label,
+            journal.SCOPE_UPDATES,
+            body,
+            lambda: updates_plan(conn, label, body),
+            "there is no older update to move",
         )
 
     def empty_plan(conn, label: str):
