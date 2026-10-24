@@ -1,3 +1,4 @@
+import sqlite3
 import struct
 from http import HTTPStatus
 
@@ -157,6 +158,16 @@ def test_copies_of_a_base_file_are_yours_to_pick(folder_of, make_settings):
     assert (game["name"], game["status"]) == ("SG v0", "undecided")
     assert not any(v["operation"] for v in game["versions"])
     assert all(v["identical"] == [] for v in game["versions"])
+    # Even with their data known to be identical (a DAT pass hashes possible copies).
+    conn = sqlite3.connect(client.app.state.settings.paths.database_path)
+    conn.executemany(
+        "INSERT INTO payload_hash VALUES ('switch', ?, 1, 'same')",
+        [(v["rel_path"],) for v in game["versions"] if v["role"] == "base"],
+    )
+    conn.commit()
+    conn.close()
+    (game,) = client.get("/api/folders/switch/games").json()
+    assert game["status"] == "undecided" and not any(v["operation"] for v in game["versions"])
 
 
 def test_older_updates_are_proposed_kept_or_moved(switch):

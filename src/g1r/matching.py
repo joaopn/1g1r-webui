@@ -226,10 +226,16 @@ def game_rows(
         for r in conn.execute("SELECT group_key FROM game_flag WHERE folder_label = ?", (label,))
     }
     archives = {e.lower() for e in settings.platforms.archive_extensions}
-    payloads = dict(
-        conn.execute(
-            "SELECT rel_path, sha1 FROM payload_hash WHERE folder_label = ?", (label,)
-        ).fetchall()
+    # Title IDs: several base files of one title are the user's to pick, byte-identical
+    # copies too (maintainer, 2026-10-24), so no copy is told apart by its data.
+    payloads = (
+        {}
+        if view.title_ids
+        else dict(
+            conn.execute(
+                "SELECT rel_path, sha1 FROM payload_hash WHERE folder_label = ?", (label,)
+            ).fetchall()
+        )
     )
     file_notes: dict[str, list[str]] = {}
     for rel, note in conn.execute(
