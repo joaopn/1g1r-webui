@@ -233,7 +233,9 @@ def game_rows(
     )
     file_notes: dict[str, list[str]] = {}
     for rel, note in conn.execute(
-        "SELECT rel_path, note FROM file_note WHERE folder_label = ? ORDER BY note", (label,)
+        "SELECT rel_path, note FROM file_note WHERE folder_label = ? "
+        "UNION ALL SELECT rel_path, note FROM content_check WHERE folder_label = ? ORDER BY note",
+        (label, label),
     ):
         file_notes.setdefault(rel, []).append(note)
     triples = [(r["rel_path"], r["game_name"], r["method"]) for r in identities]

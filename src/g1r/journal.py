@@ -69,6 +69,7 @@ CARRIED = (
     "payload_hash",
     "file_note",
     "card_info",
+    "content_check",
 )
 
 

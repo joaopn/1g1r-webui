@@ -195,6 +195,74 @@ def latest_versions(data: bytes) -> dict[str, Latest]:
     return result
 
 
+@dataclass(frozen=True)
+class Contents:
+    """The content archives titledb lists for one title ID and version: those every copy
+    has, and those it may leave out (delta fragments)."""
+
+    required: frozenset[str]
+    optional: frozenset[str]
+
+
+def contents_from_cnmts(config: TitleDbConfig, data: bytes) -> dict[str, dict[str, list]]:
+    """cnmts.json (title ID -> version -> content entries) as what is kept of it: title ID
+    -> version -> [required content IDs, optional content IDs]."""
+    try:
+        found = json.loads(data)
+    except ValueError as exc:
+        raise TitleDbError(f"cnmts.json is not JSON: {exc}") from exc
+    if not isinstance(found, dict):
+        raise TitleDbError("cnmts.json is not a title ID -> versions map")
+    optional_types = set(config.optional_content_types)
+    result: dict[str, dict[str, list]] = {}
+    for title_id, versions in found.items():
+        if not isinstance(versions, dict):
+            continue
+        for version, meta in versions.items():
+            entries = meta.get("contentEntries") if isinstance(meta, dict) else None
+            if not isinstance(entries, list) or not str(version).isdigit():
+                continue
+            required, optional = [], []
+            for entry in entries:
+                if isinstance(entry, dict) and isinstance(entry.get("ncaId"), str):
+                    kind = optional if entry.get("type") in optional_types else required
+                    kind.append(entry["ncaId"].lower())
+            if required or optional:
+                result.setdefault(title_id.upper(), {})[str(version)] = [
+                    sorted(required),
+                    sorted(optional),
+                ]
+    return result
+
+
+def read_contents(data: bytes) -> dict[str, dict[str, Contents]]:
+    """`contents_from_cnmts`'s output, as kept, read back."""
+    return {
+        title_id: {
+            version: Contents(frozenset(required), frozenset(optional))
+            for version, (required, optional) in versions.items()
+        }
+        for title_id, versions in json.loads(data).items()
+    }
+
+
+COMPLETE = "content complete"
+INCOMPLETE = "content incomplete"
+
+
+def check(contents: Contents, present: list[str]) -> str:
+    """A file's note: its content archives are exactly the listed ones (optional ones may be
+    missing), else what is missing and what is not listed."""
+    have = set(present)
+    missing = contents.required - have
+    extra = have - contents.required - contents.optional
+    if not missing and not extra:
+        return COMPLETE
+    parts = [f"{len(missing)} missing"] if missing else []
+    parts += [f"{len(extra)} not listed"] if extra else []
+    return f"{INCOMPLETE}: {', '.join(parts)}"
+
+
 def lookup(ordered: list[dict[str, Title]], *title_ids: str) -> Title | None:
     """The first file in the order listing the first of these title IDs any file lists."""
     for title_id in title_ids:

@@ -316,7 +316,14 @@ IDENTIFY = "identify"
 # Per-file tables a check writes, and those identification writes (the rest of a file's
 # rows: folder_file and its cascade, and the file cache).
 INVENTORY_TABLES = ("archive_member", "archive_problem", "card_info", "file_note", "byte_order")
-IDENTIFICATION_TABLES = ("identity", "content_hash", "lookup_result", "payload_hash", "suggestion")
+IDENTIFICATION_TABLES = (
+    "identity",
+    "content_hash",
+    "lookup_result",
+    "payload_hash",
+    "suggestion",
+    "content_check",
+)
 
 
 @dataclass
@@ -502,7 +509,8 @@ class Scanner:
         every = [e for e in self.registry.entries(conn, library, folder.platform) if e.on]
         if self.settings.platforms.profiles[folder.platform].title_ids:
             names = self.registry.titledb_titles(conn, library, folder.platform)
-            self._title_ids(root, final, found, progress, names)
+            contents = self.registry.titledb_contents(folder.platform)
+            self._title_ids(root, final, found, progress, names, contents)
         # titledb files name title IDs; they hold no checksums to match files against.
         entries = [e for e in every if not e.titledb]
         dats = [(e, self.registry.load(e.version)) for e in entries if e.version is not None]
@@ -853,13 +861,21 @@ class Scanner:
             )
 
     def _title_ids(
-        self, root: Path, files, found: "Found", progress, names: list[dict] | None = None
+        self,
+        root: Path,
+        files,
+        found: "Found",
+        progress,
+        names: list[dict] | None = None,
+        contents: dict | None = None,
     ) -> None:
         """Switch: every file with a title ID (read inside it) is identified by it; the
         identity's name carries the ID, which matching groups by. With the user's prod.keys,
         an NSP without a cnmt.xml gets its version from the encrypted content metadata, and
         every one its shown version. The name is the first titledb file's (in the order)
-        listing the title ID, an update's its base game's; without one, the file name."""
+        listing the title ID, an update's its base game's; without one, the file name. With
+        titledb's content lists, a file whose version is read gets its content archives'
+        names compared with the list for that version."""
         config = self.settings.title_ids
         if config is None:
             return
@@ -900,6 +916,16 @@ class Scanner:
                 METHOD_TITLE_ID,
                 dat=known.sha1 if known is not None else NO_DAT,
             )
+            listed = (contents or {}).get(titles.hex_id(title.title_id, config), {})
+            if title.version is not None and str(title.version) in listed:
+                path = root / f.rel_path
+                ids = found.cache.get(
+                    f, step("content-ids", config), lambda p=path: titles.content_ids(p, config)
+                )
+                if ids is not None:
+                    found.content_checks[f.rel_path] = titledb.check(
+                        listed[str(title.version)], ids
+                    )
 
     def _suggest(
         self, dat_of_name, dats: list[Dat], unmatched: list[InventoryFile], found: "Found", progress
@@ -1109,6 +1135,10 @@ class Scanner:
                 [(label, rel, size, sha1) for rel, (size, sha1) in found.payloads.items()],
             )
             conn.executemany(
+                "INSERT INTO content_check VALUES (?, ?, ?)",
+                [(label, rel, note) for rel, note in found.content_checks.items()],
+            )
+            conn.executemany(
                 "INSERT INTO suggestion VALUES (?, ?, ?, ?)",
                 [
                     (label, rel, game, score)
@@ -1171,6 +1201,8 @@ class Found:
     byte_orders: dict[str, int] = field(default_factory=dict)
     # rel_path -> (cards.CardInfo, zip member or None), for card images (3DS)
     cards: dict[str, tuple] = field(default_factory=dict)
+    # rel_path -> whether its content archives are the ones titledb lists (title IDs)
+    content_checks: dict[str, str] = field(default_factory=dict)
     # What earlier scans read from unchanged files; this scan's reads are added to it.
     cache: FileCache = field(default_factory=lambda: FileCache(None, ""))
 

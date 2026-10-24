@@ -6,6 +6,7 @@ singly or as a daily pack, which is split by platform), and any uploaded overrid
 
 import hashlib
 import io
+import json
 import re
 import sqlite3
 import time
@@ -107,8 +108,8 @@ class DatRegistry:
         self.fetch = fetch or self._http_fetch
         # titledb's region files and when they were read.
         self._titledb_files: tuple[float, list[str]] | None = None
-        # Each platform's kept versions.json, with the mtime it was read at.
-        self._titledb_latest: dict[str, tuple[float, dict]] = {}
+        # Each platform's kept versions and contents, with the mtime they were read at.
+        self._titledb_kept: dict[tuple[str, str], tuple[float, dict]] = {}
 
     def _http_fetch(self, url: str, timeout: float | None = None) -> bytes:
         request = urllib.request.Request(url, headers={"User-Agent": self.settings.dats.user_agent})
@@ -217,7 +218,8 @@ class DatRegistry:
             conn.execute("DELETE FROM dat_version WHERE id = ?", (row["id"],))
         if source == config.short_label:
             for platform in {row["platform"] for row in rows}:
-                self._versions_path(platform).unlink(missing_ok=True)
+                for name in (config.versions_file, config.contents_file):
+                    self._kept_path(platform, name).unlink(missing_ok=True)
         for row in rows:
             (self.settings.paths.data_dir / row["file"]).unlink(missing_ok=True)
         return len(rows), sorted({row["platform"] for row in rows})
@@ -288,6 +290,9 @@ class DatRegistry:
         try:
             dat, _ = titledb.to_dat(config, file, data, version)
             latest = titledb.latest_versions(self._fetch_long(config.versions_url, None))
+            contents = titledb.contents_from_cnmts(
+                config, self._fetch_long(config.contents_url, config.timeout_seconds)
+            )
         except OSError as exc:
             raise RegistryError(f"download failed: {exc}") from exc
         except titledb.TitleDbError as exc:
@@ -301,29 +306,45 @@ class DatRegistry:
             original_name=f"{file}.json",
             matches_platform=True,
         )
-        # Every update version released, refreshed with each region file.
-        target = self._versions_path(platform)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        partial = target.with_name(target.name + ".part")
-        partial.write_bytes(titledb.versions_json(latest))
-        partial.replace(target)
+        # Every update version released and every version's content archives, refreshed
+        # with each region file.
+        self._keep(platform, config.versions_file, titledb.versions_json(latest))
+        self._keep(platform, config.contents_file, json.dumps(contents).encode())
         return version_id
 
-    def _versions_path(self, platform: str):
-        return self.settings.dats_root / platform / self.settings.titledb.versions_file
+    def _kept_path(self, platform: str, name: str):
+        return self.settings.dats_root / platform / name
+
+    def _keep(self, platform: str, name: str, data: bytes) -> None:
+        target = self._kept_path(platform, name)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        partial = target.with_name(target.name + ".part")
+        partial.write_bytes(data)
+        partial.replace(target)
+
+    def _read_kept(self, platform: str, name: str, read):
+        """A kept titledb file, read once per change (None before titledb was downloaded)."""
+        path = self._kept_path(platform, name)
+        if not path.is_file():
+            return None
+        mtime = path.stat().st_mtime
+        kept = self._titledb_kept.get((platform, name))
+        if kept is None or kept[0] != mtime:
+            kept = (mtime, read(path.read_bytes()))
+            self._titledb_kept[(platform, name)] = kept
+        return kept[1]
 
     def titledb_latest(self, platform: str) -> dict[str, titledb.Latest]:
         """The newest update version titledb knows per title ID (empty before a titledb
         file was downloaded)."""
-        path = self._versions_path(platform)
-        if not path.is_file():
-            return {}
-        mtime = path.stat().st_mtime
-        kept = self._titledb_latest.get(platform)
-        if kept is None or kept[0] != mtime:
-            kept = (mtime, titledb.read_versions(path.read_bytes()))
-            self._titledb_latest[platform] = kept
-        return kept[1]
+        config = self.settings.titledb
+        return self._read_kept(platform, config.versions_file, titledb.read_versions) or {}
+
+    def titledb_contents(self, platform: str) -> dict[str, dict[str, titledb.Contents]]:
+        """The content archives titledb lists per title ID and version (empty before a
+        titledb file was downloaded)."""
+        config = self.settings.titledb
+        return self._read_kept(platform, config.contents_file, titledb.read_contents) or {}
 
     def download_libretro(self, conn: sqlite3.Connection, platform: str) -> int:
         return self.download(conn, platform, "libretro")

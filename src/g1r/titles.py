@@ -143,6 +143,23 @@ def from_cnmt_xml(path: Path, config: TitleIdConfig) -> tuple[int, int] | None:
         return None
 
 
+def content_ids(path: Path, config: TitleIdConfig) -> list[str] | None:
+    """The content IDs of the NSP/NSZ's content archives, from their names (the content
+    metadata's own archive left out), or None when it is no readable PFS0."""
+    found = _pfs0(path, config)
+    if found is None:
+        return None
+    ids = []
+    for name, _, _ in found[1]:
+        lower = name.lower()
+        if lower.endswith(config.cnmt_nca_suffix):
+            continue
+        suffix = next((s for s in config.nca_suffixes if lower.endswith(s)), None)
+        if suffix is not None:
+            ids.append(lower[: -len(suffix)])
+    return sorted(ids)
+
+
 def is_pfs0(path: Path, config: TitleIdConfig) -> bool:
     return path.suffix.lower().lstrip(".") in config.pfs0_extensions
 

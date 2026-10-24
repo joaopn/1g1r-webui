@@ -759,6 +759,12 @@ titledb:
   # file and kept as <dats directory>/<platform>/<versions_file>.
   versions_url: "https://raw.githubusercontent.com/blawar/titledb/master/versions.json"
   versions_file: titledb-versions.json
+  # The content archives (NCAs) of every title ID and version, fetched and kept the same way;
+  # a scan compares each NSP's NCA names with them (names only, nothing is hashed).
+  contents_url: "https://raw.githubusercontent.com/blawar/titledb/master/cnmts.json"
+  contents_file: titledb-contents.json
+  # Content types an NSP may leave out (delta fragments of an update).
+  optional_content_types: [6]
   entry_prefix: "titledb:"
   file_pattern: '^[A-Z]{2}\.[a-z]{2}$'
   # Offered as buttons; the others are picked from a list.
@@ -972,6 +978,10 @@ title_ids:
   max_entries: 4096
   ticket_suffix: .tik
   cnmt_xml_suffix: .cnmt.xml
+  # Content archives in a PFS0 ("<content ID>.nca", compressed ".ncz"); the content
+  # metadata's own archive is "<id>.cnmt.nca".
+  nca_suffixes: [.nca, .ncz]
+  cnmt_nca_suffix: .cnmt.nca
   # Each update release adds this to the version (v65536 is the first update).
   version_step: 65536
   max_cnmt_xml_bytes: 1048576

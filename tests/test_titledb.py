@@ -9,7 +9,16 @@ from g1r.dat_registry import DatRegistry
 from g1r.dats import parse_dat_bytes
 from g1r.library import LibraryStore
 from g1r.web.app import create_app
-from tests.test_switch import BASE_ID, DLC_ID, FIRST_UPDATE, UPDATE_ID, nsp
+from tests.test_switch import (
+    BASE_ID,
+    DLC_ID,
+    FIRST_UPDATE,
+    UPDATE_ID,
+    cnmt_xml,
+    nsp,
+    pfs0,
+    ticket,
+)
 
 JP_ONLY_ID = "0100CCCC00010000"
 UNLISTED_ID = "0100DDDD00010000"
@@ -45,6 +54,30 @@ VERSIONS = {
     JP_ONLY_ID.lower(): {},
     "junk": "not a map",
 }
+
+
+# Content IDs: the base has both of its archives, the update one of its two (its delta
+# fragment may be left out).
+BASE_NCAS = ["aa" * 16, "bb" * 16]
+UPDATE_NCAS = ["cc" * 16, "dd" * 16]
+DELTA_NCA = "ee" * 16
+CNMTS = {
+    BASE_ID.lower(): {"0": {"contentEntries": [{"ncaId": n, "type": 1} for n in BASE_NCAS]}},
+    UPDATE_ID.lower(): {
+        str(FIRST_UPDATE): {
+            "contentEntries": [{"ncaId": n, "type": 1} for n in UPDATE_NCAS]
+            + [{"ncaId": DELTA_NCA, "type": 6}]
+        }
+    },
+    "junk": [],
+}
+
+
+def with_ncas(make_settings, title_id: str, version: int, kind: str, ncas: list[str]) -> bytes:
+    """An NSP holding these content archives, its content metadata's own and its ticket."""
+    members = ticket(make_settings, title_id) | cnmt_xml(title_id, version, kind)
+    members |= {"ff" * 16 + ".cnmt.nca": b"meta"} | {f"{n}.nca": b"nca" for n in ncas}
+    return pfs0(make_settings, members)
 
 
 def body(data) -> bytes:
@@ -89,8 +122,8 @@ def switch(make_settings, roms_root):
     folder.mkdir()
     (roms_root / "discarded").mkdir()
     files = {
-        "base.nsp": nsp(make_settings, BASE_ID, 0, "Application"),
-        "update.nsp": nsp(make_settings, UPDATE_ID, FIRST_UPDATE),
+        "base.nsp": with_ncas(make_settings, BASE_ID, 0, "Application", BASE_NCAS),
+        "update.nsp": with_ncas(make_settings, UPDATE_ID, FIRST_UPDATE, "Patch", UPDATE_NCAS[:1]),
         "pack.nsp": nsp(make_settings, DLC_ID, 0, "AddOnContent"),
         "jp.nsp": nsp(make_settings, JP_ONLY_ID, 0, "Application"),
         "Unlisted Game.nsp": nsp(make_settings, UNLISTED_ID, 0, "Application"),
@@ -101,7 +134,13 @@ def switch(make_settings, roms_root):
 
     def fetch(url, timeout=None):
         fetched.append(url)
-        files = (("languages", LANGUAGES), ("versions", VERSIONS), ("US.en", US), ("JP.ja", JP))
+        files = (
+            ("languages", LANGUAGES),
+            ("versions", VERSIONS),
+            ("cnmts", CNMTS),
+            ("US.en", US),
+            ("JP.ja", JP),
+        )
         for name, data in files:
             if url.endswith(f"/{name}.json"):
                 return body(data)
@@ -178,6 +217,10 @@ def test_region_files_name_title_ids_in_their_order(switch):
     assert found["update.nsp"]["game_name"].startswith("Super Game: (Deluxe) [")
     assert found["update.nsp"]["publisher"] == "Big Publisher"
     assert found["pack.nsp"]["game_name"].startswith("Super Game: Pack [")
+    # Their content archives against titledb's lists (no list for the DLC: nothing said).
+    assert "content complete" in base["notes"]
+    assert "content incomplete: 1 missing" in found["update.nsp"]["notes"]
+    assert not any(n.startswith("content") for n in found["pack.nsp"]["notes"])
     # Listed only in the second file; listed nowhere: the file name, no details.
     assert found["jp.nsp"]["game"] == "Japan Game"
     assert found["jp.nsp"]["dat"]["label"] == "titledb JP.ja"
@@ -238,3 +281,16 @@ def test_versions_json_keeps_each_title_ids_newest_update():
     assert titledb.read_versions(titledb.versions_json(latest)) == latest
     with pytest.raises(titledb.TitleDbError):
         titledb.latest_versions(b"[]")
+
+
+def test_content_archives_are_checked_by_name(make_settings):
+    config = make_settings().titledb
+    kept = titledb.contents_from_cnmts(config, body(CNMTS))
+    contents = titledb.read_contents(json.dumps(kept).encode())
+    update = contents[UPDATE_ID][str(FIRST_UPDATE)]
+    assert update.optional == {DELTA_NCA}
+    assert titledb.check(update, UPDATE_NCAS) == "content complete"
+    assert titledb.check(update, [*UPDATE_NCAS, DELTA_NCA]) == "content complete"
+    assert titledb.check(update, [UPDATE_NCAS[0], "00" * 16]) == (
+        "content incomplete: 1 missing, 1 not listed"
+    )

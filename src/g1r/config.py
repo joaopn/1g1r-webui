@@ -312,6 +312,9 @@ class TitleDbConfig(_Strict):
     languages_url: str
     versions_url: str
     versions_file: str
+    contents_url: str
+    contents_file: str
+    optional_content_types: list[int]
     entry_prefix: str
     file_pattern: str
     featured: list[str]
@@ -604,6 +607,8 @@ class TitleIdConfig(_Strict):
     max_entries: int = Field(gt=0)
     ticket_suffix: str
     cnmt_xml_suffix: str
+    nca_suffixes: list[str]
+    cnmt_nca_suffix: str
     version_step: int = Field(gt=0)
     max_cnmt_xml_bytes: int = Field(gt=0)
     pfs0_extensions: list[str]
