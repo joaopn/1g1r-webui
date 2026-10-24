@@ -11,6 +11,7 @@ const SCOPE_VERBS: Record<string, string> = {
   convert: "Conversion",
   unmatched: "Unmatched files",
   empty: "Emptying discarded/",
+  updates: "Older updates",
 };
 
 /** The folder's latest apply or restore: progress while it runs, its outcome after. With

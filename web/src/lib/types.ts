@@ -44,6 +44,8 @@ export type Meta = {
     discarded_columns_default: string[];
     ignored_columns: Record<string, ColumnSize>;
     ignored_columns_default: string[];
+    updates_columns: Record<string, ColumnSize>;
+    updates_columns_default: string[];
     statistics_columns: Record<string, ColumnSize>;
     statistics_columns_default: string[];
     statistics_source_rem: number;
@@ -69,7 +71,16 @@ export type Meta = {
 export type Notification = {
   /** "scan-<id>" or "run-<id>". */
   id: string;
-  kind: "scan" | "check" | "conversion" | "1g1r" | "unmatched" | "set-aside" | "empty" | "restore";
+  kind:
+    | "scan"
+    | "check"
+    | "conversion"
+    | "1g1r"
+    | "unmatched"
+    | "set-aside"
+    | "updates"
+    | "empty"
+    | "restore";
   title: string;
   folder_label: string;
   status: "running" | "done" | "failed";
@@ -159,6 +170,8 @@ export type FolderInfo = {
   ignored_patterns: string[];
   ignored_patterns_default: boolean;
   ignored_files: string[];
+  /** Identified by title ID (Switch): the set has an Updates tab. */
+  title_ids: boolean;
 };
 
 export type FolderCard = FolderInfo & {
@@ -180,6 +193,9 @@ export type FolderCard = FolderInfo & {
   conversion: ConversionCounts;
   /** ROM files with nothing left to do, and the rest. */
   progress: { processed: number; to_process: number; to_match: number; to_convert: number };
+  /** Title-ID sets: their updates, the older ones proposed for discarded/, and those whose
+   * version could not be read; null for other sets. */
+  updates: UpdateCounts | null;
   discarded: { files: number; bytes: number };
   /** The conversion running in the folder: steps finished of the planned total, files failed,
    * and whether a stop was asked for. */
@@ -559,3 +575,26 @@ export type MissingGame = {
 };
 
 export type Missing = { dat: DatVersion; covered: number; total: number; rows: MissingGame[] };
+
+export type UpdateCounts = { total: number; proposed: number; unknown: number };
+
+/** One update of a title-ID game (the Updates tab). */
+export type UpdateRow = {
+  group_key: string;
+  game: string;
+  rel_path: string;
+  title_id: string;
+  /** From the file's content metadata; null when it could not be read. */
+  version: number | null;
+  /** Which update it is: 1 for the first. */
+  release: number | null;
+  size: number | null;
+  status: "newest" | "older" | "kept" | "version unknown" | "left alone" | "discarded";
+  reason: string;
+  /** Where the proposed move takes it; null when it stays. */
+  operation: string | null;
+  /** The move that took it to discarded/ (restore). */
+  discarded: number | null;
+};
+
+export type Updates = { updates: UpdateRow[]; counts: UpdateCounts };

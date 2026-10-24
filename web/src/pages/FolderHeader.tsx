@@ -1,9 +1,19 @@
 import { CircleCheck } from "lucide-react";
 import { Link } from "react-router-dom";
 import { PlatformIcon } from "@/components/PlatformIcon";
-import { folderState, SECTIONS, type SectionId, sectionDone, sectionPath } from "@/lib/sections";
+import {
+  folderState,
+  SECTIONS,
+  type SectionId,
+  sectionDone,
+  sectionPath,
+  setSections,
+} from "@/lib/sections";
 import type { FolderCard, FolderInfo, Meta } from "@/lib/types";
 import { cn } from "@/lib/utils";
+
+// Tailwind needs the class names written out: every tab, or all but Updates.
+const TAB_COLUMNS = { every: "grid-cols-5", fewer: "grid-cols-4" };
 
 /** The set's name and location, then its pages as tabs across the full width; a page with
  * nothing left to do (from the set's Home `card`) has a green check. */
@@ -19,6 +29,7 @@ export function FolderHeader({
   card?: FolderCard;
 }) {
   const platform = meta.platforms[folder.platform];
+  const sections = setSections(folder);
   return (
     <header className="space-y-4">
       <div className="space-y-1">
@@ -35,8 +46,14 @@ export function FolderHeader({
           </code>
         </p>
       </div>
-      <nav aria-label="Set pages" className="grid grid-cols-4 gap-1 rounded-lg bg-muted p-1">
-        {SECTIONS.map(({ id, label, icon: Icon }) => (
+      <nav
+        aria-label="Set pages"
+        className={cn(
+          "grid gap-1 rounded-lg bg-muted p-1",
+          sections.length === SECTIONS.length ? TAB_COLUMNS.every : TAB_COLUMNS.fewer,
+        )}
+      >
+        {sections.map(({ id, label, icon: Icon }) => (
           <Link
             key={id}
             to={sectionPath(folder.label, id)}

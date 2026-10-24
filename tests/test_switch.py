@@ -152,6 +152,7 @@ def test_older_updates_are_proposed_kept_or_moved(switch):
     newest, older = rows["Super Game update 2.nsp"], rows["Super Game update 1.nsp"]
     assert (newest["status"], newest["operation"]) == ("newest", None)
     assert (newest["version"], newest["title_id"]) == (SECOND_UPDATE, UPDATE_ID)
+    assert (newest["release"], older["release"]) == (2, 1)
     assert older["status"] == "older"
     assert older["operation"].endswith("discarded/switch/updates/Super Game update 1.nsp")
 

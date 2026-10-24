@@ -18,6 +18,7 @@ const FOLDER: FolderInfo = {
   ignored_patterns: [],
   ignored_patterns_default: true,
   ignored_files: [],
+  title_ids: false,
 };
 
 test("the set's pages are tabs, the current one marked", () => {
@@ -74,4 +75,53 @@ test("a page with nothing left to do has a green check on its tab", () => {
   expect(checked(card(0, 0, "check"))).toEqual([]);
   // A set without ROM files has nothing done yet (Discarded never has a check).
   expect(checked({ ...card(0, 0, null), summary: { roms: 0 } } as FolderCard)).toEqual([]);
+});
+
+test("a Switch set has an Updates tab, checked when no older update is proposed", () => {
+  const card = (proposed: number) =>
+    ({
+      summary: { roms: 3 },
+      progress: { to_convert: 0, to_process: 0 },
+      needs: null,
+      updates: { total: 2, proposed, unknown: 0 },
+      warnings: [] as FolderWarning[],
+    }) as FolderCard;
+  const tabs = (c: FolderCard) => {
+    const { unmount } = render(
+      <MemoryRouter>
+        <FolderHeader
+          folder={{ ...FOLDER, title_ids: true }}
+          meta={META}
+          section="updates"
+          card={c}
+        />
+      </MemoryRouter>,
+    );
+    const links = Array.from(
+      screen.getByRole("navigation", { name: "Set pages" }).querySelectorAll("a"),
+    );
+    const found = links.map((a) => [
+      a.textContent,
+      a.querySelector('[aria-label="nothing to do"]') !== null,
+    ]);
+    unmount();
+    return found;
+  };
+  expect(tabs(card(1))).toEqual([
+    ["Conversion", true],
+    ["Matching & 1G1R", true],
+    ["Updates", false],
+    ["Discarded", false],
+    ["Ignored", false],
+  ]);
+  expect(tabs(card(0))[2]).toEqual(["Updates", true]);
+});
+
+test("other sets have no Updates tab", () => {
+  render(
+    <MemoryRouter>
+      <FolderHeader folder={FOLDER} meta={META} section="matching" />
+    </MemoryRouter>,
+  );
+  expect(screen.queryByRole("link", { name: "Updates" })).toBeNull();
 });

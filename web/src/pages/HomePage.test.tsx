@@ -34,6 +34,8 @@ const card = (label: string, platform: string, scan: Scan | null): FolderCard =>
   ignored_patterns: [],
   ignored_patterns_default: true,
   ignored_files: [],
+  title_ids: false,
+  updates: null,
   scan,
   last_scan: scan?.kind === "identify" ? scan : null,
   dat: null,

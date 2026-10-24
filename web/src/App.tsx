@@ -5,6 +5,7 @@ import { FolderConversionPage } from "@/pages/FolderConversionPage";
 import { FolderDiscardedPage } from "@/pages/FolderDiscardedPage";
 import { FolderIgnoredPage } from "@/pages/FolderIgnoredPage";
 import { FolderMatchingPage } from "@/pages/FolderMatchingPage";
+import { FolderUpdatesPage } from "@/pages/FolderUpdatesPage";
 import { HomePage } from "@/pages/HomePage";
 import { SetsSettingsPage } from "@/pages/SetsSettingsPage";
 import {
@@ -26,6 +27,7 @@ export function App() {
         <Route path="folders/:label/conversion" element={<FolderConversionPage />} />
         <Route path="folders/:label/discarded" element={<FolderDiscardedPage />} />
         <Route path="folders/:label/ignored" element={<FolderIgnoredPage />} />
+        <Route path="folders/:label/updates" element={<FolderUpdatesPage />} />
         <Route path="settings" element={<Navigate to="/settings/dat-sources" replace />} />
         <Route path="settings/dat-sources" element={<DatSourcesPage />} />
         <Route path="settings/folders" element={<SetsSettingsPage />} />

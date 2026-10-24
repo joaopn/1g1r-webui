@@ -31,6 +31,7 @@ const PAGES: Record<Notification["kind"], SectionId> = {
   "1g1r": "matching",
   unmatched: "matching",
   "set-aside": "discarded",
+  updates: "updates",
   empty: "discarded",
   restore: "discarded",
 };

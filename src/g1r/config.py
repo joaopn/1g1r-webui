@@ -101,6 +101,8 @@ class UiConfig(_Strict):
     discarded_columns_default: list[str] = Field(min_length=1)
     ignored_columns: dict[str, ColumnSize]
     ignored_columns_default: list[str] = Field(min_length=1)
+    updates_columns: dict[str, ColumnSize]
+    updates_columns_default: list[str] = Field(min_length=1)
     statistics_columns: dict[str, ColumnSize]
     statistics_columns_default: list[str] = Field(min_length=1)
     statistics_source_rem: float = Field(gt=0)
@@ -576,6 +578,7 @@ class TitleIdConfig(_Strict):
     max_entries: int = Field(gt=0)
     ticket_suffix: str
     cnmt_xml_suffix: str
+    version_step: int = Field(gt=0)
     max_cnmt_xml_bytes: int = Field(gt=0)
     pfs0_extensions: list[str]
 

@@ -101,6 +101,16 @@ ui:
     size: {rem: 5.5, min: 4.5, max: 10}
     ignored_by: {rem: 10, min: 6, max: 24}
   ignored_columns_default: [name, file, size, ignored_by]
+  # The Updates table (Switch sets): each game's updates, newest first.
+  updates_columns:
+    game: {rem: 16, min: 8, max: 40}
+    name: {rem: 16, min: 8, max: 40}
+    release: {rem: 6, min: 4.5, max: 10}
+    version: {rem: 6.5, min: 4.5, max: 10}
+    title_id: {rem: 10, min: 6, max: 14}
+    status: {rem: 14, min: 8, max: 30}
+    size: {rem: 5.5, min: 4.5, max: 10}
+  updates_columns_default: [game, name, release, status, size]
   # The Statistics table: the set, its platform, and one DATs column holding a bar per DAT
   # source side by side. The DATs column starts as wide as the most sources a set has
   # (each `statistics_source_rem` wide, `statistics_source_gap_rem` apart), within its
@@ -911,6 +921,8 @@ title_ids:
   max_entries: 4096
   ticket_suffix: .tik
   cnmt_xml_suffix: .cnmt.xml
+  # Each update release adds this to the version (v65536 is the first update).
+  version_step: 65536
   max_cnmt_xml_bytes: 1048576
   pfs0_extensions: [nsp, nsz]
 

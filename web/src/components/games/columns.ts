@@ -328,18 +328,22 @@ export type QuickView = {
   part?: { label: string; test: (game: Game) => boolean };
 };
 
+/** The versions 1G1R chooses among: a title-ID game's updates and DLC are not versions. */
+export const rankedVersions = (g: Game) =>
+  g.versions.filter((v) => v.role !== "update" && v.role !== "dlc");
+
 export const QUICK_VIEWS: QuickView[] = [
   { id: "all", label: "All", test: () => true },
   {
     id: "one",
     label: "One version",
     test: (g) =>
-      g.versions.length === 1 && g.status !== "unmatched" && g.status !== "convert first",
+      rankedVersions(g).length === 1 && g.status !== "unmatched" && g.status !== "convert first",
   },
   {
     id: "several",
     label: "Several versions",
-    test: (g) => g.versions.length > 1,
+    test: (g) => rankedVersions(g).length > 1,
     part: { label: "undecided", test: (g) => g.status === "undecided" },
   },
   {

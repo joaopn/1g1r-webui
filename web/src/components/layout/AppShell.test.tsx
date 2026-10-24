@@ -32,6 +32,8 @@ const FOLDERS = [
     ignored_patterns: [],
     ignored_patterns_default: true,
     ignored_files: [],
+    title_ids: false,
+    updates: null,
     conversion: {
       wrap: 0,
       unwrap: 0,

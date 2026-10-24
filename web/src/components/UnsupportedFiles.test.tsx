@@ -22,6 +22,7 @@ const FOLDER: FolderInfo = {
   ignored_patterns: ["*.txt"],
   ignored_patterns_default: true,
   ignored_files: ["old.bin"],
+  title_ids: false,
 };
 
 const wrap = (node: ReactNode) => (

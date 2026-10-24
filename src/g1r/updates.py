@@ -28,6 +28,8 @@ class UpdateRow:
     rel_path: str
     title_id: str
     version: int | None
+    # Which update it is (the version in update steps: 1 for the first update).
+    release: int | None
     size: int | None
     status: str
     reason: str
@@ -58,7 +60,8 @@ def set_keep(conn: sqlite3.Connection, label: str, rel_paths: list[str], keep: b
 
 
 def rows(settings: Settings, label: str, games: list[GameRow], kept: set[str]) -> list[UpdateRow]:
-    """Every update of these games (matching.game_rows of the folder)."""
+    """Every update of these games (matching.game_rows of the folder): by game, newest first,
+    those without a version last."""
     config = settings.title_ids
     result = []
     for game in games:
@@ -98,6 +101,7 @@ def rows(settings: Settings, label: str, games: list[GameRow], kept: set[str]) -
                     row.version.rel_path,
                     titles.hex_id(title.title_id, config) if title and config else "",
                     version,
+                    version // config.version_step if config and version is not None else None,
                     row.size,
                     status,
                     reason,
@@ -105,4 +109,5 @@ def rows(settings: Settings, label: str, games: list[GameRow], kept: set[str]) -
                     row.discarded,
                 )
             )
+    result.sort(key=lambda r: (r.game.lower(), r.version is None, -(r.version or 0), r.rel_path))
     return result

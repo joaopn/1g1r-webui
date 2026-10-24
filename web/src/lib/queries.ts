@@ -16,6 +16,7 @@ import type {
   SettingsData,
   Statistics,
   UnmatchedFile,
+  Updates,
 } from "@/lib/types";
 
 export const queryClient = new QueryClient({
@@ -32,6 +33,7 @@ export const keys = {
   conversion: (label: string) => ["conversion", label] as const,
   unmatched: (label: string) => ["unmatched", label] as const,
   discarded: (label: string) => ["discarded", label] as const,
+  updates: (label: string) => ["updates", label] as const,
   run: (label: string) => ["run", label] as const,
   settings: ["settings"] as const,
   dats: ["dats"] as const,
@@ -83,6 +85,13 @@ export const useDiscarded = (label: string) =>
     queryFn: () => api<Discarded>(`/folders/${label}/discarded`),
   });
 
+export const useUpdates = (label: string, enabled: boolean) =>
+  useQuery({
+    queryKey: keys.updates(label),
+    queryFn: () => api<Updates>(`/folders/${label}/updates`),
+    enabled,
+  });
+
 /** The latest scans and runs: polled often while one runs, now and then otherwise (a run
  * may start in another tab). */
 export const useNotifications = () =>
@@ -123,6 +132,7 @@ export function invalidateFolder(label: string) {
     queryClient.invalidateQueries({ queryKey: keys.conversion(label) }),
     queryClient.invalidateQueries({ queryKey: keys.unmatched(label) }),
     queryClient.invalidateQueries({ queryKey: keys.discarded(label) }),
+    queryClient.invalidateQueries({ queryKey: keys.updates(label) }),
     queryClient.invalidateQueries({ queryKey: keys.run(label) }),
     queryClient.invalidateQueries({ queryKey: keys.folders }),
     queryClient.invalidateQueries({ queryKey: keys.notifications }),
