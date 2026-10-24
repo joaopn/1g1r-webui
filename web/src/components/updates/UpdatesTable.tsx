@@ -90,6 +90,13 @@ export function UpdatesTable({
         ),
       },
       {
+        id: "display_version",
+        label: "Shown as",
+        sortValue: (r) => r.display_version ?? "",
+        render: (r) => r.display_version ?? <span className="text-muted-foreground">–</span>,
+        title: (r) => (r.display_version ? undefined : "read with prod.keys"),
+      },
+      {
         id: "title_id",
         label: "Title ID",
         sortValue: (r) => r.title_id,

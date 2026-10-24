@@ -9,6 +9,7 @@ import { useRestore } from "@/components/apply/useRestore";
 import { Box } from "@/components/Box";
 import { StatCard } from "@/components/StatCard";
 import { Button } from "@/components/ui/button";
+import { SwitchKeys } from "@/components/updates/SwitchKeys";
 import { UpdatesTable } from "@/components/updates/UpdatesTable";
 import { ApiError, api, json } from "@/lib/api";
 import { formatCount, formatFiles } from "@/lib/format";
@@ -67,10 +68,11 @@ export function FolderUpdatesPage() {
           need (some mods need an older update).
         </p>
         <p className="text-muted-foreground">
-          The version is read from the file's content metadata. When an update of a game has none,
-          nothing of that game is proposed.
+          The version is read from the file's cnmt.xml, else with your prod.keys. When one of a
+          game's updates has none, nothing of that game is proposed.
         </p>
       </Box>
+      <SwitchKeys label={label} />
       <RunPanel label={label} meta={meta.data} />
       {updates.error ? (
         <p className="text-status-bad">{errorText(updates.error)}</p>

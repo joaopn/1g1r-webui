@@ -35,6 +35,7 @@ const row = (rel_path: string, status: UpdateRow["status"], release: number | nu
     title_id: "0100AAAA00010800",
     version: null,
     release,
+    display_version: release === null ? null : `1.0.${release}`,
     size: 7,
     status,
     reason: "",
@@ -64,7 +65,9 @@ test("older updates are proposed, and a Keep click keeps one", async () => {
           ? UPDATES
           : url.endsWith("/run")
             ? null
-            : DETAIL;
+            : url.endsWith("/keys")
+              ? { boot9: false, seeddb: null, prod_keys: null }
+              : DETAIL;
     return new Response(JSON.stringify(body), { headers: { "Content-Type": "application/json" } });
   });
   render(
@@ -77,6 +80,9 @@ test("older updates are proposed, and a Keep click keeps one", async () => {
     </QueryClientProvider>,
   );
   expect(await screen.findByTestId("update-update 2.nsp")).toHaveTextContent("newest, kept");
+  expect(screen.getByTestId("update-update 2.nsp")).toHaveTextContent("1.0.2");
+  expect(await screen.findByText("· not added")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Add" })).toBeEnabled();
   const older = screen.getByTestId("update-update 1.nsp");
   expect(older).toHaveTextContent("older → discard");
   expect(screen.getByRole("button", { name: /Move 1 file to discarded/ })).toBeEnabled();

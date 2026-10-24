@@ -78,11 +78,12 @@ export const META: Meta = {
       name: { rem: 16, min: 8, max: 40 },
       release: { rem: 6, min: 4.5, max: 10 },
       version: { rem: 6.5, min: 4.5, max: 10 },
+      display_version: { rem: 6.5, min: 4.5, max: 12 },
       title_id: { rem: 10, min: 6, max: 14 },
       status: { rem: 14, min: 8, max: 30 },
       size: { rem: 5.5, min: 4.5, max: 10 },
     },
-    updates_columns_default: ["game", "name", "release", "status", "size"],
+    updates_columns_default: ["game", "name", "release", "display_version", "status", "size"],
     statistics_columns: Object.fromEntries(
       ["folder", "size", "discarded", "platform", "dats"].map((id) => [id, size(8)]),
     ),

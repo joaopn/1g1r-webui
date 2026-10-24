@@ -13,7 +13,9 @@ export type Platform = {
 };
 
 /** Which console keys are stored (never the keys): boot9 there, and seeddb's seed count. */
-export type KeyStatus = { boot9: boolean; seeddb: number | null };
+/** Stored console keys: boot9 and seeddb (3DS), and prod.keys (Switch: the key generations
+ * it holds). */
+export type KeyStatus = { boot9: boolean; seeddb: number | null; prod_keys: number | null };
 
 export type Ranking = {
   criteria: string[];
@@ -588,6 +590,8 @@ export type UpdateRow = {
   version: number | null;
   /** Which update it is: 1 for the first. */
   release: number | null;
+  /** The version shown to players ("1.0.2"), read with prod.keys. */
+  display_version: string | null;
   size: number | null;
   status: "newest" | "older" | "kept" | "version unknown" | "left alone" | "discarded";
   reason: string;

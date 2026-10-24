@@ -10,16 +10,17 @@ import type { KeyStatus } from "@/lib/types";
 
 const errorText = (err: unknown) => (err instanceof ApiError ? err.message : String(err));
 
-type Kind = "boot9" | "seeddb";
+type Kind = "boot9" | "seeddb" | "prod_keys";
 
 /** One key file: whether it is there, and add / replace / remove buttons. */
-function KeyRow({
+export function KeyRow({
   kind,
   title,
   help,
   present,
   detail,
   label,
+  accept = ".bin",
 }: {
   kind: Kind;
   title: string;
@@ -27,6 +28,8 @@ function KeyRow({
   present: boolean;
   detail: string;
   label: string;
+  /** The file picker's types. */
+  accept?: string;
 }) {
   const fileInput = useRef<HTMLInputElement>(null);
   const done = (status: KeyStatus) => {
@@ -81,7 +84,7 @@ function KeyRow({
         <input
           ref={fileInput}
           type="file"
-          accept=".bin"
+          accept={accept}
           className="hidden"
           aria-label={`${title} file`}
           onChange={(event) => {

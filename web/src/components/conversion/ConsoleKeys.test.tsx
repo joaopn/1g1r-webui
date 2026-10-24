@@ -22,7 +22,10 @@ function renderKeys(status: KeyStatus, after: KeyStatus) {
 }
 
 test("says what is missing and uploads boot9 from a file", async () => {
-  const calls = renderKeys({ boot9: false, seeddb: null }, { boot9: true, seeddb: null });
+  const calls = renderKeys(
+    { boot9: false, seeddb: null, prod_keys: null },
+    { boot9: true, seeddb: null, prod_keys: null },
+  );
   expect(await screen.findByText(/· missing/)).toBeInTheDocument();
   expect(screen.getByText(/· not added/)).toBeInTheDocument();
   const file = new File([new Uint8Array(4)], "boot9.bin");
@@ -34,7 +37,10 @@ test("says what is missing and uploads boot9 from a file", async () => {
 });
 
 test("stored keys show the seed count and can be removed", async () => {
-  const calls = renderKeys({ boot9: true, seeddb: 1861 }, { boot9: true, seeddb: null });
+  const calls = renderKeys(
+    { boot9: true, seeddb: 1861, prod_keys: null },
+    { boot9: true, seeddb: null, prod_keys: null },
+  );
   expect(await screen.findByText(/1,861 seeds/)).toBeInTheDocument();
   const removes = screen.getAllByRole("button", { name: "Remove" });
   await userEvent.click(removes[1]);
