@@ -1,4 +1,4 @@
-import { useMutation } from "@tanstack/react-query";
+import { type QueryKey, useMutation } from "@tanstack/react-query";
 import { ChevronRight, Download, Pin, PinOff, Trash2, Upload } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
@@ -641,6 +641,7 @@ function NumberSetting({
   current,
   isDefault,
   max,
+  invalidates = [],
   children,
 }: {
   title: string;
@@ -653,6 +654,8 @@ function NumberSetting({
   current: number | null;
   isDefault: boolean;
   max: number;
+  /** Queries refreshed after a save besides the settings (what the value changes). */
+  invalidates?: readonly QueryKey[];
   children: ReactNode;
 }) {
   const [draft, setDraft] = useState(String(value));
@@ -662,6 +665,7 @@ function NumberSetting({
     onSuccess: () => {
       toast.success(saved);
       queryClient.invalidateQueries({ queryKey: keys.settings });
+      for (const queryKey of invalidates) queryClient.invalidateQueries({ queryKey });
     },
     onError: (err) => toast.error(errorText(err)),
   });
@@ -710,6 +714,7 @@ export function AdvancedSettingsPage() {
   const parallel = data.data.parallel_scans;
   const conversions = data.data.parallel_conversions;
   const threads = data.data.igir_threads;
+  const rows = data.data.page_size;
   return (
     <Page
       title="Advanced"
@@ -749,6 +754,20 @@ export function AdvancedSettingsPage() {
         How many files a conversion run converts at a time, each from unpacking to moving its
         original. Unpacked copies are deleted as soon as the output is written. Default{" "}
         {conversions.default}, at most {conversions.max}. Applies from the next run.
+      </NumberSetting>
+      <NumberSetting
+        title="Rows per page"
+        label="Rows per page"
+        path="/settings/page-size"
+        saved="Rows per page saved"
+        value={rows.value}
+        current={rows.value}
+        isDefault={rows.value === rows.default}
+        max={rows.max}
+        invalidates={[keys.meta]}
+      >
+        How many rows a table shows before the next page (games on the Matching table). Default{" "}
+        {rows.default}, at most {rows.max}.
       </NumberSetting>
       <NumberSetting
         title="igir threads per scan"

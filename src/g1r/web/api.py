@@ -436,7 +436,7 @@ def build_router(
     def meta():
         return {
             "app": settings.app.model_dump(),
-            "ui": settings.ui.model_dump(),
+            "ui": {**settings.ui.model_dump(), "page_size": store.page_size(store.load())},
             "platforms": {
                 pid: {
                     "name": p.name,
@@ -1667,6 +1667,11 @@ def build_router(
                 "default": settings.jobs.conversion_workers,
                 "max": settings.jobs.max_conversion_workers,
             },
+            "page_size": {
+                "value": store.page_size(library),
+                "default": settings.ui.page_size,
+                "max": settings.ui.max_page_size,
+            },
             "igir_threads": {
                 "value": store.igir_threads(library),
                 "default_readers": settings.igir.default_reader_threads,
@@ -1712,6 +1717,13 @@ def build_router(
                 f"at most {settings.jobs.max_conversion_workers} conversions at a time"
             )
         store.update(lambda lib: setattr(lib, "parallel_conversions", body.value))
+        return get_settings()
+
+    @router.put("/settings/page-size")
+    def save_page_size(body: JobLimit):
+        if body.value is not None and body.value > settings.ui.max_page_size:
+            raise bad_request(f"at most {settings.ui.max_page_size} rows per page")
+        store.update(lambda lib: setattr(lib, "page_size", body.value))
         return get_settings()
 
     @router.put("/settings/igir-threads")

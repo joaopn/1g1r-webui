@@ -13,6 +13,7 @@ test("parallel scans sit above the configuration and save within the most allowe
       JSON.stringify({
         parallel_scans: { value: 4, default: 4, max: 16 },
         parallel_conversions: { value: 2, default: 2, max: 8 },
+        page_size: { value: 50, default: 50, max: 1000 },
         igir_threads: { value: null, default_readers: 6, default_pool: 4, max: 64 },
         effective_yaml: "jobs:\n  scan_workers: 4\n",
         library_file: "/data/library.yaml",
@@ -51,6 +52,7 @@ test("igir threads start at igir's own and save a chosen number", async () => {
       JSON.stringify({
         parallel_scans: { value: 4, default: 4, max: 16 },
         parallel_conversions: { value: 2, default: 2, max: 8 },
+        page_size: { value: 50, default: 50, max: 1000 },
         igir_threads: { value: null, default_readers: 6, default_pool: 4, max: 64 },
         effective_yaml: "",
         library_file: "/data/library.yaml",
@@ -82,6 +84,7 @@ test("parallel conversions save to their own setting", async () => {
       JSON.stringify({
         parallel_scans: { value: 4, default: 4, max: 16 },
         parallel_conversions: { value: 2, default: 2, max: 8 },
+        page_size: { value: 50, default: 50, max: 1000 },
         igir_threads: { value: null, default_readers: 6, default_pool: 4, max: 64 },
         effective_yaml: "",
         library_file: "/data/library.yaml",

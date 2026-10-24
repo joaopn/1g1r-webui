@@ -83,6 +83,7 @@ class NotificationsConfig(_Strict):
 
 class UiConfig(_Strict):
     page_size: int = Field(gt=0)
+    max_page_size: int = Field(gt=0)
     dat_search_limit: int = Field(gt=0)
     poll_interval_ms: int = Field(gt=0)
     hash_display_length: int = Field(gt=0)
@@ -119,6 +120,8 @@ class UiConfig(_Strict):
             unknown = [c for c in getattr(self, f"{table}_columns_default") if c not in sizes]
             if unknown:
                 raise ValueError(f"ui.{table}_columns_default names unknown columns {unknown}")
+        if self.page_size > self.max_page_size:
+            raise ValueError("ui.page_size is above ui.max_page_size")
         return self
 
 

@@ -437,6 +437,8 @@ export type SettingsData = {
   parallel_scans: { value: number; default: number; max: number };
   /** How many files one conversion run converts at a time. */
   parallel_conversions: { value: number; default: number; max: number };
+  /** Rows per page of every table. */
+  page_size: { value: number; default: number; max: number };
   /** Threads per igir run; null: igir's own (its default readers and pool). */
   igir_threads: {
     value: number | null;

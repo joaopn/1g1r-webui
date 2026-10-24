@@ -28,8 +28,10 @@ database:
   busy_timeout_ms: 5000
 
 ui:
-  # Games shown per page of the Matching table.
-  page_size: 100
+  # Rows shown per page of every table (games on the Matching table), set in Settings ->
+  # Advanced, up to max_page_size.
+  page_size: 50
+  max_page_size: 1000
   # Most DAT entries listed when searching the DAT to assign a file by hand.
   dat_search_limit: 25
   # How often a running scan's status is refreshed in the browser.

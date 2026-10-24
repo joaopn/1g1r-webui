@@ -632,6 +632,24 @@ def test_parallel_conversions_are_set_in_the_ui_within_the_configured_max(setup)
     assert reset["parallel_conversions"]["value"] == jobs.conversion_workers
 
 
+def test_rows_per_page_are_set_in_the_ui_and_reach_every_table(setup):
+    client, store, settings = setup
+    ui = settings.ui
+    assert client.get("/api/settings").json()["page_size"] == {
+        "value": ui.page_size,
+        "default": ui.page_size,
+        "max": ui.max_page_size,
+    }
+    chosen = ui.max_page_size
+    saved = client.put("/api/settings/page-size", json={"value": chosen}).json()
+    assert saved["page_size"]["value"] == chosen == store.load().page_size
+    assert client.get("/api/meta").json()["ui"]["page_size"] == chosen
+    too_many = client.put("/api/settings/page-size", json={"value": chosen + 1})
+    assert too_many.status_code == HTTPStatus.BAD_REQUEST
+    client.put("/api/settings/page-size", json={"value": None})
+    assert client.get("/api/meta").json()["ui"]["page_size"] == ui.page_size
+
+
 def test_igir_threads_are_igir_s_own_until_set(setup):
     client, store, settings = setup
     assert client.get("/api/settings").json()["igir_threads"]["value"] is None
