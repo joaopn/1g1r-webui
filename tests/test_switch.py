@@ -208,6 +208,15 @@ def test_an_update_without_a_readable_version_keeps_the_whole_game(folder_of, ma
     assert found["counts"] == {"total": 2, "proposed": 0, "unknown": 2}
 
 
+def test_a_lone_update_is_the_newest_without_a_version(folder_of, make_settings):
+    client, folder = folder_of("switch")
+    (folder / "game.nsp").write_bytes(nsp(make_settings, BASE_ID, 0, "Application"))
+    (folder / "update.nsp").write_bytes(nsp(make_settings, UPDATE_ID))
+    scan(client)
+    (update,) = client.get("/api/folders/switch/updates").json()["updates"]
+    assert (update["status"], update["version"], update["operation"]) == ("newest", None, None)
+
+
 def test_a_platform_without_title_ids_has_no_updates(folder_of):
     client, _ = folder_of("gb")
     assert client.get("/api/folders/gb/updates").status_code == HTTPStatus.NOT_FOUND

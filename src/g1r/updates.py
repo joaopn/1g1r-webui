@@ -2,8 +2,8 @@
 
 1G1R keeps every update. Here the updates older than a game's newest are proposed for
 discarded/<label>/updates/, unless the user keeps them (older updates can matter, e.g. for
-mods). A version is only what the file's content metadata says; when any update of a game
-has no version read, nothing of that game is proposed.
+mods). A version is only what the file's content metadata says; when an update of a game
+with several has no version read, nothing of that game is proposed.
 """
 
 import sqlite3
@@ -68,8 +68,9 @@ def rows(settings: Settings, label: str, games: list[GameRow], kept: set[str]) -
         updates = [r for r in game.rows if r.version.role == titles.UPDATE]
         present = [r for r in updates if not r.discarded]
         versions = [r.version.title_version for r in present]
-        known = all(v is not None for v in versions)
-        newest = max(versions) if versions and known else None
+        # A lone update is the newest whatever its version says.
+        known = len(present) == 1 or all(v is not None for v in versions)
+        newest = max(versions, key=lambda v: v or 0) if versions and known else None
         for row in updates:
             version = row.version.title_version
             title = titles.from_name(row.version.game_name, config) if config else None
@@ -87,7 +88,7 @@ def rows(settings: Settings, label: str, games: list[GameRow], kept: set[str]) -
                         else "another update of this game has no readable version"
                     ),
                 )
-            elif version == newest:
+            elif version == newest or len(present) == 1:
                 status, reason = STATUS_NEWEST, "the newest update of this game"
             elif row.version.rel_path in kept:
                 status, reason = STATUS_KEPT, "you keep this older update"
