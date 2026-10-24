@@ -38,21 +38,31 @@ export type RowFilter<T> = {
   valueOf: (row: T) => string;
 };
 
-/** Rows shown under a header per group (a game's updates and DLC), each group opening and
- * closing on a click like the Matching table's games. Groups follow the order of their first
- * row; a page holds `page_size` groups. */
-export type RowGroup<T> = {
+/** Rows under a row per group (a game, its updates and DLC under it), like the Matching
+ * table's games. Every group is listed, those without rows too (no chevron then); groups
+ * start closed, and open by themselves while a search, a view or a filter narrows the rows
+ * (then only groups with such rows, or whose name the search finds, are listed). A page
+ * holds `page_size` groups. */
+export type RowGroup<T, G> = {
+  groups: G[];
+  groupKey: (group: G) => string;
   key: (row: T) => string;
-  /** The header's text: the group's name and a summary of its rows. */
-  name: (rows: T[]) => string;
-  summary?: (rows: T[]) => ReactNode;
-  testId?: (key: string) => string;
+  /** What the group is called (its row's label for assistive technology). */
+  name: (group: G) => string;
+  noun: string;
+  search: (group: G, needle: string) => boolean;
+  /** The group row's cell in a column; the first shown column gets the chevron too. */
+  cell: (group: G, columnId: string, rows: T[]) => ReactNode;
+  title?: (group: G, columnId: string) => string | undefined;
+  /** How groups sort by a column (rows sort within their group); none: the given order. */
+  sortValue?: (group: G, columnId: string) => string | number | undefined;
+  testId?: (group: G) => string;
 };
 
 const FILTER_PREFIX = "f.";
 const ALL_ROWS: RowView<unknown>[] = [{ id: "all", label: "All", test: () => true }];
 
-export function DataTable<T>({
+export function DataTable<T, G = never>({
   name,
   label,
   noun,
@@ -102,11 +112,11 @@ export function DataTable<T>({
   meta: Meta;
   /** Prefixes the URL parameters, so a second table on the page keeps its own view. */
   paramPrefix?: string;
-  /** Rows grouped under a header each, open until clicked. */
-  group?: RowGroup<T>;
+  /** Rows under a row per group, which opens and closes them. */
+  group?: RowGroup<T, G>;
 }) {
-  // Groups closed by a click (every group starts open).
-  const [closed, setClosed] = useState<Set<string>>(() => new Set());
+  // Groups opened or closed by a click, against how they start.
+  const [toggled, setToggled] = useState<Set<string>>(() => new Set());
   const [urlParams, setParams] = useSearchParams();
   const params = { get: (key: string) => urlParams.get(paramPrefix + key) };
   const prefs = useMemo(
@@ -156,15 +166,24 @@ export function DataTable<T>({
         return result === 0 ? rowKey(a).localeCompare(rowKey(b)) : result * direction;
       })
     : inView;
+  const narrowed = view !== views[0] || filters.some((f) => selected(f.id).length > 0);
   const grouped = group
-    ? groupRows(sorted, group.key)
-    : sorted.map((row) => ({ key: "", rows: [row] }));
+    ? listGroups(group, sorted, {
+        needle,
+        narrowed,
+        sort: sortColumn?.sortValue ? sort : null,
+        direction: order === "asc" ? 1 : -1,
+      })
+    : sorted.map((row) => ({ key: rowKey(row), group: undefined, rows: [row] }));
+  // Open by themselves while something narrows the rows.
+  const opensAlone = needle !== "" || narrowed;
+  const isOpen = (key: string) => opensAlone !== toggled.has(key);
   const pageSize = meta.ui.page_size;
   const pages = Math.max(1, Math.ceil(grouped.length / pageSize));
   const page = Math.min(pages, Math.max(1, Math.trunc(Number(params.get("page") ?? "1")) || 1));
   const visible = grouped.slice((page - 1) * pageSize, page * pageSize);
   const toggle = (key: string) =>
-    setClosed((current) => {
+    setToggled((current) => {
       const next = new Set(current);
       if (!next.delete(key)) next.add(key);
       return next;
@@ -264,6 +283,11 @@ export function DataTable<T>({
         />
       </div>
       <p className="text-muted-foreground text-xs">
+        {group ? (
+          <>
+            {formatCount(grouped.length)} of {formatCount(group.groups.length)} {group.noun} ·{" "}
+          </>
+        ) : null}
         {formatCount(sorted.length)} of {formatCount(rows.length)} {noun}
         {note ? <> · {note}</> : null}
       </p>
@@ -297,15 +321,10 @@ export function DataTable<T>({
             <p className="px-3 py-6 text-center text-muted-foreground">No {noun} match.</p>
           ) : (
             visible.map((g) =>
-              group ? (
-                <div key={g.key} data-testid={group.testId?.(g.key)}>
-                  <GroupHeader
-                    name={group.name(g.rows)}
-                    summary={group.summary?.(g.rows)}
-                    open={!closed.has(g.key)}
-                    onToggle={() => toggle(g.key)}
-                  />
-                  {closed.has(g.key) ? null : g.rows.map(renderRow)}
+              group && g.group !== undefined ? (
+                <div key={g.key}>
+                  {renderGroup(group, g.group, g.rows, g.key)}
+                  {g.rows.length > 0 && isOpen(g.key) ? g.rows.map(renderRow) : null}
                 </div>
               ) : (
                 g.rows.map(renderRow)
@@ -317,6 +336,64 @@ export function DataTable<T>({
       <Pager page={page} pages={pages} onPage={(p) => update({ page: String(p) }, true)} />
     </div>
   );
+
+  function renderGroup(group: RowGroup<T, G>, g: G, children: T[], key: string) {
+    const open = isOpen(key);
+    const name = group.name(g);
+    const expandable = children.length > 0;
+    return (
+      // biome-ignore lint/a11y/noStaticElementInteractions lint/a11y/useKeyWithClickEvents: the chevron button is the keyboard path; a click anywhere on the row does the same.
+      <div
+        data-testid={group.testId?.(g)}
+        onClick={expandable ? () => toggle(key) : undefined}
+        className={cn(
+          "flex items-center border-border border-b px-3 py-1.5 last:border-b-0 hover:bg-accent/40",
+          expandable && "cursor-pointer",
+        )}
+      >
+        <div className={grid}>
+          {shownColumns.map((column, index) => (
+            <div
+              key={column.id}
+              className={cn(
+                "min-w-0 truncate",
+                index === 0 && "flex items-center gap-1.5",
+                column.className,
+              )}
+              title={group.title?.(g, column.id)}
+            >
+              {index === 0 ? (
+                expandable ? (
+                  <button
+                    type="button"
+                    aria-expanded={open}
+                    aria-label={`${name}: ${open ? "collapse" : "show"}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      toggle(key);
+                    }}
+                    className="flex shrink-0 rounded-sm p-0.5 hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
+                  >
+                    <ChevronRight
+                      className={cn(
+                        "size-4 text-muted-foreground transition-transform duration-200 motion-reduce:transition-none",
+                        open && "rotate-90",
+                      )}
+                      aria-hidden="true"
+                    />
+                  </button>
+                ) : (
+                  <span className="size-5 shrink-0" aria-hidden="true" />
+                )
+              ) : null}
+              {group.cell(g, column.id, children)}
+            </div>
+          ))}
+        </div>
+        {actions ? <span className={cn("shrink-0", actionsClassName)} aria-hidden="true" /> : null}
+      </div>
+    );
+  }
 
   function renderRow(row: T) {
     return (
@@ -351,46 +428,37 @@ export function DataTable<T>({
   }
 }
 
-/** Rows by group, in the order of each group's first row. */
-function groupRows<T>(rows: T[], keyOf: (row: T) => string): { key: string; rows: T[] }[] {
-  const found = new Map<string, T[]>();
+/** The groups to list, each with its rows (already searched, filtered and sorted): every
+ * group, or while the rows are narrowed only those with rows left (a search also keeps a
+ * group whose name it finds). Sorted by the sort column when the groups have values for it. */
+function listGroups<T, G>(
+  group: RowGroup<T, G>,
+  rows: T[],
+  {
+    needle,
+    narrowed,
+    sort,
+    direction,
+  }: { needle: string; narrowed: boolean; sort: string | null; direction: number },
+): { key: string; group: G; rows: T[] }[] {
+  const byKey = new Map<string, T[]>();
   for (const row of rows) {
-    const key = keyOf(row);
-    const list = found.get(key);
+    const key = group.key(row);
+    const list = byKey.get(key);
     if (list) list.push(row);
-    else found.set(key, [row]);
+    else byKey.set(key, [row]);
   }
-  return [...found].map(([key, list]) => ({ key, rows: list }));
-}
-
-function GroupHeader({
-  name,
-  summary,
-  open,
-  onToggle,
-}: {
-  name: string;
-  summary?: ReactNode;
-  open: boolean;
-  onToggle: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      aria-expanded={open}
-      aria-label={`${name}: ${open ? "collapse" : "show"}`}
-      onClick={onToggle}
-      className="flex w-full items-center gap-2 border-border border-b px-3 py-1.5 text-left hover:bg-accent/40 focus-visible:outline-2 focus-visible:outline-ring"
-    >
-      <ChevronRight
-        className={cn(
-          "size-4 shrink-0 text-muted-foreground transition-transform duration-200 motion-reduce:transition-none",
-          open && "rotate-90",
-        )}
-        aria-hidden="true"
-      />
-      <span className="min-w-0 truncate font-medium">{name}</span>
-      {summary ? <span className="shrink-0 text-muted-foreground text-xs">{summary}</span> : null}
-    </button>
-  );
+  const listed = group.groups
+    .map((g) => ({ key: group.groupKey(g), group: g, rows: byKey.get(group.groupKey(g)) ?? [] }))
+    .filter(
+      (g) => g.rows.length > 0 || (!narrowed && (needle === "" || group.search(g.group, needle))),
+    );
+  const value = sort && group.sortValue ? group.sortValue : null;
+  if (value && sort) {
+    listed.sort((a, b) => {
+      const result = compareValues(value(a.group, sort) ?? "", value(b.group, sort) ?? "");
+      return result * direction;
+    });
+  }
+  return listed;
 }

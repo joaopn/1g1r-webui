@@ -638,5 +638,25 @@ export type UpdateRow = {
   newer: boolean;
 };
 
+/** A game of the set on the Updates & DLC tab (with or without updates or DLC): its newest
+ * update's versions, whether titledb knows a newer one, and what its rows hold. */
+export type UpdateGame = {
+  group_key: string;
+  game: string;
+  display_version: string | null;
+  version: number | null;
+  newer: boolean;
+  latest_release: number | null;
+  latest_date: string | null;
+  updates: number;
+  dlc: number;
+  to_discard: number;
+  size: number;
+};
+
 /** `newer`: games whose newest update here is older than one titledb knows. */
-export type Updates = { updates: UpdateRow[]; counts: UpdateCounts & { newer: number } };
+export type Updates = {
+  updates: UpdateRow[];
+  games: UpdateGame[];
+  counts: UpdateCounts & { newer: number };
+};

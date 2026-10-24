@@ -15,7 +15,13 @@ import { formatBytes, formatCount, formatFiles, formatWhen } from "@/lib/format"
 import { foldersByName } from "@/lib/platforms";
 import { invalidateFolder, useFolders, useMeta } from "@/lib/queries";
 import { runWords, scanProgress, useStartCheck, useStartScan } from "@/lib/scan";
-import { folderState, needsConversion, openingSection, sectionPath } from "@/lib/sections";
+import {
+  folderState,
+  needsConversion,
+  openingSection,
+  sectionPath,
+  updatesLeft,
+} from "@/lib/sections";
 import { readJson, writeJson } from "@/lib/storage";
 import type { FolderCard } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -30,9 +36,10 @@ const DETAILS = [
 ] as const;
 type Detail = (typeof DETAILS)[number]["id"];
 
-/** Nothing left to do: every file processed (a folder not scanned yet has no files). */
+/** Nothing left to do: every file processed (a folder not scanned yet has no files) and no
+ * older update to discard. */
 function isCompleted(folder: FolderCard): boolean {
-  return folder.summary.roms > 0 && folder.progress.to_process === 0;
+  return folder.summary.roms > 0 && folder.progress.to_process === 0 && !updatesLeft(folder);
 }
 
 const needsMatching = (f: FolderCard) => f.progress.to_match > 0;

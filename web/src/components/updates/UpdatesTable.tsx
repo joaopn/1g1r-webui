@@ -10,7 +10,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatBytes, formatCount } from "@/lib/format";
-import type { Meta, UpdateRow } from "@/lib/types";
+import type { Meta, UpdateGame, UpdateRow } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 type Row = UpdateRow & { name: string };
@@ -47,35 +47,34 @@ const VIEWS: RowView<Row>[] = [
 
 const plural = (n: number, word: string) => `${formatCount(n)} ${word}${n === 1 ? "" : "s"}`;
 
-/** One group per game: its name, then what its rows hold and what is to do. */
-const GROUP: RowGroup<Row> = {
-  key: (r) => r.group_key,
-  name: (rows) => rows[0].game,
-  summary: (rows) => {
-    const updates = rows.filter((r) => r.role === "update").length;
-    const dlc = rows.length - updates;
-    const toDiscard = rows.filter((r) => r.status === "older").length;
-    return [
-      ...(updates ? [plural(updates, "update")] : []),
-      ...(dlc ? [`${formatCount(dlc)} DLC`] : []),
-      ...(toDiscard ? [`${formatCount(toDiscard)} to discard`] : []),
-      ...(rows.some((r) => r.newer) ? ["newer released"] : []),
-    ].join(" · ");
-  },
-  testId: (key) => `updates-game-${key}`,
-};
+/** What a game's row says in the Status column, and its colour. */
+function gameStatus(g: UpdateGame): { text: string; tone: string } {
+  if (g.to_discard > 0)
+    return { text: `${formatCount(g.to_discard)} older → discard`, tone: "text-status-warn" };
+  if (g.newer) return { text: "newer released", tone: "text-status-info" };
+  if (g.updates > 0) return { text: "newest kept", tone: "text-status-good" };
+  if (g.dlc > 0) return { text: "DLC kept", tone: "text-status-good" };
+  return { text: "no update or DLC", tone: "text-muted-foreground" };
+}
 
-/** The set's updates and DLC, grouped by game (each group opens and closes), updates newest
- * first (the server's order): older ones are proposed for discarded/ unless kept, and a
+const newerTitle = (g: UpdateGame) =>
+  g.newer
+    ? `titledb knows a newer update: update ${g.latest_release}${g.latest_date ? `, ${g.latest_date}` : ""}`
+    : undefined;
+
+/** The set's games, each a row holding its updates (newest first, the server's order) and
+ * DLC, closed until clicked. Older updates are proposed for discarded/ unless kept, and a
  * discarded one can be restored. */
 export function UpdatesTable({
   updates,
+  games,
   meta,
   busy,
   onKeep,
   onRestore,
 }: {
   updates: UpdateRow[];
+  games: UpdateGame[];
   meta: Meta;
   busy: boolean;
   onKeep: (relPath: string, keep: boolean) => void;
@@ -85,16 +84,65 @@ export function UpdatesTable({
     () => updates.map((u) => ({ ...u, name: u.rel_path.split("/").pop() ?? u.rel_path })),
     [updates],
   );
+  const bytes = (size: number) => formatBytes(size, meta.ui.byte_unit_base, meta.ui.byte_units);
+  const group: RowGroup<Row, UpdateGame> = {
+    groups: games,
+    groupKey: (g) => g.group_key,
+    key: (r) => r.group_key,
+    name: (g) => g.game,
+    noun: "games",
+    search: (g, needle) => g.game.toLocaleLowerCase().includes(needle),
+    cell: (g, id) => {
+      if (id === "game")
+        return (
+          <span className={cn("font-medium", g.newer && "text-status-info")}>
+            {g.game}
+            {g.display_version ? <span className="font-normal"> ({g.display_version})</span> : null}
+          </span>
+        );
+      if (id === "name")
+        return (
+          <span className="text-muted-foreground text-xs">
+            {[
+              ...(g.updates ? [plural(g.updates, "update")] : []),
+              ...(g.dlc ? [`${formatCount(g.dlc)} DLC`] : []),
+            ].join(" · ")}
+          </span>
+        );
+      if (id === "latest" && g.latest_release !== null)
+        return (
+          <span className={cn("tabular-nums", g.newer && "font-medium text-status-info")}>
+            {g.latest_release}
+          </span>
+        );
+      if (id === "size" && g.size > 0)
+        return <span className="text-muted-foreground tabular-nums">{bytes(g.size)}</span>;
+      if (id === "status") {
+        const { text, tone } = gameStatus(g);
+        return <span className={tone}>{text}</span>;
+      }
+      return null;
+    },
+    title: (g, id) => (id === "game" || id === "status" ? newerTitle(g) : undefined),
+    sortValue: (g, id) => {
+      if (id === "game") return g.game.toLowerCase();
+      if (id === "size") return g.size;
+      if (id === "status") return gameStatus(g).text;
+      if (id === "latest") return g.latest_release ?? -1;
+      return undefined;
+    },
+    testId: (g) => `updates-game-${g.group_key}`,
+  };
   const columns = useMemo<DataColumn<Row>[]>(
     () => [
       {
         id: "game",
         label: "Game",
         sortValue: (r) => r.game.toLowerCase(),
-        // The game heads its group; its rows point to it.
+        // The game's row heads them; its updates and DLC point to it.
         render: () => (
           <CornerDownRight
-            className="ml-3 inline size-3.5 text-muted-foreground"
+            className="ml-5 inline size-3.5 text-muted-foreground"
             aria-hidden="true"
           />
         ),
@@ -140,8 +188,20 @@ export function UpdatesTable({
               }`,
       },
       {
-        id: "version",
+        id: "display_version",
         label: "Version",
+        sortValue: (r) => (r.role === "dlc" ? "" : (r.display_version ?? "")),
+        render: (r) =>
+          r.role === "dlc" ? (
+            <span className="text-muted-foreground">DLC</span>
+          ) : (
+            (r.display_version ?? <span className="text-muted-foreground">–</span>)
+          ),
+        title: (r) => (r.role === "dlc" || r.display_version ? undefined : "read with prod.keys"),
+      },
+      {
+        id: "version",
+        label: "Version ID",
         sortValue: (r) => r.version ?? -1,
         render: (r) => (
           <span className="text-muted-foreground tabular-nums">
@@ -150,36 +210,28 @@ export function UpdatesTable({
         ),
       },
       {
-        id: "display_version",
-        label: "Shown as",
-        sortValue: (r) => r.display_version ?? "",
-        render: (r) => r.display_version ?? <span className="text-muted-foreground">–</span>,
-        title: (r) => (r.display_version ? undefined : "read with prod.keys"),
-      },
-      {
         id: "title_id",
         label: "Title ID",
         sortValue: (r) => r.title_id,
         render: (r) => <code className="text-xs">{r.title_id}</code>,
       },
       {
+        id: "size",
+        label: "Size",
+        className: "text-right",
+        sortValue: (r) => r.size ?? 0,
+        render: (r) => (
+          <span className="text-muted-foreground tabular-nums">
+            {r.size === null ? "" : formatBytes(r.size, meta.ui.byte_unit_base, meta.ui.byte_units)}
+          </span>
+        ),
+      },
+      {
         id: "status",
         label: "Status",
         sortValue: (r) => STATUS_WORDS[r.status],
-        render: (r) => (
-          <span className={STATUS_TONES[r.status]}>
-            {STATUS_WORDS[r.status]}
-            {r.newer ? (
-              <span className="font-normal text-status-info"> · newer released</span>
-            ) : null}
-          </span>
-        ),
-        title: (r) =>
-          r.newer
-            ? `${r.reason}; titledb knows a newer one (update ${r.latest_release}${
-                r.latest_date ? `, ${r.latest_date}` : ""
-              })`
-            : r.reason,
+        render: (r) => <span className={STATUS_TONES[r.status]}>{STATUS_WORDS[r.status]}</span>,
+        title: (r) => r.reason,
       },
       {
         id: "notes",
@@ -192,17 +244,6 @@ export function UpdatesTable({
             </Badge>
           )),
         title: (r) => r.notes.join(", ") || undefined,
-      },
-      {
-        id: "size",
-        label: "Size",
-        className: "text-right",
-        sortValue: (r) => r.size ?? 0,
-        render: (r) => (
-          <span className="text-muted-foreground tabular-nums">
-            {r.size === null ? "" : formatBytes(r.size, meta.ui.byte_unit_base, meta.ui.byte_units)}
-          </span>
-        ),
       },
     ],
     [meta],
@@ -245,7 +286,7 @@ export function UpdatesTable({
     <DataTable
       name="updates"
       label="Updates & DLC"
-      noun="updates"
+      noun="updates and DLC"
       rows={rows}
       rowKey={(r) => r.rel_path}
       rowTestId={(r) => `update-${r.rel_path}`}
@@ -253,7 +294,7 @@ export function UpdatesTable({
       sizes={meta.ui.updates_columns}
       defaultColumns={meta.ui.updates_columns_default}
       views={VIEWS}
-      group={GROUP}
+      group={group}
       search={(r, needle) =>
         r.rel_path.toLocaleLowerCase().includes(needle) ||
         r.game.toLocaleLowerCase().includes(needle)

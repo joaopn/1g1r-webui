@@ -98,10 +98,8 @@ export function FolderUpdatesPage() {
         <p className="text-status-bad">{errorText(updates.error)}</p>
       ) : !data ? (
         <p className="text-muted-foreground">Loading updates…</p>
-      ) : data.counts.total + data.counts.dlc === 0 ? (
-        <p className="text-muted-foreground">
-          No update or DLC found in this set. Scan to look again.
-        </p>
+      ) : data.games.length === 0 ? (
+        <p className="text-muted-foreground">No game found in this set. Scan to look again.</p>
       ) : (
         <>
           <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
@@ -113,6 +111,7 @@ export function FolderUpdatesPage() {
           </div>
           <UpdatesTable
             updates={data.updates}
+            games={data.games}
             meta={meta.data}
             busy={keep.isPending || restore.isPending}
             onKeep={(relPath, kept) => keep.mutate({ rel_paths: [relPath], keep: kept })}

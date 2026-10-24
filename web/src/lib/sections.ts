@@ -28,24 +28,27 @@ export function openingSection(folder: FolderCard): SectionId {
 
 /** The page has nothing left to do (a check on its tab). Conversion: every file in the
  * target format and the files checked; Matching & 1G1R: nothing left to process and no scan
- * due; Updates: scanned, no older update proposed, no version unknown. A set without ROM files has nothing done yet;
- * Discarded and Ignored are never a to-do. */
+ * due; Updates & DLC: scanned and nothing to discard (a newer release or an unread version
+ * is no to-do). A set without ROM files has nothing done yet; Discarded and Ignored are
+ * never a to-do. */
 export function sectionDone(folder: FolderCard, section: SectionId): boolean {
   if (folder.summary.roms === 0) return false;
   if (section === "conversion") return !needsConversion(folder) && folder.needs !== "check";
   if (section === "matching") return folder.progress.to_process === 0 && folder.needs === null;
-  // Updates: scanned, nothing proposed, and every version read (an unknown one waits for
-  // prod.keys).
   if (section === "updates")
-    return folder.updates && folder.needs === null
-      ? folder.updates.proposed === 0 && folder.updates.unknown === 0
-      : false;
+    return folder.updates && folder.needs === null ? !updatesLeft(folder) : false;
   return false;
 }
 
-/** Nothing left to do on the set at all: both of its to-do tabs are done. */
+/** Older updates proposed for discarded/ (title-ID sets): the Updates & DLC tab's to-do. */
+export const updatesLeft = (folder: FolderCard) => (folder.updates?.proposed ?? 0) > 0;
+
+/** Nothing left to do on the set at all: every to-do tab is done (Updates & DLC only on
+ * title-ID sets). */
 export const folderDone = (folder: FolderCard) =>
-  sectionDone(folder, "conversion") && sectionDone(folder, "matching");
+  sectionDone(folder, "conversion") &&
+  sectionDone(folder, "matching") &&
+  (folder.updates === null || sectionDone(folder, "updates"));
 
 /** The set's state, the colour of its platform badge: an error, else a warning (the card's
  * messages), else done or work left. */

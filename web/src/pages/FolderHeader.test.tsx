@@ -77,7 +77,7 @@ test("a page with nothing left to do has a green check on its tab", () => {
   expect(checked({ ...card(0, 0, null), summary: { roms: 0 } } as FolderCard)).toEqual([]);
 });
 
-test("a Switch set has an Updates tab, checked when no older update is proposed and every version is read", () => {
+test("a Switch set has an Updates & DLC tab, checked when nothing is to discard", () => {
   const card = (proposed: number, unknown = 0) =>
     ({
       summary: { roms: 3 },
@@ -115,8 +115,8 @@ test("a Switch set has an Updates tab, checked when no older update is proposed 
     ["Ignored", false],
   ]);
   expect(tabs(card(0))[2]).toEqual(["Updates & DLC", true]);
-  // A version still unknown (no prod.keys yet) is work left, and so is a scan due.
-  expect(tabs(card(0, 1))[2]).toEqual(["Updates & DLC", false]);
+  // A version still unknown (no prod.keys yet) is no work left; a scan due is.
+  expect(tabs(card(0, 1))[2]).toEqual(["Updates & DLC", true]);
   expect(tabs({ ...card(0), needs: "identify" } as FolderCard)[2]).toEqual([
     "Updates & DLC",
     false,

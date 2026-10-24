@@ -64,6 +64,34 @@ const UPDATES = {
       latest_date: null,
     } satisfies UpdateRow,
   ],
+  games: [
+    {
+      group_key: "tid:0100AAAA00010000",
+      game: "Super Game",
+      display_version: "1.0.2",
+      version: 131072,
+      newer: true,
+      latest_release: 3,
+      latest_date: "2025-03-18",
+      updates: 2,
+      dlc: 1,
+      to_discard: 1,
+      size: 21,
+    },
+    {
+      group_key: "tid:0100BBBB00010000",
+      game: "Lone Game",
+      display_version: null,
+      version: null,
+      newer: false,
+      latest_release: null,
+      latest_date: null,
+      updates: 0,
+      dlc: 0,
+      to_discard: 0,
+      size: 0,
+    },
+  ],
   counts: { total: 2, proposed: 1, unknown: 0, unreadable: 1, dlc: 1, newer: 1 },
 };
 
@@ -98,28 +126,40 @@ test("older updates are proposed, and a Keep click keeps one", async () => {
       </MemoryRouter>
     </QueryClientProvider>,
   );
-  expect(await screen.findByTestId("update-update 2.nsp")).toHaveTextContent("newest, kept");
+  // Every game is a row, closed: its version, what it holds, what is to do.
+  const game = await screen.findByTestId("updates-game-tid:0100AAAA00010000");
+  expect(game).toHaveTextContent("Super Game (1.0.2)");
+  expect(game).toHaveTextContent("2 updates · 1 DLC");
+  expect(game).toHaveTextContent("1 older → discard");
+  // titledb knows a newer update: the game's name says so in colour.
+  expect(within(game).getByText("Super Game")).toHaveClass("text-status-info");
+  expect(screen.queryByTestId("update-update 2.nsp")).toBeNull();
+  // A game without updates or DLC: listed, nothing to open.
+  const lone = screen.getByTestId("updates-game-tid:0100BBBB00010000");
+  expect(lone).toHaveTextContent("no update or DLC");
+  expect(within(lone).queryByRole("button")).toBeNull();
+  expect(screen.getByText(/2 of 2 games/)).toBeInTheDocument();
+
+  await userEvent.click(within(game).getByRole("button", { name: "Super Game: show" }));
+  expect(screen.getByTestId("update-update 2.nsp")).toHaveTextContent("newest, kept");
   expect(screen.getByTestId("update-update 2.nsp")).toHaveTextContent("1.0.2");
-  // A newer update is released: said on the game's newest, counted, and not proposed.
-  expect(screen.getByTestId("update-update 2.nsp")).toHaveTextContent("· newer released");
-  expect(screen.getByTestId("update-update 1.nsp")).not.toHaveTextContent("newer released");
   expect(screen.getByText("games with a newer update")).toBeInTheDocument();
   expect(screen.getByRole("radio", { name: /Newer released/ })).toBeInTheDocument();
-  // DLC: listed, kept, no Keep button; prod.keys suggested for the unreadable update.
+  // DLC: listed, "DLC" in grey as its version, kept, no Keep button.
   const pack = screen.getByTestId("update-pack.nsp");
   expect(pack).toHaveTextContent("DLC, kept");
+  expect(within(pack).getAllByText("DLC")[0]).toHaveClass("text-muted-foreground");
   expect(within(pack).queryByRole("button", { name: /Keep/ })).toBeNull();
+  // prod.keys suggested for the unreadable update.
   expect(screen.getByTestId("unreadable-updates")).toHaveTextContent(
     "1 update has no readable version",
   );
-  // One group per game: its summary, and a click folds its rows away and back.
-  const group = screen.getByTestId("updates-game-tid:0100AAAA00010000");
-  expect(group).toHaveTextContent("2 updates · 1 DLC · 1 to discard · newer released");
-  const header = within(group).getByRole("button", { name: "Super Game: collapse" });
-  await userEvent.click(header);
-  expect(screen.queryByTestId("update-update 2.nsp")).toBeNull();
-  await userEvent.click(within(group).getByRole("button", { name: "Super Game: show" }));
-  expect(screen.getByTestId("update-update 2.nsp")).toBeInTheDocument();
+  // Columns: Version (shown) and Size before Status by default; Update and Latest hidden.
+  const headers = within(screen.getByRole("region", { name: "Updates & DLC" }))
+    .getAllByTestId(/^header-/)
+    .map((h) => h.textContent);
+  expect(headers.join("|")).toMatch(/Game.*File name.*Version.*Size.*Status/);
+  expect(headers.join("|")).not.toMatch(/Latest|Update\b/);
   expect(await screen.findByText("· not added")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Add" })).toBeEnabled();
   const older = screen.getByTestId("update-update 1.nsp");
