@@ -726,6 +726,4 @@ export type Renames = {
   template: string;
   rows: RenameRow[];
   counts: RenameCounts;
-  /** Files still to convert: renaming waits for them. */
-  waiting: number;
 };

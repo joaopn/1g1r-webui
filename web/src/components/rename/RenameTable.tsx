@@ -35,15 +35,12 @@ export function RenameTable({
   rows: renames,
   meta,
   busy,
-  blocked,
   onRename,
   onRevert,
 }: {
   rows: RenameRow[];
   meta: Meta;
   busy: boolean;
-  /** Renaming waits (files still to convert); reverting never does. */
-  blocked: boolean;
   onRename: (relPath: string) => void;
   onRevert: (relPath: string) => void;
 }) {
@@ -143,7 +140,7 @@ export function RenameTable({
           <Button
             variant="outline"
             size="xs"
-            disabled={busy || blocked}
+            disabled={busy}
             onClick={() => onRename(r.rel_path)}
             aria-label={`Rename ${r.rel_path}`}
           >

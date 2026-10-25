@@ -38,7 +38,6 @@ export function FolderRenamePage() {
   const keeps = f.rename_template === "keep";
   const proposed = data?.counts.proposed ?? 0;
   const renamed = data?.counts.renamed ?? 0;
-  const waiting = data?.waiting ?? 0;
   const one = (relPaths: string[] | null) => (relPaths?.length === 1 ? relPaths : null);
 
   return (
@@ -65,7 +64,7 @@ export function FolderRenamePage() {
               Revert{renamed > 0 ? ` (${formatFiles(renamed)})` : ""}
             </Button>
             <Button
-              disabled={proposed === 0 || waiting > 0}
+              disabled={proposed === 0}
               onClick={() => setActing({ kind: "rename", relPaths: null })}
             >
               <FilePen className="size-4" aria-hidden="true" />
@@ -112,11 +111,6 @@ export function FolderRenamePage() {
             This platform's files keep their names: emulators load them by these names.
           </p>
         )}
-        {waiting > 0 ? (
-          <p className="text-status-warn" data-testid="rename-waiting">
-            Convert or discard first: {formatFiles(waiting)} (Conversion tab).
-          </p>
-        ) : null}
       </Box>
       <RunPanel label={label} meta={meta.data} />
       {renames.error ? (
@@ -130,7 +124,6 @@ export function FolderRenamePage() {
           rows={data.rows}
           meta={meta.data}
           busy={!!card?.running}
-          blocked={waiting > 0}
           onRename={(relPath) => setActing({ kind: "rename", relPaths: [relPath] })}
           onRevert={(relPath) => setActing({ kind: "revert", relPaths: [relPath] })}
         />

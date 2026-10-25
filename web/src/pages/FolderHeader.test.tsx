@@ -79,8 +79,9 @@ test("a page with nothing left to do has a green check on its tab", () => {
     "Conversion",
     "Matching & 1G1R",
   ]);
-  // Files to convert, or no check yet: nothing is done.
-  expect(checked(card(2, 2, null))).toEqual([]);
+  // Files to convert: Rename has nothing to do meanwhile (those files wait); no check yet:
+  // nothing is done.
+  expect(checked(card(2, 2, null))).toEqual(["Rename"]);
   expect(checked(card(0, 0, "check"))).toEqual([]);
   // A set without ROM files has nothing done yet (Discarded never has a check).
   expect(checked({ ...card(0, 0, null), summary: { roms: 0 } } as FolderCard)).toEqual([]);

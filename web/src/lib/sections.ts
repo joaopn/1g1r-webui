@@ -30,7 +30,8 @@ export function openingSection(folder: FolderCard): SectionId {
 /** The page has nothing left to do (a check on its tab). Conversion: every file in the
  * target format and the files checked; Matching & 1G1R: nothing left to process and no scan
  * due; Updates & DLC: scanned and nothing to discard (a newer release or an unread version
- * is no to-do); Rename: converted, scanned and nothing proposed. A set without ROM files has nothing done yet; Discarded and Ignored are
+ * is no to-do); Rename: scanned and nothing proposed (files with another operation pending
+ * wait for it, they are no rename to do yet). A set without ROM files has nothing done yet; Discarded and Ignored are
  * never a to-do. */
 export function sectionDone(folder: FolderCard, section: SectionId): boolean {
   if (folder.summary.roms === 0) return false;
@@ -38,8 +39,7 @@ export function sectionDone(folder: FolderCard, section: SectionId): boolean {
   if (section === "matching") return folder.progress.to_process === 0 && folder.needs === null;
   if (section === "updates")
     return folder.updates && folder.needs === null ? !updatesLeft(folder) : false;
-  if (section === "rename")
-    return !needsConversion(folder) && folder.needs === null && !renamesLeft(folder);
+  if (section === "rename") return folder.needs === null && !renamesLeft(folder);
   return false;
 }
 

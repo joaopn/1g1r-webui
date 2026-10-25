@@ -49,7 +49,6 @@ const RENAMES: Renames = {
     row("stray.zip", { game: null, method: null, reason: "not identified" }),
   ],
   counts: { files: 3, proposed: 1, named: 1, skipped: 1, renamed: 1 },
-  waiting: 0,
 };
 
 afterEach(() => {
@@ -125,13 +124,15 @@ test("proposed names are listed, renamed once reviewed, and a renamed file can b
   expect(reverts.at(-1)?.body).toEqual({ rel_paths: ["Gradius (USA).zip"] });
 });
 
-test("renaming waits while files are to convert; reverting does not", async () => {
-  renderPage({ ...RENAMES, waiting: 2 });
-  expect(await screen.findByTestId("rename-waiting")).toHaveTextContent(
-    "Convert or discard first: 2 files",
-  );
-  expect(screen.getByRole("button", { name: "Rename (1 file)" })).toBeDisabled();
-  expect(screen.getByRole("button", { name: "Revert (1 file)" })).toBeEnabled();
+test("a file with another operation pending waits; the others can be renamed", async () => {
+  renderPage({
+    ...RENAMES,
+    rows: [...RENAMES.rows, row("odd.nes", { reason: "convert first" })],
+  });
+  expect(await screen.findByTestId("rename-odd.nes")).toHaveTextContent("convert first");
+  expect(screen.getByRole("button", { name: "Rename (1 file)" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "Rename contra.zip" })).toBeEnabled();
+  expect(within(screen.getByTestId("rename-odd.nes")).queryByRole("button")).toBeNull();
 });
 
 test("the set's naming template is picked on the tab too", async () => {

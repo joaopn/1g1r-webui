@@ -121,6 +121,11 @@ def test_rename_to_dat_names_then_clean_titles_then_back(renames):
     saved = client.put("/api/folders/nes/rename-template", json={"template": None}).json()
     assert saved["rename_template"] == "dat"
     rows = rows_of(client)
+    # A file with another operation pending waits for it; the others can be renamed.
+    assert rows["contra-jp.zip"]["reason"] == "proposed for discarded/"
+    left = {"group_key": "name:Contra", "left": True}
+    assert client.put("/api/folders/nes/leave", json=left).status_code == HTTPStatus.OK
+    rows = rows_of(client)
     assert rows["contra.zip"]["new_path"] == "Contra (USA).zip"
     assert rows["Gradius (USA) (Rev 1).zip"]["status"] == "named"
     assert rows["solo-a.zip"]["new_path"] == "Solo (Japan).zip"
@@ -251,3 +256,18 @@ def test_recovery_finishes_an_interrupted_rename(tmp_path):
     }
     assert os.path.exists(folder / "b.zip")
     assert notifications.TITLES[notifications.RENAME] == "Rename"
+
+
+def test_files_to_convert_wait_and_the_others_are_renamed(renames):
+    """Renaming never waits for the whole set: a file still to convert is skipped, the
+    others are renamed."""
+    client, folder, _ = renames
+    (folder / "odd.nes").write_bytes(b"?")
+    assert client.post("/api/folders/nes/check").status_code == HTTPStatus.ACCEPTED
+    assert finished(client, "nes")["status"] == "done"
+    rows = rows_of(client)
+    assert rows["odd.nes"]["reason"] == "convert first"
+    assert rows["contra.zip"]["status"] == "rename"
+    done = run(client, "rename", {"rel_paths": ["contra.zip"]})
+    assert (done["status"], done["message"]) == ("done", "1 file renamed")
+    assert (folder / "Contra (USA).zip").is_file() and (folder / "odd.nes").is_file()

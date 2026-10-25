@@ -441,15 +441,41 @@ def build_router(
             return None
         return root if root.is_dir() else None
 
+    def pending_of(
+        library: Library, folder: FolderEntry, conn, waiting=None, games=None
+    ) -> dict[str, str]:
+        """Files with another operation pending, and which: a rename waits for it (the
+        others can be renamed meanwhile)."""
+        waiting = waiting_of(library, folder, conn) if waiting is None else waiting
+        if games is None:
+            games = matching.game_rows(
+                settings,
+                conn,
+                folder.label,
+                store.ranking_for(folder),
+                produces(library, folder, conn, waiting),
+            )
+        pending = dict.fromkeys(waiting, renaming.CONVERT_FIRST)
+        for game in games:
+            for row in game.rows:
+                if row.operation and row.discarded is None:
+                    pending[row.version.rel_path] = renaming.DISCARD_FIRST
+        if title_ids(folder.platform):
+            kept = updates.keeps(conn, folder.label)
+            for row in updates.rows(settings, folder.label, games, kept):
+                if row.operation:
+                    pending[row.rel_path] = renaming.DISCARD_FIRST
+        return pending
+
     def rename_rows(
-        library: Library, folder: FolderEntry, conn, waiting: frozenset[str] | None = None
+        library: Library, folder: FolderEntry, conn, pending: dict[str, str] | None = None
     ) -> list[renaming.RenameRow]:
         return renaming.rows(
             settings,
             conn,
             folder.label,
             store.rename_template(folder),
-            waiting_of(library, folder, conn) if waiting is None else waiting,
+            pending_of(library, folder, conn) if pending is None else pending,
             parts_of(folder),
         )
 
@@ -583,7 +609,11 @@ def build_router(
             else None,
             "rename": {
                 "template": store.rename_template(folder),
-                **renaming.counts(rename_rows(library, folder, conn, waiting)),
+                **renaming.counts(
+                    rename_rows(
+                        library, folder, conn, pending_of(library, folder, conn, waiting, games)
+                    )
+                ),
             },
         }
         with cards_lock:
@@ -1401,15 +1431,11 @@ def build_router(
     @router.get("/folders/{label}/rename")
     def folder_renames(label: str, conn: Conn):
         folder = folder_or_404(label)
-        library = store.load()
-        waiting = waiting_of(library, folder, conn)
-        found = rename_rows(library, folder, conn, waiting)
+        found = rename_rows(store.load(), folder, conn)
         return {
             "template": store.rename_template(folder),
             "rows": [asdict(r) for r in found],
             "counts": renaming.counts(found),
-            # Files still to convert: renaming waits for them (conversion comes first).
-            "waiting": len(waiting),
         }
 
     @router.put("/folders/{label}/rename-template")
@@ -1454,12 +1480,10 @@ def build_router(
 
     @router.post("/folders/{label}/rename/preview")
     def rename_preview(label: str, body: RenameScope, conn: Conn):
-        converted_first(conn, label)
         return guarded_preview(conn, label, *rename_plan(conn, label, body))
 
     @router.post("/folders/{label}/rename", status_code=HTTPStatus.ACCEPTED)
     def rename_apply(label: str, body: RenameScope, request: Request, conn: Conn):
-        converted_first(conn, label)
         return start_guarded(
             request,
             conn,

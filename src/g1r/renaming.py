@@ -22,6 +22,10 @@ TO_RENAME = "rename"
 NAMED = "named"
 SKIPPED = "skipped"
 
+# Why a file with another operation pending is not renamed yet.
+CONVERT_FIRST = "convert first"
+DISCARD_FIRST = "proposed for discarded/"
+
 
 @dataclass
 class RenameRow:
@@ -97,11 +101,13 @@ def rows(
     conn: sqlite3.Connection,
     label: str,
     template: str,
-    waiting: frozenset[str] = frozenset(),
+    pending: dict[str, str] | None = None,
     parts: frozenset[str] = frozenset(),
 ) -> list[RenameRow]:
-    """Every ROM file of the folder with what the template proposes for it. `waiting`: files
-    a conversion is proposed for, and `parts` (cue sheets, tracks): renamed once converted."""
+    """Every ROM file of the folder with what the template proposes for it. `pending`: files
+    with another operation pending (a conversion, a move to discarded/), by why, and `parts`
+    (cue sheets, tracks): renamed once that is done; the other files meanwhile."""
+    pending = pending or {}
     config = settings.rename
     files = conn.execute(
         "SELECT rel_path, size FROM folder_file WHERE folder_label = ? AND place = 'folder' "
@@ -134,8 +140,11 @@ def rows(
         game, method = found[0] if len(found) == 1 else (None, None)
         row = RenameRow(rel, f["size"], game, method, SKIPPED, original=renamed.get(rel))
         result.append(row)
-        if rel in waiting or path.suffix.lower().lstrip(".") in parts:
-            row.reason = "convert first"
+        if rel in pending:
+            row.reason = pending[rel]
+            continue
+        if path.suffix.lower().lstrip(".") in parts:
+            row.reason = CONVERT_FIRST
             continue
         if not found:
             row.reason = "not identified"
