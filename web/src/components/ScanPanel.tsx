@@ -15,6 +15,7 @@ import type { Scan } from "@/lib/types";
  * hashing nothing. `identify` (Matching page): a Scan does that, then identifies the files with
  * nothing left to convert; a quick scan reads only new and changed files, a full one every file.
  * `scan` is the latest run of either kind (one runs at a time); `lastScan` the latest Scan.
+ * `quickOnly` (Updates & DLC) offers the quick scan alone: it picks up files added by hand.
  */
 export function ScanPanel({
   label,
@@ -24,6 +25,7 @@ export function ScanPanel({
   title,
   actions,
   blocked,
+  quickOnly,
   children,
 }: {
   label: string;
@@ -35,6 +37,7 @@ export function ScanPanel({
   actions?: ReactNode;
   /** Why a Scan cannot run now (files not converted yet): its buttons are off and say so. */
   blocked?: string;
+  quickOnly?: boolean;
   children: ReactNode;
 }) {
   const start = useStartScan(label);
@@ -80,18 +83,20 @@ export function ScanPanel({
             </Button>
           ) : lastScan ? (
             <>
-              <Button
-                variant="outline"
-                onClick={() => start.mutate({ full: true })}
-                disabled={off}
-                title={
-                  blocked ??
-                  "Read every file again, ignoring what earlier scans read: for files changed in a way their size and date do not show"
-                }
-              >
-                <ScanSearch className="size-4" aria-hidden="true" />
-                Full scan
-              </Button>
+              {quickOnly ? null : (
+                <Button
+                  variant="outline"
+                  onClick={() => start.mutate({ full: true })}
+                  disabled={off}
+                  title={
+                    blocked ??
+                    "Read every file again, ignoring what earlier scans read: for files changed in a way their size and date do not show"
+                  }
+                >
+                  <ScanSearch className="size-4" aria-hidden="true" />
+                  Full scan
+                </Button>
+              )}
               <Button
                 onClick={() => start.mutate({})}
                 disabled={off}

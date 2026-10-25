@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { GuardedDialog } from "@/components/apply/GuardedDialog";
 import { RunPanel } from "@/components/apply/RunPanel";
 import { useRestore } from "@/components/apply/useRestore";
-import { Box } from "@/components/Box";
+import { ScanPanel } from "@/components/ScanPanel";
 import { StatCard } from "@/components/StatCard";
 import { Button } from "@/components/ui/button";
 import { SwitchKeys } from "@/components/updates/SwitchKeys";
@@ -33,7 +33,7 @@ export function FolderUpdatesPage() {
   const { label = "" } = useParams();
   const card = useFolderCard(label);
   const meta = useMeta();
-  const folder = useFolder(label, false);
+  const folder = useFolder(label, meta.data?.ui.poll_interval_ms ?? false);
   const titleIds = folder.data?.title_ids ?? false;
   const updates = useUpdates(label, titleIds);
   const keys = useConsoleKeys();
@@ -58,6 +58,7 @@ export function FolderUpdatesPage() {
     );
   const data = updates.data;
   const proposed = data?.counts.proposed ?? 0;
+  const waiting = f.summary.waiting ?? 0;
 
   const unreadable =
     data && data.counts.unreadable > 0 && keys.data && keys.data.prod_keys === null
@@ -80,10 +81,20 @@ export function FolderUpdatesPage() {
         </div>
       ) : null}
       <SwitchKeys label={label} />
-      <Box
+      <ScanPanel
+        label={label}
+        kind="identify"
+        scan={f.scan}
+        lastScan={f.last_scan}
         title="Discard old updates"
+        quickOnly
+        blocked={
+          waiting > 0
+            ? `Convert or discard first: ${formatFiles(waiting)} not in the target format (Conversion tab)`
+            : undefined
+        }
         actions={
-          <Button disabled={proposed === 0} onClick={() => setMoving(true)}>
+          <Button variant="outline" disabled={proposed === 0} onClick={() => setMoving(true)}>
             <Archive className="size-4" aria-hidden="true" />
             Discard{proposed > 0 ? ` (${formatFiles(proposed)})` : ""}
           </Button>
@@ -92,7 +103,8 @@ export function FolderUpdatesPage() {
         <p className="text-muted-foreground">
           {proposed > 0
             ? `${formatFiles(proposed)} older than their game's newest update. They move to discarded/ and can be restored; keep any you need (e.g. for mods).`
-            : "No old updates to discard."}
+            : "No old updates to discard."}{" "}
+          Added an update? A quick scan reads only new files.
         </p>
         {unreadable > 0 ? (
           <p className="text-status-info" data-testid="unreadable-updates">
@@ -100,7 +112,7 @@ export function FolderUpdatesPage() {
             version: add prod.keys to read them.
           </p>
         ) : null}
-      </Box>
+      </ScanPanel>
       <RunPanel label={label} meta={meta.data} />
       {updates.error ? (
         <p className="text-status-bad">{errorText(updates.error)}</p>

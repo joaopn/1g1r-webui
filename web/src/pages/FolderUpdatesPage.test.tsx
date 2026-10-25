@@ -26,6 +26,18 @@ const DETAIL = {
   rename_template: "keep",
   rename_templates: ["keep", "dat", "clean"],
   scan: null,
+  last_scan: {
+    id: 1,
+    kind: "identify",
+    status: "done",
+    started_at: "2026-10-25T10:00:00Z",
+    finished_at: "2026-10-25T10:01:00Z",
+    message: "5 of 6 files identified by title ID",
+    stage: null,
+    files_done: null,
+    files_total: null,
+  },
+  summary: { waiting: 0 },
   others: [],
 };
 
@@ -121,10 +133,9 @@ afterEach(() => {
   queryClient.clear();
 });
 
-test("older updates are proposed, and a Keep click keeps one", async () => {
-  const puts: unknown[] = [];
+function stubApi(seen: (url: string, init?: RequestInit) => void) {
   vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
-    if (init?.method === "PUT") puts.push(JSON.parse(String(init.body)));
+    seen(url, init);
     const body = url.endsWith("/meta")
       ? META
       : url.endsWith("/folders")
@@ -138,6 +149,9 @@ test("older updates are proposed, and a Keep click keeps one", async () => {
               : DETAIL;
     return new Response(JSON.stringify(body), { headers: { "Content-Type": "application/json" } });
   });
+}
+
+function renderPage() {
   render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={["/folders/switch/updates"]}>
@@ -147,6 +161,14 @@ test("older updates are proposed, and a Keep click keeps one", async () => {
       </MemoryRouter>
     </QueryClientProvider>,
   );
+}
+
+test("older updates are proposed, and a Keep click keeps one", async () => {
+  const puts: unknown[] = [];
+  stubApi((_url, init) => {
+    if (init?.method === "PUT") puts.push(JSON.parse(String(init.body)));
+  });
+  renderPage();
   // Every game is a row: its version, what it holds, what is to do. One with an update to
   // discard is yellow and starts open.
   const game = await screen.findByTestId("updates-game-tid:0100AAAA00010000");
@@ -199,4 +221,17 @@ test("older updates are proposed, and a Keep click keeps one", async () => {
   );
   await userEvent.click(within(older).getByRole("button", { name: "Keep update 1.nsp" }));
   await vi.waitFor(() => expect(puts).toEqual([{ rel_paths: ["update 1.nsp"], keep: true }]));
+});
+
+test("a quick scan from the tab picks up an update added by hand", async () => {
+  const posts: string[] = [];
+  stubApi((url, init) => {
+    if (init?.method === "POST") posts.push(url);
+  });
+  renderPage();
+  const box = await screen.findByRole("region", { name: "Discard old updates" });
+  expect(box).toHaveTextContent("A quick scan reads only new files.");
+  expect(within(box).queryByRole("button", { name: /Full scan/ })).toBeNull();
+  await userEvent.click(within(box).getByRole("button", { name: /Quick scan/ }));
+  await vi.waitFor(() => expect(posts).toEqual(["/api/folders/switch/scan"]));
 });

@@ -16,6 +16,7 @@ LONE_ID = "0100CCCC00010000"
 # Versions as the console counts them: each update release adds 65536.
 FIRST_UPDATE = 65536
 SECOND_UPDATE = 131072
+THIRD_UPDATE = 196608
 
 
 def pfs0(make_settings, members: dict[str, bytes]) -> bytes:
@@ -220,6 +221,34 @@ def test_older_updates_are_proposed_kept_or_moved(switch):
     assert restored.status_code == HTTPStatus.ACCEPTED
     assert wait_run(client)["status"] == "done"
     assert (folder / "Super Game update 1.nsp").exists()
+
+
+def test_a_quick_scan_finds_a_new_update_reading_only_that_file(switch, make_settings, monkeypatch):
+    """An update put in the folder by hand: a quick scan reads the new file's title, hashes
+    nothing (lookups on or off), and the update it replaces is proposed."""
+    client, folder, _ = switch
+    client.put("/api/settings/lookups", json={"hasheous": True})
+    scan(client)
+    (folder / "Super Game update 3.nsp").write_bytes(nsp(make_settings, UPDATE_ID, THIRD_UPDATE))
+    read = []
+    read_title = titles.read_title
+    monkeypatch.setattr(
+        titles, "read_title", lambda path, *a: read.append(path.name) or read_title(path, *a)
+    )
+
+    def no_hashing(*_a, **_k):
+        raise AssertionError("hashed")
+
+    monkeypatch.setattr("g1r.scanner.content_hashes", no_hashing)
+    monkeypatch.setattr("g1r.scanner.probe_sha1", no_hashing)
+    assert scan(client)["status"] == "done"
+    assert read == ["Super Game update 3.nsp"]
+    rows = {
+        r["rel_path"]: r["status"]
+        for r in client.get("/api/folders/switch/updates").json()["updates"]
+    }
+    assert rows["Super Game update 3.nsp"] == "newest"
+    assert rows["Super Game update 1.nsp"] == rows["Super Game update 2.nsp"] == "older"
 
 
 def test_an_update_without_a_readable_version_keeps_the_whole_game(folder_of, make_settings):
