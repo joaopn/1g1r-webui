@@ -259,3 +259,12 @@ def test_a_lone_update_is_the_newest_without_a_version(folder_of, make_settings)
 def test_a_platform_without_title_ids_has_no_updates(folder_of):
     client, _ = folder_of("gb")
     assert client.get("/api/folders/gb/updates").status_code == HTTPStatus.NOT_FOUND
+
+
+def test_a_dot_in_a_game_s_name_is_part_of_it(make_settings):
+    """A stored identity name has no extension: "Mr. Shifty" is the whole name, not "Mr"."""
+    config = make_settings().title_ids
+    stored = titles.identity_name(titles.Title(0x0100000000010000, 0, "Mr. Shifty"), config)
+    title = titles.from_name(stored, config)
+    assert (title.name, title.version) == ("Mr. Shifty", 0)
+    assert titles.from_name("L.A. Noire [0100830004FB6000]", config).name == "L.A. Noire"

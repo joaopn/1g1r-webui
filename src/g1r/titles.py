@@ -56,15 +56,15 @@ def identity_name(title: Title, config: TitleIdConfig) -> str:
     return f"{title.name} [{hex_id(title.title_id, config)}]{version}{display}"
 
 
-def from_name(file_name: str, config: TitleIdConfig) -> Title | None:
-    """A stored identity's name (`identity_name`) read back."""
-    found = re.search(config.name_pattern, file_name)
+def from_name(stored: str, config: TitleIdConfig) -> Title | None:
+    """A stored identity's name (`identity_name`) read back. It has no extension, so a dot
+    is part of the name ("Mr. Shifty"), never the start of one."""
+    found = re.search(config.name_pattern, stored)
     if not found:
         return None
-    version = re.search(config.version_pattern, file_name)
-    display = re.search(config.display_pattern, file_name)
-    stem = PurePosixPath(file_name).stem
-    name = re.split(config.name_end_pattern, stem, maxsplit=1)[0].strip() or stem
+    version = re.search(config.version_pattern, stored)
+    display = re.search(config.display_pattern, stored)
+    name = re.split(config.name_end_pattern, stored, maxsplit=1)[0].strip() or stored
     return Title(
         int(found[1], config.radix),
         int(version[1]) if version else None,
