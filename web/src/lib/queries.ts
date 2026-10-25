@@ -3,11 +3,11 @@ import { api } from "@/lib/api";
 import type {
   Conversion,
   DatRow,
+  DatSource,
   Discarded,
   FolderCard,
   FolderDetail,
   Game,
-  GlobalDatOrder,
   KeyStatus,
   Meta,
   Missing,
@@ -38,7 +38,7 @@ export const keys = {
   settings: ["settings"] as const,
   dats: ["dats"] as const,
   titledbFiles: ["titledb-files"] as const,
-  datOrder: ["dat-order"] as const,
+  datSources: ["dat-sources"] as const,
   consoleKeys: ["console-keys"] as const,
   notifications: ["notifications"] as const,
 };
@@ -148,8 +148,8 @@ export function invalidateFolder(label: string) {
   ]);
 }
 
-export const useGlobalDatOrder = () =>
-  useQuery({ queryKey: keys.datOrder, queryFn: () => api<GlobalDatOrder>("/dat-order") });
+export const useDatSources = () =>
+  useQuery({ queryKey: keys.datSources, queryFn: () => api<DatSource[]>("/dat-sources") });
 
 export const useStatistics = () =>
   useQuery({ queryKey: keys.statistics, queryFn: () => api<Statistics>("/statistics") });

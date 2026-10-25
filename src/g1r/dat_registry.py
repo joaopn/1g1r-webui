@@ -623,7 +623,7 @@ class DatRegistry:
 
     def set_order(self, platform: str, order: list[str] | None, off: list[str]) -> None:
         """The platform's own identification order and the entries switched off there;
-        None: follow the global order again."""
+        None: follow the default order again."""
         self._profile(platform)
         if order is not None:
             active = self.store.load().dats.get(platform, PlatformDats()).active
@@ -636,26 +636,25 @@ class DatRegistry:
 
         self.store.update(change)
 
-    def set_global_order(self, order: list[str] | None, off: list[str]) -> None:
-        """The order every platform without its own follows; None: the default."""
-        if order is not None:
-            self._check_order(order, off)
+    def set_global_off(self, off: list[str]) -> None:
+        """The sources switched off on every platform (titledb: every region file). Online
+        lookups are switched in Settings, never here."""
+        known = {*self.settings.dats.priority, self.settings.titledb.short_label}
+        known -= set(LOOKUP_ENTRIES)
+        if not set(off) <= known:
+            raise RegistryError(f"only {sorted(known)} can be switched off for every platform")
+        self.store.update(lambda library: setattr(library, "dat_off", sorted(set(off))))
 
-        def change(library: Library) -> None:
-            library.dat_order = None if order is None else list(order)
-            library.dat_off = [] if order is None else sorted(set(off))
-
-        self.store.update(change)
-
-    def global_order(self, library: Library) -> list[str]:
-        """Every source and lookup in the global order (one the order misses, at the end in
-        its default place)."""
-        chosen = [e for e in (library.dat_order or []) if e in self.settings.dats.priority]
-        return chosen + [e for e in self.settings.dats.priority if e not in chosen]
+    def globally_off(self, library: Library, entry: str) -> bool:
+        """Switched off on every platform (Which DATs to use?)."""
+        off = set(library.dat_off) - set(LOOKUP_ENTRIES)
+        return entry in off or (self.is_titledb(entry) and self.settings.titledb.short_label in off)
 
     def off(self, library: Library, platform: str) -> set[str]:
+        """The platform's entries switched off: its own, and those off on every platform."""
         dats = library.dats.get(platform, PlatformDats())
-        return set(dats.off if dats.order is not None else library.dat_off)
+        everywhere = {e for e in self.order(library, platform) if self.globally_off(library, e)}
+        return set(dats.off) | everywhere
 
     # Reading ---------------------------------------------------------------------
 
@@ -685,7 +684,7 @@ class DatRegistry:
             *files,
             *(e for e in default if e in LOOKUP_ENTRIES),
         ]
-        chosen = dats.order if dats.order is not None else self.global_order(library)
+        chosen = dats.order if dats.order is not None else default
         order = [e for e in chosen if e in present]
         for entry in present:
             if entry in order:

@@ -1,16 +1,22 @@
 import { useMutation } from "@tanstack/react-query";
-import { ArrowDown, ArrowUp, ChevronRight } from "lucide-react";
-import { type ReactNode, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { ChevronRight } from "lucide-react";
+import { type ReactNode, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
+import { PlatformIcon } from "@/components/PlatformIcon";
 import { ApiError, api, json } from "@/lib/api";
-import { keys, queryClient, useGlobalDatOrder, useSettingsData } from "@/lib/queries";
-import type { GlobalDatOrder } from "@/lib/types";
+import { keys, queryClient, useDatSources, useDats, useMeta, useSettingsData } from "@/lib/queries";
+import type { DatSource } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { Page } from "@/pages/SettingsPages";
 
-type Guide = { what: ReactNode; pros: string[]; cons: string[] };
+type Guide = {
+  what: ReactNode;
+  pros: string[];
+  cons: string[];
+  /** What a platform's DAT is, where the platform names none. */
+  files?: string;
+};
 
 /** What each source is good and bad at, for choosing the order. */
 const GUIDE: Record<string, Guide> = {
@@ -85,163 +91,300 @@ const GUIDE: Record<string, Guide> = {
       "Skips archives with several ROM files",
     ],
   },
+  titledb: {
+    what: "titledb (blawar/titledb): Switch names, publishers and release dates by title ID, one file per eShop region.",
+    pros: [
+      "One-click download per region",
+      "Names every base game, update and DLC by its title ID: no checksum DAT exists for Switch",
+    ],
+    cons: [
+      "Names only: checksums are not checked",
+      "A region file lists only what that eShop sold",
+    ],
+    files: "One file per eShop region (US.en, JP.ja, …)",
+  },
 };
 
 const errorText = (err: unknown) => (err instanceof ApiError ? err.message : String(err));
 
-/** Which DAT sources and lookups identify files, in which order, for every platform. */
+const TABS = [
+  { id: "multi", label: "Multiplatform" },
+  { id: "single", label: "Single platform" },
+] as const;
+type Tab = (typeof TABS)[number]["id"];
+
+const TH = "px-3 py-2";
+const TD = "px-3 py-2.5";
+
+/** What a source is, and what it is good and bad at. */
+function SourceText({ source }: { source: DatSource }) {
+  const guide = GUIDE[source.id];
+  return (
+    <>
+      <div className="font-medium">{source.label}</div>
+      <div className="text-muted-foreground text-xs">{guide?.what}</div>
+    </>
+  );
+}
+
+function Bullets({ items }: { items: string[] | undefined }) {
+  return (
+    <ul className="list-disc space-y-0.5 pl-4 text-xs">
+      {items?.map((item) => (
+        <li key={item}>{item}</li>
+      ))}
+    </ul>
+  );
+}
+
+/** The source's switch for every platform; online lookups are switched in Online lookups. */
+function UseCell({
+  source,
+  lookupsOn,
+  onToggle,
+  busy,
+}: {
+  source: DatSource;
+  lookupsOn: Record<string, boolean> | undefined;
+  onToggle: (source: DatSource) => void;
+  busy: boolean;
+}) {
+  if (source.lookup) {
+    const on = lookupsOn?.[source.id] ?? false;
+    return (
+      <Link
+        to="/settings/lookups"
+        className={cn("text-xs underline underline-offset-2", !on && "text-status-warn")}
+      >
+        {on ? "on" : "off"} in Online lookups
+      </Link>
+    );
+  }
+  return (
+    <label className="flex items-center gap-2 text-sm">
+      <input
+        type="checkbox"
+        className="size-3.5 accent-primary"
+        checked={source.on}
+        disabled={busy}
+        onChange={() => onToggle(source)}
+        aria-label={`Use ${source.label}`}
+      />
+      {source.on ? "on" : "off"}
+    </label>
+  );
+}
+
+/** Which DAT sources and lookups there are, what each is good for, and the switch that turns
+ * one off on every platform. Each platform's order is on Platform DATs. */
 export function DatSourcesPage() {
-  const order = useGlobalDatOrder();
+  const meta = useMeta();
+  const sources = useDatSources();
   const settings = useSettingsData();
-  const [draft, setDraft] = useState<GlobalDatOrder["entries"]>([]);
-  useEffect(() => {
-    if (order.data) setDraft(order.data.entries);
-  }, [order.data]);
+  const dats = useDats();
+  const [params, setParams] = useSearchParams();
+  const tab: Tab = params.get("tab") === "single" ? "single" : "multi";
+  const [allPlatforms, setAllPlatforms] = useState(false);
   const save = useMutation({
-    mutationFn: (reset: boolean) =>
-      api<GlobalDatOrder>(
-        "/dat-order",
-        json("PUT", {
-          order: reset ? null : draft.map((e) => e.id),
-          off: draft.filter((e) => !e.on).map((e) => e.id),
-        }),
-      ),
-    onSuccess: () => {
-      toast.success("DAT order saved; scan a set to use it");
-      queryClient.invalidateQueries({ queryKey: keys.datOrder });
+    mutationFn: (off: string[]) => api<DatSource[]>("/dat-sources", json("PUT", { off })),
+    onSuccess: (saved) => {
+      toast.success("Saved; scan a set to use it");
+      queryClient.setQueryData(keys.datSources, saved);
       queryClient.invalidateQueries({ queryKey: keys.dats });
       queryClient.invalidateQueries({ queryKey: keys.folders });
       queryClient.invalidateQueries({ queryKey: ["folder"] });
     },
     onError: (err) => toast.error(errorText(err)),
   });
-  const move = (index: number, by: number) => {
-    const next = [...draft];
-    const [item] = next.splice(index, 1);
-    next.splice(index + by, 0, item);
-    setDraft(next);
-  };
-  const lookupsOn = settings.data?.lookups;
+  const toggle = (source: DatSource) =>
+    save.mutate(
+      (sources.data ?? [])
+        .filter((s) => !s.lookup && (s.id === source.id ? s.on : !s.on))
+        .map((s) => s.id),
+    );
+  const lookupsOn = settings.data?.lookups as Record<string, boolean> | undefined;
+  const platforms = meta.data?.platforms ?? {};
+  const withSets = new Set(
+    (dats.data ?? []).filter((r) => r.folders.length > 0).map((r) => r.platform),
+  );
+  const byName = (a: string, b: string) =>
+    (platforms[a]?.name ?? a).localeCompare(platforms[b]?.name ?? b);
+  const multi = (sources.data ?? []).filter((s) => !s.side);
+  const single = (sources.data ?? []).filter((s) => s.side);
 
   return (
     <Page
       title="Which DATs to use?"
       intro={
         <>
-          A DAT lists every known dump of a platform's games with its checksums. Files are
-          identified top to bottom: each source tries the files the ones above it did not identify,
-          and 1G1R works from the names they give. A platform uses the sources it has a DAT from (
+          A DAT lists every known dump of a platform's games with its checksums. A platform
+          identifies its files with the sources it has a DAT from, each trying the files the ones
+          before it did not identify, in the platform's order (
           <Link to="/settings/dats" className="underline underline-offset-2">
             Platform DATs
           </Link>
-          ); this order is for every platform without its own (DAT order on a Matching page).
+          , or DAT order on a Matching page). A source switched off here is off on every platform.
         </>
       }
     >
-      <div className="overflow-x-auto rounded-lg border border-border bg-card">
-        <table className="w-full text-sm">
-          <thead className="border-border border-b text-left text-muted-foreground text-xs uppercase tracking-wide">
-            <tr>
-              <th className="px-3 py-2">Order</th>
-              <th className="px-3 py-2">Source</th>
-              <th className="px-3 py-2">Good</th>
-              <th className="px-3 py-2">Less good</th>
-              <th className="px-3 py-2">Use</th>
-            </tr>
-          </thead>
-          <tbody>
-            {draft.map((entry, index) => {
-              const guide = GUIDE[entry.id];
-              const lookupOff =
-                entry.lookup && lookupsOn && !lookupsOn[entry.id as keyof typeof lookupsOn];
-              return (
+      <div
+        role="tablist"
+        aria-label="Sources"
+        className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1"
+      >
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            aria-selected={t.id === tab}
+            onClick={() => setParams(t.id === "multi" ? {} : { tab: t.id }, { replace: true })}
+            className={cn(
+              "rounded-md px-3 py-2 font-medium text-sm transition-colors",
+              t.id === tab
+                ? "bg-background text-foreground shadow-sm ring-1 ring-border"
+                : "text-muted-foreground hover:bg-background/60 hover:text-foreground",
+            )}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+      {tab === "multi" ? (
+        <div className="overflow-x-auto rounded-lg border border-border bg-card" role="tabpanel">
+          <table className="w-full text-sm">
+            <thead className="border-border border-b text-left text-muted-foreground text-xs uppercase tracking-wide">
+              <tr>
+                <th className={TH}>Source</th>
+                <th className={TH}>Good</th>
+                <th className={TH}>Less good</th>
+                <th className={TH}>Platforms</th>
+                <th className={TH}>Use</th>
+              </tr>
+            </thead>
+            <tbody>
+              {multi.map((source) => (
                 <tr
-                  key={entry.id}
+                  key={source.id}
                   className={cn(
                     "border-border border-b align-top last:border-b-0",
-                    !entry.on && "text-muted-foreground",
+                    !source.lookup && !source.on && "text-muted-foreground",
                   )}
-                  data-testid={`source-${entry.id}`}
+                  data-testid={`source-${source.id}`}
                 >
-                  <td className="px-3 py-2.5">
-                    <div className="flex items-center gap-1">
-                      <span className="w-5 text-muted-foreground tabular-nums">{index + 1}</span>
-                      <Button
-                        variant="ghost"
-                        size="icon-xs"
-                        disabled={index === 0}
-                        onClick={() => move(index, -1)}
-                        aria-label={`Move ${entry.label} up`}
-                      >
-                        <ArrowUp aria-hidden="true" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon-xs"
-                        disabled={index === draft.length - 1}
-                        onClick={() => move(index, 1)}
-                        aria-label={`Move ${entry.label} down`}
-                      >
-                        <ArrowDown aria-hidden="true" />
-                      </Button>
-                    </div>
+                  <td className={cn(TD, "max-w-64")}>
+                    <SourceText source={source} />
                   </td>
-                  <td className="max-w-64 px-3 py-2.5">
-                    <div className="font-medium">{entry.label}</div>
-                    <div className="text-muted-foreground text-xs">{guide?.what}</div>
-                    {lookupOff ? (
-                      <Link
-                        to="/settings/lookups"
-                        className="text-status-warn text-xs underline underline-offset-2"
-                      >
-                        switched off in Online lookups
-                      </Link>
-                    ) : null}
+                  <td className={TD}>
+                    <Bullets items={GUIDE[source.id]?.pros} />
                   </td>
-                  <td className="px-3 py-2.5">
-                    <ul className="list-disc space-y-0.5 pl-4 text-xs">
-                      {guide?.pros.map((p) => (
-                        <li key={p}>{p}</li>
-                      ))}
-                    </ul>
+                  <td className={TD}>
+                    <Bullets items={GUIDE[source.id]?.cons} />
                   </td>
-                  <td className="px-3 py-2.5">
-                    <ul className="list-disc space-y-0.5 pl-4 text-xs">
-                      {guide?.cons.map((c) => (
-                        <li key={c}>{c}</li>
-                      ))}
-                    </ul>
+                  <td className={cn(TD, "w-80")} data-testid={`platforms-${source.id}`}>
+                    {source.every ? (
+                      <span className="text-muted-foreground text-xs">Every platform</span>
+                    ) : (
+                      <div className="flex flex-wrap gap-1">
+                        {source.platforms
+                          .map((p) => p.platform)
+                          .sort(byName)
+                          .map((id) => (
+                            <span key={id} title={platforms[id]?.name ?? id}>
+                              <PlatformIcon platform={platforms[id]} />
+                            </span>
+                          ))}
+                      </div>
+                    )}
                   </td>
-                  <td className="px-3 py-2.5">
-                    <label className="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        className="size-3.5 accent-primary"
-                        checked={entry.on}
-                        onChange={() =>
-                          setDraft(draft.map((e) => (e.id === entry.id ? { ...e, on: !e.on } : e)))
-                        }
-                        aria-label={`Use ${entry.label}`}
-                      />
-                      {entry.on ? "on" : "off"}
-                    </label>
+                  <td className={TD}>
+                    <UseCell
+                      source={source}
+                      lookupsOn={lookupsOn}
+                      onToggle={toggle}
+                      busy={save.isPending}
+                    />
                   </td>
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-      <div className="flex justify-end gap-2">
-        {order.data?.own ? (
-          <Button variant="ghost" disabled={save.isPending} onClick={() => save.mutate(true)}>
-            Back to the default order
-          </Button>
-        ) : null}
-        <Button disabled={save.isPending || draft.length === 0} onClick={() => save.mutate(false)}>
-          Save order
-        </Button>
-      </div>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="space-y-4" role="tabpanel">
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="size-3.5 accent-primary"
+              checked={allPlatforms}
+              onChange={() => setAllPlatforms(!allPlatforms)}
+            />
+            All platforms{" "}
+            <span className="text-muted-foreground">(else only those with a set)</span>
+          </label>
+          {single.map((source) => {
+            const shown = source.platforms
+              .filter((p) => allPlatforms || withSets.has(p.platform))
+              .sort((a, b) => byName(a.platform, b.platform));
+            return (
+              <section
+                key={source.id}
+                className={cn(
+                  "rounded-lg border border-border bg-card text-sm",
+                  !source.on && "text-muted-foreground",
+                )}
+                data-testid={`source-${source.id}`}
+              >
+                <div className="grid items-start gap-3 border-border border-b px-3 py-2.5 md:grid-cols-[16rem_1fr_1fr_auto]">
+                  <div>
+                    <SourceText source={source} />
+                  </div>
+                  <Bullets items={GUIDE[source.id]?.pros} />
+                  <Bullets items={GUIDE[source.id]?.cons} />
+                  <UseCell
+                    source={source}
+                    lookupsOn={lookupsOn}
+                    onToggle={toggle}
+                    busy={save.isPending}
+                  />
+                </div>
+                {shown.length === 0 ? (
+                  <p className="px-3 py-2 text-muted-foreground text-xs">
+                    No set of a platform it serves.
+                  </p>
+                ) : (
+                  <table className="w-full">
+                    <thead className="text-left text-muted-foreground text-xs uppercase tracking-wide">
+                      <tr>
+                        <th className={cn(TH, "w-64")}>Platform</th>
+                        <th className={TH}>DAT</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {shown.map((p) => (
+                        <tr key={p.platform} className="border-border border-t">
+                          <td className={TD}>
+                            <span className="flex items-center gap-2">
+                              <PlatformIcon
+                                platform={platforms[p.platform]}
+                                widthRem={meta.data?.ui.platform_icon_width_rem}
+                              />
+                              {platforms[p.platform]?.name ?? p.platform}
+                            </span>
+                          </td>
+                          <td className={cn(TD, "text-muted-foreground")}>
+                            {p.dat_name ?? GUIDE[source.id]?.files ?? "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </section>
+            );
+          })}
+        </div>
+      )}
       <Faq />
     </Page>
   );
@@ -282,9 +425,9 @@ const FAQ: { q: string; a: ReactNode }[] = [
     a: (
       <ol className="list-decimal space-y-1 pl-4">
         <li>
-          <strong>Matching</strong>: each file's checksums are compared with the DATs, in the order
-          above. igir matches a multi-file game only when every file the DAT lists is in the
-          archive. The file gets the DAT's game name; its own file name plays no part.
+          <strong>Matching</strong>: each file's checksums are compared with the DATs, in the
+          platform's order. igir matches a multi-file game only when every file the DAT lists is in
+          the archive. The file gets the DAT's game name; its own file name plays no part.
         </li>
         <li>
           <strong>Grouping</strong>: the DAT's parent/clone links say which names are versions of

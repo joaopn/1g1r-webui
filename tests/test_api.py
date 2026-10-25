@@ -574,16 +574,39 @@ def test_each_version_names_the_dat_that_identified_it(setup):
     assert version["dat"]["source_label"] in ("Uploaded file", "No-Intro (DAT-o-MATIC)")
 
 
-def test_the_global_dat_order(setup):
-    client, store, _ = setup
-    first = client.get("/api/dat-order").json()
-    assert not first["own"] and [e["id"] for e in first["entries"]][:2] == ["nointro", "upload"]
-    order = [e["id"] for e in first["entries"]][::-1]
-    saved = client.put("/api/dat-order", json={"order": order, "off": ["tosec"]}).json()
-    assert saved["own"] and [e["id"] for e in saved["entries"]] == order
-    assert [e["id"] for e in saved["entries"] if not e["on"]] == ["tosec"]
-    assert store.load().dat_order == order
-    assert client.put("/api/dat-order", json={"order": None}).json()["own"] is False
+def test_dat_sources_switch_off_for_every_platform(setup):
+    client, store, settings = setup
+    sources = {s["id"]: s for s in client.get("/api/dat-sources").json()}
+    assert list(sources)[:2] == ["nointro", "upload"]
+    assert sources["upload"]["every"] and sources["hasheous"]["every"]
+    assert sources["hasheous"]["lookup"] and not sources["hasheous"]["side"]
+    redump = {p["platform"] for p in sources["redump"]["platforms"]}
+    assert "psx" in redump and "nes" not in redump
+    assert "nes" in {p["platform"] for p in sources["nointro"]["platforms"]}
+    assert sources["nonredump"]["side"]
+    psx = next(p for p in sources["nonredump"]["platforms"] if p["platform"] == "psx")
+    assert psx["dat_name"] == "Non-Redump - Sony - PlayStation"
+    titledb_id = settings.titledb.short_label
+    assert sources[titledb_id]["side"]
+    assert [p["platform"] for p in sources[titledb_id]["platforms"]] == ["switch"]
+    saved = client.put("/api/dat-sources", json={"off": ["tosec", titledb_id]}).json()
+    assert [s["id"] for s in saved if not s["on"]] == ["tosec", titledb_id]
+    assert store.load().dat_off == sorted(["tosec", titledb_id])
+    bad = client.put("/api/dat-sources", json={"off": ["hasheous"]})
+    assert bad.status_code == HTTPStatus.BAD_REQUEST
+
+
+def test_a_platform_shows_what_is_off_everywhere(setup):
+    client, _, _ = setup
+    assert add_nes(client, label="nes").status_code == HTTPStatus.CREATED
+    client.post("/api/dats/nes/download")
+    client.put("/api/dat-sources", json={"off": ["libretro"]})
+    order = {
+        e["id"]: e
+        for e in next(r for r in client.get("/api/dats").json() if r["platform"] == "nes")["order"]
+    }
+    assert order["libretro"]["global_off"] and not order["libretro"]["own_off"]
+    assert not order["libretro"]["on"]
 
 
 def test_parallel_scans_are_set_in_the_ui_within_the_configured_max(setup):

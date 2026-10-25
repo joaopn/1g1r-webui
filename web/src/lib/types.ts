@@ -143,17 +143,30 @@ export type DatVersion = {
 export type DatOrderEntry = {
   id: string;
   label: string;
+  /** Identifies files: not switched off here nor on every platform. */
   on: boolean;
+  /** Switched off on this platform. */
+  own_off: boolean;
+  /** Switched off on every platform (Which DATs to use?). */
+  global_off: boolean;
   lookup: boolean;
   dat: DatVersion | null;
   pinned: boolean;
 };
 
-/** The order every platform without its own follows. */
-export type GlobalDatOrder = {
-  /** Chosen by you (else the default). */
-  own: boolean;
-  entries: { id: string; label: string; on: boolean; lookup: boolean }[];
+/** A DAT source or online lookup, on or off for every platform, and the platforms it serves. */
+export type DatSource = {
+  id: string;
+  label: string;
+  short_label: string;
+  lookup: boolean;
+  /** A platform's own extra DAT (Non-Redump, PSN, titledb). */
+  side: boolean;
+  on: boolean;
+  /** Any platform (uploads, online lookups). */
+  every: boolean;
+  /** The enabled platforms it has a DAT for, with that DAT's name where the platform names one. */
+  platforms: { platform: string; dat_name: string | null }[];
 };
 
 export type Summary = {
@@ -417,7 +430,7 @@ export type DatRow = {
   /** The first DAT of the order. */
   active: DatVersion | null;
   order: DatOrderEntry[];
-  /** The platform has its own order (else it follows the global one). */
+  /** The platform has its own order (else it follows the default one). */
   own_order: boolean;
   versions: DatVersion[];
   folders: string[];

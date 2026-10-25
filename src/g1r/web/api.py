@@ -38,7 +38,7 @@ from g1r import (
 from g1r.config import RANKING_CRITERIA, RankingConfig, Settings
 from g1r.dat_registry import DatRegistry, RegistryError, name_style
 from g1r.hasheous import SERVICE as HASHEOUS
-from g1r.library import FolderEntry, Library, LibraryStore
+from g1r.library import FolderEntry, Library, LibraryStore, PlatformDats
 from g1r.ranking import LABELS as RANKING_LABELS
 
 LOOKUP_LABELS = {HASHEOUS: "Hasheous"}
@@ -201,9 +201,13 @@ class Pinned(BaseModel):
 
 
 class DatOrder(BaseModel):
-    # None: back to the global order (a platform's), or to the default (the global one).
+    # None: back to the default order.
     order: list[str] | None
     off: list[str] = []
+
+
+class GlobalOff(BaseModel):
+    off: list[str]
 
 
 class FolderRanking(BaseModel):
@@ -401,6 +405,9 @@ def build_router(
                 "id": e.id,
                 "label": entry_label(e.id),
                 "on": e.on,
+                # Switched off on this platform / on every platform (Which DATs to use?).
+                "own_off": e.id in library.dats.get(platform, PlatformDats()).off,
+                "global_off": registry.globally_off(library, e.id),
                 "lookup": e.lookup,
                 "dat": row_dict(e.version),
                 "pinned": bool(
@@ -1851,30 +1858,77 @@ def build_router(
         registry_call(lambda: registry.set_order(platform, body.order, body.off))
         return dat_order(conn, store.load(), platform)
 
-    def global_order(library: Library) -> dict:
+    def served(source_id: str) -> list[dict]:
+        """The enabled platforms a source has a DAT for, each with that DAT's name when the
+        platform names it (a side set)."""
+        source = settings.dats.sources[source_id]
+        found = []
+        for pid, profile in platforms.items():
+            if source.side:
+                side = profile.side_dats.get(source_id)
+                if side is not None:
+                    found.append({"platform": pid, "dat_name": side.dat_name})
+            elif source_id in registry.downloads(pid) or (
+                profile.dat_download and profile.dat_family == source_id
+            ):
+                found.append({"platform": pid, "dat_name": None})
+        return found
+
+    def any_platform(source_id: str) -> bool:
+        """A source neither downloaded nor made by one family: any platform's DAT can be
+        uploaded as it."""
+        source = settings.dats.sources[source_id]
+        fetched = source.url_template or source.index_url or source.page_template
+        return not fetched and source_id not in settings.dats.families
+
+    def dat_sources(library: Library) -> list[dict]:
+        """Every source and online lookup, whether it is on for every platform, and the
+        platforms it serves (`every`: any platform)."""
         off = set(library.dat_off)
-        return {
-            "own": library.dat_order is not None,
-            "entries": [
-                {
-                    "id": entry,
-                    "label": entry_label(entry),
-                    "on": entry not in off,
-                    "lookup": entry in LOOKUP_LABELS,
-                }
-                for entry in registry.global_order(library)
-            ],
-        }
+        titledb_id = settings.titledb.short_label
+        found = [
+            {
+                "id": entry,
+                "label": entry_label(entry),
+                "short_label": (
+                    settings.dats.sources[entry].short_label
+                    if entry in settings.dats.sources
+                    else LOOKUP_LABELS[entry]
+                ),
+                "lookup": entry in LOOKUP_LABELS,
+                "side": entry in settings.dats.sources and settings.dats.sources[entry].side,
+                "on": entry in LOOKUP_LABELS or entry not in off,
+                "every": entry in LOOKUP_LABELS or any_platform(entry),
+                "platforms": [] if entry in LOOKUP_LABELS else served(entry),
+            }
+            for entry in settings.dats.priority
+        ]
+        found.append(
+            {
+                "id": titledb_id,
+                "label": settings.titledb.label,
+                "short_label": titledb_id,
+                "lookup": False,
+                "side": True,
+                "on": titledb_id not in off,
+                "every": False,
+                "platforms": [
+                    {"platform": pid, "dat_name": None} for pid in platforms if title_ids(pid)
+                ],
+            }
+        )
+        return found
 
-    @router.get("/dat-order")
-    def get_global_order():
-        """The order every platform without its own follows."""
-        return global_order(store.load())
+    @router.get("/dat-sources")
+    def get_dat_sources():
+        """Every DAT source and online lookup, with the platforms it serves."""
+        return dat_sources(store.load())
 
-    @router.put("/dat-order")
-    def set_global_order(body: DatOrder):
-        registry_call(lambda: registry.set_global_order(body.order, body.off))
-        return global_order(store.load())
+    @router.put("/dat-sources")
+    def set_dat_sources(body: GlobalOff):
+        """The sources switched off on every platform; the next scan of each set uses it."""
+        registry_call(lambda: registry.set_global_off(body.off))
+        return dat_sources(store.load())
 
     # Console keys (3DS decryption) ----------------------------------------------------
     # Only whether each file is there is ever returned: the keys never leave the server.

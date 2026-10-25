@@ -147,7 +147,17 @@ function DatRowView({ row, meta }: { row: DatRow; meta: Meta }) {
                         <span className="text-muted-foreground tabular-nums">{index + 1}. </span>
                       ) : null}
                       {dat.header_name}
-                      {!entry.on ? <span className="text-muted-foreground"> (off)</span> : null}
+                      {entry.global_off ? (
+                        <Link
+                          to="/settings/dat-sources"
+                          className="text-status-warn underline underline-offset-2"
+                        >
+                          {" "}
+                          (off for every platform)
+                        </Link>
+                      ) : !entry.on ? (
+                        <span className="text-muted-foreground"> (off)</span>
+                      ) : null}
                     </div>
                     <div className="text-muted-foreground text-xs">
                       {source?.label} · version {dat.version ?? "?"} · {formatCount(dat.game_count)}{" "}
@@ -407,7 +417,7 @@ export function DatsSettingsPage() {
           The DATs each platform has: one active version per source, recorded in{" "}
           <code className="text-xs">{data.data?.library_file}</code>. Downloads and uploads are kept
           as versions; the first of a source is used at once, a newer one only when you choose it.
-          Which sources to use, and in what order:{" "}
+          The order is each platform's own (DAT order); sources switched off for every platform:{" "}
           <Link to="/settings/dat-sources" className="underline underline-offset-2">
             Which DATs to use?
           </Link>

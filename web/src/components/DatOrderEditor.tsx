@@ -1,6 +1,7 @@
 import { useMutation } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, ListOrdered } from "lucide-react";
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -8,6 +9,9 @@ import { ApiError, api, json } from "@/lib/api";
 import { keys, queryClient } from "@/lib/queries";
 import type { DatOrderEntry } from "@/lib/types";
 import { cn } from "@/lib/utils";
+
+/** `on` as the platform's own switch: an entry off on every platform stays off whatever it is. */
+const ownSwitches = (list: DatOrderEntry[]) => list.map((e) => ({ ...e, on: !e.own_off }));
 
 /**
  * The order a platform's DATs and online lookups identify files in: each tries the files
@@ -23,26 +27,25 @@ export function DatOrderEditor({
   platform: string;
   platformName: string;
   entries: DatOrderEntry[];
-  /** The platform has its own order: it can go back to the global one. */
+  /** The platform has its own order: it can go back to the default one. */
   own?: boolean;
   /** Without the order on the button (a narrow table cell). */
   compact?: boolean;
 }) {
-  const [draft, setDraft] = useState(entries);
-  useEffect(() => setDraft(entries), [entries]);
+  const [draft, setDraft] = useState(() => ownSwitches(entries));
+  useEffect(() => setDraft(ownSwitches(entries)), [entries]);
   const save = useMutation({
-    mutationFn: (global: boolean) =>
+    mutationFn: (reset: boolean) =>
       api(
         `/dats/${platform}/order`,
         json("PUT", {
-          order: global ? null : draft.map((e) => e.id),
+          order: reset ? null : draft.map((e) => e.id),
           off: draft.filter((e) => !e.on).map((e) => e.id),
         }),
       ),
     onSuccess: () => {
       toast.success(`${platformName}: DAT order saved; scan to use it`);
       queryClient.invalidateQueries({ queryKey: keys.dats });
-      queryClient.invalidateQueries({ queryKey: keys.datOrder });
       queryClient.invalidateQueries({ queryKey: keys.folders });
       queryClient.invalidateQueries({ queryKey: ["folder"] });
     },
@@ -78,7 +81,7 @@ export function DatOrderEditor({
       <PopoverContent align="end" className="w-96" aria-label={`DAT order for ${platformName}`}>
         <p className="mb-3 text-muted-foreground text-xs">
           Top to bottom: each tries the files the ones above it did not identify. Saved for every{" "}
-          {platformName} set{own ? "" : ", in place of the global order"}; the next scan uses it.
+          {platformName} set{own ? "" : ", in place of the default order"}; the next scan uses it.
           Add DATs in Settings → Platform DATs.
         </p>
         <ol className="space-y-1">
@@ -87,7 +90,7 @@ export function DatOrderEditor({
               key={entry.id}
               className={cn(
                 "flex items-center gap-2 rounded-md border border-border px-2 py-1 text-sm",
-                !entry.on && "border-dashed text-muted-foreground",
+                (!entry.on || entry.global_off) && "border-dashed text-muted-foreground",
               )}
             >
               <span className="w-4 text-muted-foreground tabular-nums">{index + 1}</span>
@@ -117,16 +120,26 @@ export function DatOrderEditor({
               >
                 <ArrowDown aria-hidden="true" />
               </Button>
-              <label className="flex w-10 shrink-0 items-center gap-1.5 text-xs">
-                <input
-                  type="checkbox"
-                  className="size-3.5 accent-primary"
-                  checked={entry.on}
-                  onChange={() => toggle(entry.id)}
-                  aria-label={`Use ${entry.label}`}
-                />
-                {entry.on ? "on" : "off"}
-              </label>
+              {entry.global_off ? (
+                <Link
+                  to="/settings/dat-sources"
+                  className="w-10 shrink-0 text-status-warn text-xs underline underline-offset-2"
+                  title="Switched off for every platform in Settings → Which DATs to use?"
+                >
+                  off
+                </Link>
+              ) : (
+                <label className="flex w-10 shrink-0 items-center gap-1.5 text-xs">
+                  <input
+                    type="checkbox"
+                    className="size-3.5 accent-primary"
+                    checked={entry.on}
+                    onChange={() => toggle(entry.id)}
+                    aria-label={`Use ${entry.label}`}
+                  />
+                  {entry.on ? "on" : "off"}
+                </label>
+              )}
             </li>
           ))}
         </ol>
@@ -137,9 +150,9 @@ export function DatOrderEditor({
               size="sm"
               disabled={save.isPending}
               onClick={() => save.mutate(true)}
-              title="Follow the order set in Settings → Which DATs to use?"
+              title="The configured order, every entry switched on here"
             >
-              Use the global order
+              Back to the default order
             </Button>
           ) : null}
           <Button size="sm" disabled={save.isPending} onClick={() => save.mutate(false)}>

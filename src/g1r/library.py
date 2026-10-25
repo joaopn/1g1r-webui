@@ -60,9 +60,10 @@ class PlatformDats(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     active: dict[str, ActiveDat] = Field(default_factory=dict)
-    # The platform's own order; None: the global one.
+    # The platform's own order; None: the configured default.
     order: list[str] | None = None
-    # Entries switched off: they identify nothing until switched on again.
+    # Entries switched off here (besides those off on every platform): they identify nothing
+    # until switched on again.
     off: list[str] = Field(default_factory=list)
 
     @model_validator(mode="before")
@@ -96,9 +97,7 @@ class Library(BaseModel):
     lookups: LookupSwitches = Field(default_factory=LookupSwitches)
     platform_targets: dict[str, str] = Field(default_factory=dict)
     dats: dict[str, PlatformDats] = Field(default_factory=dict)
-    # The order sources and lookups identify files in on every platform without its own
-    # order, and the entries switched off there (None: the configured default).
-    dat_order: list[str] | None = None
+    # Sources switched off on every platform.
     dat_off: list[str] = Field(default_factory=list)
     # How many folder scans run at a time (None: the configured default).
     parallel_scans: int | None = None
@@ -129,6 +128,28 @@ class Library(BaseModel):
                 else f
                 for f in data.get("folders") or []
             ]
+        return data
+
+    @model_validator(mode="before")
+    @classmethod
+    def _global_order_per_platform(cls, data):
+        """There was one order for every platform without its own; each such platform keeps
+        it, and the entries it switched off, as its own."""
+        if not isinstance(data, dict) or "dat_order" not in data:
+            return data
+        data = dict(data)
+        shared = data.pop("dat_order")
+        if shared is not None:
+            dats = {}
+            for platform, entry in (data.get("dats") or {}).items():
+                if isinstance(entry, dict) and "sha1" in entry:
+                    # The single active DAT stored before the priority list.
+                    entry = {"active": {entry["source"]: entry}}
+                if isinstance(entry, dict) and entry.get("order") is None:
+                    off = sorted({*(entry.get("off") or []), *(data.get("dat_off") or [])})
+                    entry = {**entry, "order": list(shared), "off": off}
+                dats[platform] = entry
+            data["dats"] = dats
         return data
 
 
