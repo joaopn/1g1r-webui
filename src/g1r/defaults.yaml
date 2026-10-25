@@ -123,6 +123,17 @@ ui:
     notes: {rem: 10, min: 5, max: 24}
     size: {rem: 5.5, min: 4.5, max: 10}
   updates_columns_default: [game, name, display_version, size, status]
+  # The Rename table: each ROM file, the name its set's template proposes, the name it had
+  # before its first rename.
+  rename_columns:
+    name: {rem: 16, min: 8, max: 48}
+    new_name: {rem: 16, min: 8, max: 48}
+    original: {rem: 12, min: 6, max: 40}
+    game: {rem: 14, min: 8, max: 40}
+    folder: {rem: 8, min: 4, max: 30}
+    status: {rem: 14, min: 8, max: 30}
+    size: {rem: 5.5, min: 4.5, max: 10}
+  rename_columns_default: [name, new_name, original, status, size]
   # The Statistics table: the set, its platform, and one DATs column holding a bar per DAT
   # source side by side. The DATs column starts as wide as the most sources a set has
   # (each `statistics_source_rem` wide, `statistics_source_gap_rem` apart), within its

@@ -12,6 +12,7 @@ import type {
   Meta,
   Missing,
   Notification,
+  Renames,
   Run,
   SettingsData,
   Statistics,
@@ -34,6 +35,7 @@ export const keys = {
   unmatched: (label: string) => ["unmatched", label] as const,
   discarded: (label: string) => ["discarded", label] as const,
   updates: (label: string) => ["updates", label] as const,
+  renames: (label: string) => ["renames", label] as const,
   run: (label: string) => ["run", label] as const,
   settings: ["settings"] as const,
   dats: ["dats"] as const,
@@ -101,6 +103,12 @@ export const useUpdates = (label: string, enabled: boolean) =>
     enabled,
   });
 
+export const useRenames = (label: string) =>
+  useQuery({
+    queryKey: keys.renames(label),
+    queryFn: () => api<Renames>(`/folders/${label}/rename`),
+  });
+
 /** The latest scans and runs: polled often while one runs, now and then otherwise (a run
  * may start in another tab). */
 export const useNotifications = () =>
@@ -142,6 +150,7 @@ export function invalidateFolder(label: string) {
     queryClient.invalidateQueries({ queryKey: keys.unmatched(label) }),
     queryClient.invalidateQueries({ queryKey: keys.discarded(label) }),
     queryClient.invalidateQueries({ queryKey: keys.updates(label) }),
+    queryClient.invalidateQueries({ queryKey: keys.renames(label) }),
     queryClient.invalidateQueries({ queryKey: keys.run(label) }),
     queryClient.invalidateQueries({ queryKey: keys.folders }),
     queryClient.invalidateQueries({ queryKey: keys.notifications }),

@@ -14,6 +14,8 @@ const SET = {
   location: "/roms/nes",
   discarded_to: "/roms/discarded/nes/",
   hidden: false,
+  rename_template: "keep",
+  rename_templates: ["keep", "dat", "clean"],
   discarded: { files: 2, bytes: 2048 },
   converting: null,
   running: false,
@@ -84,4 +86,16 @@ test("each set picks its platform's target format", async () => {
   await userEvent.selectOptions(select, "plain");
   const put = calls.find((c) => c.url.endsWith("/settings/targets"));
   expect(JSON.parse(String(put?.init?.body))).toEqual({ targets: { nes: "plain" } });
+});
+
+test("each set picks its file names template, explained below the table", async () => {
+  const calls = renderPage();
+  const select = await screen.findByRole("combobox", { name: "File names for nes" });
+  expect(select).toHaveValue("keep");
+  expect(screen.getByTestId("template-dat")).toHaveTextContent(
+    "DAT nameThe name the DAT gives the game. e.g. Contra (USA).zip",
+  );
+  await userEvent.selectOptions(select, "dat");
+  const put = calls.find((c) => c.url.endsWith("/folders/nes/rename-template"));
+  expect(JSON.parse(String(put?.init?.body))).toEqual({ template: "dat" });
 });

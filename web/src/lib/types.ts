@@ -48,6 +48,8 @@ export type Meta = {
     ignored_columns_default: string[];
     updates_columns: Record<string, ColumnSize>;
     updates_columns_default: string[];
+    rename_columns: Record<string, ColumnSize>;
+    rename_columns_default: string[];
     statistics_columns: Record<string, ColumnSize>;
     statistics_columns_default: string[];
     statistics_source_rem: number;
@@ -83,7 +85,11 @@ export type Meta = {
   ranking: { criteria: string[]; labels: Record<string, string>; default: Ranking };
   label_pattern: string;
   discarded_root: string;
+  /** The naming templates of the Rename tab, by id (`keep` renames nothing). */
+  rename_templates: Record<string, RenameTemplate>;
 };
+
+export type RenameTemplate = { label: string; description: string; example: string };
 
 /** A scan or run in the notifications panel (`GET /api/notifications`). */
 export type Notification = {
@@ -98,7 +104,9 @@ export type Notification = {
     | "set-aside"
     | "updates"
     | "empty"
-    | "restore";
+    | "restore"
+    | "rename"
+    | "rename-back";
   title: string;
   folder_label: string;
   status: "running" | "done" | "failed";
@@ -203,6 +211,9 @@ export type FolderInfo = {
   ignored_files: string[];
   /** Identified by title ID (Switch): the set has an Updates tab. */
   title_ids: boolean;
+  /** The Rename tab's naming template, and those the platform offers. */
+  rename_template: string;
+  rename_templates: string[];
 };
 
 export type FolderCard = FolderInfo & {
@@ -227,6 +238,8 @@ export type FolderCard = FolderInfo & {
   /** Title-ID sets: their updates, the older ones proposed for discarded/, and those whose
    * version could not be read; null for other sets. */
   updates: UpdateCounts | null;
+  /** The Rename tab: the set's template and how many files it proposes to rename. */
+  rename: RenameCounts & { template: string };
   discarded: { files: number; bytes: number };
   /** The conversion running in the folder: steps finished of the planned total, files failed,
    * and whether a stop was asked for. */
@@ -685,4 +698,34 @@ export type Updates = {
   updates: UpdateRow[];
   games: UpdateGame[];
   counts: UpdateCounts & { newer: number };
+};
+
+/** A ROM file of the Rename tab: the name its set's template proposes, or why none. */
+export type RenameRow = {
+  rel_path: string;
+  size: number;
+  /** The identified name the new one is built from (several joined), null if none. */
+  game: string | null;
+  method: string | null;
+  status: "rename" | "named" | "skipped";
+  new_path: string | null;
+  reason: string;
+  /** The file's path before its first rename, when the app renamed it. */
+  original: string | null;
+};
+
+export type RenameCounts = {
+  files: number;
+  proposed: number;
+  named: number;
+  skipped: number;
+  renamed: number;
+};
+
+export type Renames = {
+  template: string;
+  rows: RenameRow[];
+  counts: RenameCounts;
+  /** Files still to convert: renaming waits for them. */
+  waiting: number;
 };

@@ -23,6 +23,8 @@ const FOLDER: FolderInfo = {
   ignored_patterns_default: true,
   ignored_files: ["old.bin"],
   title_ids: false,
+  rename_template: "keep",
+  rename_templates: ["keep", "dat", "clean"],
 };
 
 const wrap = (node: ReactNode) => (

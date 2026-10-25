@@ -19,6 +19,7 @@ import {
   folderState,
   needsConversion,
   openingSection,
+  renamesLeft,
   sectionPath,
   updatesLeft,
 } from "@/lib/sections";
@@ -39,7 +40,12 @@ type Detail = (typeof DETAILS)[number]["id"];
 /** Nothing left to do: every file processed (a folder not scanned yet has no files) and no
  * older update to discard. */
 function isCompleted(folder: FolderCard): boolean {
-  return folder.summary.roms > 0 && folder.progress.to_process === 0 && !updatesLeft(folder);
+  return (
+    folder.summary.roms > 0 &&
+    folder.progress.to_process === 0 &&
+    !updatesLeft(folder) &&
+    !renamesLeft(folder)
+  );
 }
 
 const needsMatching = (f: FolderCard) => f.progress.to_match > 0;

@@ -33,7 +33,10 @@ const FOLDERS = [
     ignored_patterns_default: true,
     ignored_files: [],
     title_ids: false,
+    rename_template: "keep",
+    rename_templates: ["keep", "dat", "clean"],
     updates: null,
+    rename: { template: "keep", files: 0, proposed: 0, named: 0, skipped: 0, renamed: 0 },
     conversion: {
       wrap: 0,
       unwrap: 0,

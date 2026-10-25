@@ -104,6 +104,8 @@ class UiConfig(_Strict):
     ignored_columns_default: list[str] = Field(min_length=1)
     updates_columns: dict[str, ColumnSize]
     updates_columns_default: list[str] = Field(min_length=1)
+    rename_columns: dict[str, ColumnSize]
+    rename_columns_default: list[str] = Field(min_length=1)
     statistics_columns: dict[str, ColumnSize]
     statistics_columns_default: list[str] = Field(min_length=1)
     statistics_source_rem: float = Field(gt=0)

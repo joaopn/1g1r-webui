@@ -13,7 +13,7 @@ import type { FolderCard, FolderInfo, Meta } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 // Tailwind needs the class names written out: every tab, or all but Updates.
-const TAB_COLUMNS = { every: "grid-cols-5", fewer: "grid-cols-4" };
+const TAB_COLUMNS = { every: "grid-cols-6", fewer: "grid-cols-5" };
 
 /** The set's name and location, then its pages as tabs across the full width; a page with
  * nothing left to do (from the set's Home `card`) has a green check. */

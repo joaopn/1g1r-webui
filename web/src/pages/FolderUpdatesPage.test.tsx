@@ -23,6 +23,8 @@ const DETAIL = {
   ignored_patterns_default: true,
   ignored_files: [],
   title_ids: true,
+  rename_template: "keep",
+  rename_templates: ["keep", "dat", "clean"],
   scan: null,
   others: [],
 };

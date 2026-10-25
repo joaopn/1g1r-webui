@@ -15,7 +15,14 @@ import {
 import { ApiError, api, json } from "@/lib/api";
 import { formatFiles } from "@/lib/format";
 import { foldersByName } from "@/lib/platforms";
-import { keys, queryClient, useFolders, useMeta, useSettingsData } from "@/lib/queries";
+import {
+  invalidateFolder,
+  keys,
+  queryClient,
+  useFolders,
+  useMeta,
+  useSettingsData,
+} from "@/lib/queries";
 import { folderState } from "@/lib/sections";
 import type { FolderCard } from "@/lib/types";
 import { Page } from "@/pages/SettingsPages";
@@ -58,15 +65,29 @@ export function RomsetManagementPage() {
     },
     onError: (err) => toast.error(errorText(err)),
   });
+  const saveTemplate = useMutation({
+    mutationFn: ({ label, template }: { label: string; template: string }) =>
+      api(`/folders/${label}/rename-template`, json("PUT", { template })),
+    onSuccess: (_, { label }) => {
+      toast.success("Naming template saved");
+      invalidateFolder(label);
+    },
+    onError: (err) => toast.error(errorText(err)),
+  });
   if (!meta.data || !folders.data || !data.data)
     return <p className="text-muted-foreground">Loading…</p>;
   const sets = foldersByName(folders.data, meta.data.platforms);
   const targets = data.data.targets;
+  const templates = meta.data.rename_templates;
+  // The templates some set here may pick, in their configured order.
+  const offered = Object.keys(templates).filter((id) =>
+    sets.some((set) => set.rename_templates.includes(id)),
+  );
 
   return (
     <Page
       title="Romset management"
-      intro="Each platform folder you added (a set), with its label. The target format applies to every set of that platform. Hidden sets leave the sidebar and Home but stay added: their folder cannot be added again until removed. Removing one touches no file."
+      intro="Each platform folder you added (a set), with its label. The target format applies to every set of that platform; the file names template is the set's own (its Rename tab). Hidden sets leave the sidebar and Home but stay added: their folder cannot be added again until removed. Removing one touches no file."
     >
       {sets.length === 0 ? (
         <p className="text-muted-foreground text-sm">No sets yet.</p>
@@ -79,6 +100,7 @@ export function RomsetManagementPage() {
                 <th className="px-3 py-2">Platform</th>
                 <th className="px-3 py-2">Folder</th>
                 <th className="px-3 py-2">Target format</th>
+                <th className="px-3 py-2">File names</th>
                 <th className="px-3 py-2 text-right">Actions</th>
               </tr>
             </thead>
@@ -135,6 +157,31 @@ export function RomsetManagementPage() {
                       ) : null}
                     </td>
                     <td className="px-3 py-2">
+                      <select
+                        aria-label={`File names for ${set.label}`}
+                        className="h-8 rounded-md border border-input bg-background px-2 text-sm"
+                        value={set.rename_template}
+                        disabled={saveTemplate.isPending}
+                        onChange={(event) =>
+                          saveTemplate.mutate({ label: set.label, template: event.target.value })
+                        }
+                      >
+                        {set.rename_templates.map((t) => (
+                          <option key={t} value={t} title={templates[t]?.description}>
+                            {templates[t]?.label ?? t}
+                          </option>
+                        ))}
+                      </select>
+                      {templates[set.rename_template]?.example ? (
+                        <span
+                          className="mt-0.5 block max-w-64 truncate text-muted-foreground text-xs"
+                          title={templates[set.rename_template]?.example}
+                        >
+                          {templates[set.rename_template]?.example}
+                        </span>
+                      ) : null}
+                    </td>
+                    <td className="px-3 py-2">
                       <div className="flex justify-end gap-2">
                         <Button
                           variant="outline"
@@ -168,6 +215,36 @@ export function RomsetManagementPage() {
           </table>
         </div>
       )}
+
+      {offered.length > 0 ? (
+        <section
+          aria-label="File name templates"
+          className="space-y-2 rounded-lg border border-border bg-card px-4 py-3 text-sm"
+        >
+          <h2 className="font-semibold">File name templates</h2>
+          <p className="text-muted-foreground">
+            What a set's Rename tab proposes. Only files identified by checksum, title ID or by you
+            are renamed, in their folder, keeping their extension; every rename can be reverted to
+            the file's first name.
+          </p>
+          <dl className="grid gap-x-4 gap-y-2 sm:grid-cols-[auto_1fr]">
+            {offered.map((id) => (
+              <div key={id} className="contents" data-testid={`template-${id}`}>
+                <dt className="font-medium">{templates[id].label}</dt>
+                <dd className="text-muted-foreground">
+                  {templates[id].description}
+                  {templates[id].example ? (
+                    <>
+                      {" "}
+                      e.g. <code className="text-foreground text-xs">{templates[id].example}</code>
+                    </>
+                  ) : null}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+      ) : null}
 
       <Dialog open={removing !== null} onOpenChange={(open) => (open ? null : setRemoving(null))}>
         <DialogContent>

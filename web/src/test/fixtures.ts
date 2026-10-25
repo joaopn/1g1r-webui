@@ -84,6 +84,13 @@ export const META: Meta = {
       size: { rem: 5.5, min: 4.5, max: 10 },
     },
     updates_columns_default: ["game", "name", "display_version", "size", "status"],
+    rename_columns: Object.fromEntries(
+      ["name", "new_name", "original", "game", "folder", "status", "size"].map((id) => [
+        id,
+        size(8),
+      ]),
+    ),
+    rename_columns_default: ["name", "new_name", "original", "status", "size"],
     statistics_columns: Object.fromEntries(
       ["folder", "size", "discarded", "platform", "dats"].map((id) => [id, size(8)]),
     ),
@@ -165,6 +172,19 @@ export const META: Meta = {
     },
   },
   label_pattern: "^[a-z0-9][a-z0-9._-]*$",
+  rename_templates: {
+    keep: { label: "Keep names", description: "Files keep the names they have.", example: "" },
+    dat: {
+      label: "DAT name",
+      description: "The name the DAT gives the game.",
+      example: "Contra (USA).zip",
+    },
+    clean: {
+      label: "Clean title",
+      description: "The DAT name without its tags.",
+      example: "Contra.zip",
+    },
+  },
   discarded_root: "/roms/discarded",
 };
 

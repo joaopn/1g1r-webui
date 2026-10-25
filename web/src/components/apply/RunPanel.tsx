@@ -36,7 +36,14 @@ export function RunPanel({
     wasRunning.current = running;
   }, [running, label]);
   if (!run) return null;
-  const verb = run.kind === "restore" ? "Restore" : (SCOPE_VERBS[run.scope] ?? "Apply");
+  const verb =
+    run.scope === "rename"
+      ? run.kind === "restore"
+        ? "Giving names back"
+        : "Rename"
+      : run.kind === "restore"
+        ? "Restore"
+        : (SCOPE_VERBS[run.scope] ?? "Apply");
   const unconverted =
     !running && run.kind === "apply" && run.scope === "convert"
       ? run.failed.filter((f) => f.action === "convert").map((f) => f.rel_path)

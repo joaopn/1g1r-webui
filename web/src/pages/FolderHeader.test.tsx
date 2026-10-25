@@ -19,6 +19,8 @@ const FOLDER: FolderInfo = {
   ignored_patterns_default: true,
   ignored_files: [],
   title_ids: false,
+  rename_template: "keep",
+  rename_templates: ["keep", "dat", "clean"],
 };
 
 test("the set's pages are tabs, the current one marked", () => {
@@ -32,6 +34,7 @@ test("the set's pages are tabs, the current one marked", () => {
   expect(links.map((a) => [a.textContent, a.getAttribute("href")])).toEqual([
     ["Conversion", "/folders/nes/conversion"],
     ["Matching & 1G1R", "/folders/nes/matching"],
+    ["Rename", "/folders/nes/rename"],
     ["Discarded", "/folders/nes/discarded"],
     ["Ignored", "/folders/nes/ignored"],
   ]);
@@ -65,11 +68,17 @@ test("a page with nothing left to do has a green check on its tab", () => {
     unmount();
     return done;
   };
-  expect(checked(card(0, 0, null))).toEqual(["Conversion", "Matching & 1G1R"]);
-  // Files still to match: only Conversion is done.
-  expect(checked(card(0, 2, null))).toEqual(["Conversion"]);
-  // A scan due: Matching is not done.
+  expect(checked(card(0, 0, null))).toEqual(["Conversion", "Matching & 1G1R", "Rename"]);
+  // Files still to match: Matching is not done.
+  expect(checked(card(0, 2, null))).toEqual(["Conversion", "Rename"]);
+  // A scan due: Matching and Rename are not done.
   expect(checked(card(0, 0, "identify"))).toEqual(["Conversion"]);
+  // Files to rename: Rename is not done.
+  const renaming = { template: "dat", files: 3, proposed: 2, named: 1, skipped: 0, renamed: 0 };
+  expect(checked({ ...card(0, 0, null), rename: renaming } as FolderCard)).toEqual([
+    "Conversion",
+    "Matching & 1G1R",
+  ]);
   // Files to convert, or no check yet: nothing is done.
   expect(checked(card(2, 2, null))).toEqual([]);
   expect(checked(card(0, 0, "check"))).toEqual([]);
@@ -111,6 +120,7 @@ test("a Switch set has an Updates & DLC tab, checked when nothing is to discard"
     ["Conversion", true],
     ["Matching & 1G1R", true],
     ["Updates & DLC", false],
+    ["Rename", true],
     ["Discarded", false],
     ["Ignored", false],
   ]);

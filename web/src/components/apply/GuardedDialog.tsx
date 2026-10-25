@@ -31,6 +31,8 @@ export function GuardedDialog({
   meta,
   open,
   onOpenChange,
+  renames = false,
+  note,
 }: {
   label: string;
   /** Relative to the folder: `unmatched`, `discarded/empty`. */
@@ -43,6 +45,10 @@ export function GuardedDialog({
   meta: Meta;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** The files get new names in their folder: each shows its new name, not "discarded". */
+  renames?: boolean;
+  /** Said under the plan's size, once planned. */
+  note?: ReactNode;
 }) {
   const [confirm, setConfirm] = useState("");
   const base = `/folders/${label}/${path}`;
@@ -111,6 +117,7 @@ export function GuardedDialog({
                   <span className="font-medium">{formatFiles(plan.files.length)}</span>,{" "}
                   {formatSize(plan.bytes)}
                 </p>
+                {note ? <p className="text-muted-foreground">{note}</p> : null}
                 <ul
                   className="max-h-72 space-y-1 overflow-y-auto rounded-md border border-border px-3 py-2"
                   data-testid="guarded-files"
@@ -118,7 +125,17 @@ export function GuardedDialog({
                   {plan.files.map((f) => (
                     <li key={f.rel_path} className="flex min-w-0 items-center gap-2">
                       <span className="truncate">{f.rel_path}</span>
-                      {f.destination ? (
+                      {f.destination && renames ? (
+                        <>
+                          <ArrowRight
+                            className="size-3 shrink-0 text-status-info"
+                            aria-hidden="true"
+                          />
+                          <span className="truncate" title={f.destination}>
+                            {f.destination.split("/").pop()}
+                          </span>
+                        </>
+                      ) : f.destination ? (
                         <>
                           <ArrowRight
                             className="size-3 shrink-0 text-status-warn"
