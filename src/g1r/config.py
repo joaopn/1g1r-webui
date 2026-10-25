@@ -169,7 +169,8 @@ class PlatformProfile(_Strict):
     redump_system: str | None = None
     # No-Intro sets beside the platform's own DAT, keyed by the source that carries them:
     # `nonredump` (discs Redump does not list: prototypes, betas, unlicensed), `psn`
-    # (digital-only releases), `supergrafx` (HuCards that need the SuperGrafx).
+    # (digital-only releases), `supergrafx` (HuCards that need the SuperGrafx), `new3ds`
+    # (cards that need a New 3DS).
     side_dats: dict[str, SideDat] = Field(default_factory=dict)
     # Files that are only part of a game (a cue sheet and its tracks): no versions in the
     # 1G1R table until a conversion makes one file of them.

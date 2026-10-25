@@ -173,6 +173,9 @@ WII_DEV_KIT = NOINTRO.replace(NES_HEADER, b"Nintendo - Wii (Development Kit Hard
         # SuperGrafx HuCards are a side set of the PC Engine.
         ("tg16", "NEC - PC Engine SuperGrafx", True),
         ("nes", "NEC - PC Engine SuperGrafx", False),
+        # Cards that need a New 3DS are a side set of the 3DS; its digital set is not.
+        ("3ds", "Nintendo - New Nintendo 3DS", True),
+        ("3ds", "Nintendo - New Nintendo 3DS (Digital)", False),
     ],
 )
 def test_header_matches_only_format_variants(make_settings, platform, name, matches):
@@ -415,3 +418,39 @@ def test_pc_engine_downloads_its_supergrafx_set_from_the_mirror(make_settings):
     row = conn.execute("SELECT * FROM dat_version WHERE id = ?", (version,)).fetchone()
     assert row["source"] == "supergrafx" and row["matches_platform"]
     assert registry.order(store.load(), "tg16") == ["supergrafx", "hasheous"]
+
+
+NEW_3DS = NOINTRO.replace(NES_HEADER, b"Nintendo - New Nintendo 3DS")
+
+
+def test_3ds_downloads_its_new_3ds_set_from_the_mirror(make_settings):
+    settings = make_settings()
+    store = LibraryStore(settings)
+    fetched = []
+
+    def fetch(url):
+        fetched.append(url)
+        return NEW_3DS
+
+    registry = DatRegistry(settings, store, fetch)
+    conn = db.open_database(settings)
+    assert "new3ds" in registry.downloads("3ds")
+    assert "new3ds" not in registry.downloads("nds")
+    version = registry.download(conn, "3ds", "new3ds")
+    assert fetched == [
+        "https://raw.githubusercontent.com/libretro/libretro-database/master/metadat/"
+        "no-intro/Nintendo%20-%20New%20Nintendo%203DS.dat"
+    ]
+    row = conn.execute("SELECT * FROM dat_version WHERE id = ?", (version,)).fetchone()
+    assert row["source"] == "new3ds" and row["matches_platform"]
+    assert registry.order(store.load(), "3ds") == ["new3ds", "hasheous"]
+
+
+def test_an_uploaded_new_3ds_dat_goes_to_its_own_source(make_settings):
+    settings = make_settings()
+    store = LibraryStore(settings)
+    registry = DatRegistry(settings, store, lambda url: b"")
+    conn = db.open_database(settings)
+    results = registry.add_pack(conn, zip_of({"No-Intro/new3ds.dat": NEW_3DS}))
+    assert [(r.platform, r.message) for r in results] == [("3ds", "added")]
+    assert registry.order(store.load(), "3ds") == ["new3ds", "hasheous"]

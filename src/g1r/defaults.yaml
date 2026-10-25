@@ -419,6 +419,8 @@ platforms:
       kind: handheld
       aliases: ["n3ds", "nintendo3ds"]
       dat_name: Nintendo - Nintendo 3DS
+      side_dats:
+        new3ds: {dat_name: "Nintendo - New Nintendo 3DS"}
       rom_extensions: [3ds, cci, cia]
       # Azahar/Citra do not read zips: the target is the bare card image.
       targets: [plain]
@@ -781,6 +783,14 @@ dats:
       url_template: "https://raw.githubusercontent.com/libretro/libretro-database/master/metadat/no-intro/{name}.dat"
       identification_only: true
       side: true
+    new3ds:
+      label: No-Intro New 3DS (libretro-database mirror)
+      short_label: New 3DS
+      # Cards that need a New 3DS (Xenoblade Chronicles 3D, Fire Emblem Warriors); No-Intro
+      # keeps them out of the 3DS DAT. The mirror's copy has no parent/clone data.
+      url_template: "https://raw.githubusercontent.com/libretro/libretro-database/master/metadat/no-intro/{name}.dat"
+      identification_only: true
+      side: true
     upload:
       label: Uploaded file
       short_label: uploaded DAT
@@ -807,7 +817,7 @@ dats:
   # Settings -> DATs): each source tries the files still unmatched. Complete curated DATs
   # first; libretro keeps one ROM per game; TOSEC names differ from all the others; then the
   # online lookups. Each platform has one active version per source.
-  priority: [nointro, upload, redump, nonredump, psn, supergrafx, fbneo, libretro, tosec, hasheous]
+  priority: [nointro, upload, redump, nonredump, psn, supergrafx, new3ds, fbneo, libretro, tosec, hasheous]
 
 # Switch names and details from blawar/titledb (MIT): one JSON file per eShop country and
 # language, keyed by eShop ID, each entry carrying its title ID. A downloaded file is kept

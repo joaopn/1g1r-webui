@@ -63,6 +63,11 @@ const GUIDE: Record<string, Guide> = {
     pros: ["One-click download", "Games the PC Engine DAT leaves out"],
     cons: ["No parent/clone data (identification only)"],
   },
+  new3ds: {
+    what: "No-Intro's New 3DS DAT, from libretro's mirror: cards that need a New 3DS (3DS).",
+    pros: ["One-click download", "Games the 3DS DAT leaves out"],
+    cons: ["No parent/clone data (identification only)"],
+  },
   fbneo: {
     what: "FinalBurn Neo's DATs: arcade romsets.",
     pros: ["One-click download", "Parent/clone and BIOS data for romsets built for FBNeo"],
