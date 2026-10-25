@@ -174,8 +174,8 @@ export function RomsetManagementPage() {
                       </select>
                       {templates[set.rename_template]?.example ? (
                         <span
-                          className="mt-0.5 block max-w-64 truncate text-muted-foreground text-xs"
-                          title={templates[set.rename_template]?.example}
+                          className="mt-0.5 block max-w-40 truncate text-muted-foreground text-xs"
+                          title={`${templates[set.rename_template]?.description} e.g. ${templates[set.rename_template]?.example}`}
                         >
                           {templates[set.rename_template]?.example}
                         </span>

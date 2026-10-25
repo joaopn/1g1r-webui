@@ -81,15 +81,24 @@ export function FolderRenamePage() {
             </span>
           ) : null}
         </p>
-        <p className="text-muted-foreground">
-          {keeps
-            ? "This set keeps its file names. "
-            : `${template?.description ?? ""} Reverting gives a file the name it had before its first rename. `}
-          <Link to="/settings/romsets" className="text-primary underline-offset-2 hover:underline">
-            Pick the template in Romset management
-          </Link>
-          .
-        </p>
+        {f.rename_templates.length > 1 ? (
+          <p className="text-muted-foreground">
+            {keeps
+              ? "This set keeps its file names. "
+              : `${template?.description ?? ""} Reverting gives a file the name it had before its first rename. `}
+            <Link
+              to="/settings/romsets"
+              className="text-primary underline-offset-2 hover:underline"
+            >
+              Pick the template in Romset management
+            </Link>
+            .
+          </p>
+        ) : (
+          <p className="text-muted-foreground">
+            This platform's files keep their names: emulators load them by these names.
+          </p>
+        )}
         {waiting > 0 ? (
           <p className="text-status-warn" data-testid="rename-waiting">
             Convert or discard first: {formatFiles(waiting)} (Conversion tab).
