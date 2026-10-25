@@ -1,8 +1,8 @@
 """The per-platform DAT registry: stored versions (database) and the active one (library.yaml).
 
 Sources: the libretro mirror (one-click download), No-Intro DAT-o-MATIC files (uploaded,
-singly or as a daily pack, which is split by platform; a disc platform's Non-Redump set is a
-source of its own), and any uploaded override.
+singly or as a daily pack, which is split by platform; a platform's side sets, Non-Redump
+and PSN, are sources of their own), and any uploaded override.
 """
 
 import hashlib
@@ -47,8 +47,7 @@ class PackResult:
 TOSEC_MARK = "(TOSEC)"
 TOSEC_STYLE = "tosec"
 NOINTRO_STYLE = "nointro"
-# The source of No-Intro's Non-Redump sets (`PlatformProfile.nonredump`).
-NONREDUMP = "nonredump"
+# Sources an uploaded DAT goes to unless it names one of the platform's side sets.
 UPLOADED = ("nointro", "upload")
 
 
@@ -94,19 +93,25 @@ def _is_named(settings: Settings, dat_name: str, header_name: str) -> bool:
     return groups is not None and all(g in allowed for g in groups)
 
 
-def is_nonredump(settings: Settings, profile: PlatformProfile, header_name: str) -> bool:
-    """The header names the platform's Non-Redump set (alone or with format variants)."""
-    return profile.nonredump is not None and _is_named(
-        settings, profile.nonredump.dat_name, header_name
+def side_source(settings: Settings, profile: PlatformProfile, header_name: str) -> str | None:
+    """The source of the platform's side set the header names (alone or with format
+    variants), or None."""
+    return next(
+        (
+            source
+            for source, side in profile.side_dats.items()
+            if _is_named(settings, side.dat_name, header_name)
+        ),
+        None,
     )
 
 
 def header_matches(settings: Settings, profile: PlatformProfile, header_name: str) -> bool:
-    """The platform's DAT name (or its Non-Redump set's), alone or with format variants
+    """The platform's DAT name (or one of its side sets'), alone or with format variants
     ('... (Headered)'); another suffix names a different set ('Nintendo - Wii (Development
     Kit Hard Drives)')."""
-    return _is_named(settings, profile.dat_name, header_name) or is_nonredump(
-        settings, profile, header_name
+    return _is_named(settings, profile.dat_name, header_name) or (
+        side_source(settings, profile, header_name) is not None
     )
 
 
@@ -158,10 +163,11 @@ class DatRegistry:
             raise RegistryError(f"not a usable DAT: {exc}") from exc
         if not dat.games:
             raise RegistryError("the DAT contains no games")
-        # An uploaded Non-Redump DAT (singly or in the daily pack) is a source of its own,
-        # beside the platform's Redump DAT.
-        if source in UPLOADED and is_nonredump(self.settings, profile, dat.header.name):
-            source = NONREDUMP
+        # An uploaded side set (Non-Redump, PSN; singly or in the daily pack) goes to its own
+        # source, beside the platform's DAT.
+        side = side_source(self.settings, profile, dat.header.name)
+        if source in UPLOADED and side is not None:
+            source = side
         sha1 = hashlib.sha1(data).hexdigest()
         existing = conn.execute(
             "SELECT id FROM dat_version WHERE platform = ? AND sha1 = ?", (platform, sha1)
@@ -378,6 +384,10 @@ class DatRegistry:
         if not profile.dat_download:
             return found
         for source_id, source in self.settings.dats.sources.items():
+            if source.side:
+                if source.url_template and source_id in profile.side_dats:
+                    found.append(source_id)
+                continue
             if source.index_url:
                 # TOSEC: a second source beside the platform's own (No-Intro) DAT.
                 if profile.tosec_prefixes:
@@ -397,10 +407,12 @@ class DatRegistry:
     def pages(self, platform: str) -> list[tuple[str, str]]:
         """The sources whose DAT for the platform is downloaded by hand: (source, page)."""
         profile = self._profile(platform)
-        source = self.settings.dats.sources.get(NONREDUMP)
-        if source is None or not source.page_template or profile.nonredump is None:
-            return []
-        return [(NONREDUMP, source.page_template.format(system=profile.nonredump.system))]
+        found = []
+        for source_id, side in profile.side_dats.items():
+            source = self.settings.dats.sources.get(source_id)
+            if source and source.page_template and side.system is not None:
+                found.append((source_id, source.page_template.format(system=side.system)))
+        return found
 
     def download(self, conn: sqlite3.Connection, platform: str, source_id: str) -> int:
         profile = self._profile(platform)
@@ -410,8 +422,9 @@ class DatRegistry:
         if source.index_url:
             return self._download_tosec(conn, platform, source_id)
         family = self.settings.dats.families[profile.dat_family]
+        dat_name = profile.side_dats[source_id].dat_name if source.side else profile.dat_name
         url = source.url_template.format(
-            name=urllib.parse.quote(profile.dat_name),
+            name=urllib.parse.quote(dat_name),
             family=urllib.parse.quote(family.libretro_dir),
             system=urllib.parse.quote(profile.redump_system or ""),
             dat_file=urllib.parse.quote(profile.dat_file or ""),
@@ -420,7 +433,7 @@ class DatRegistry:
             data = self.fetch(url)
         except OSError as exc:
             raise RegistryError(f"download failed: {exc}") from exc
-        name = f"{profile.dat_name}.dat"
+        name = f"{dat_name}.dat"
         if data[: len(ZIP_MAGIC)] == ZIP_MAGIC:
             members = self._zip_dats(data)
             if len(members) != 1:

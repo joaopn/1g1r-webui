@@ -251,7 +251,11 @@ function DatRowView({ row, meta }: { row: DatRow; meta: Meta }) {
                 title={d.identification_only ? `${d.label} (identification only)` : d.label}
               >
                 <Download className="size-3.5" aria-hidden="true" />{" "}
-                {d.source === "libretro" ? "libretro" : d.label}
+                {d.source === "libretro"
+                  ? "libretro"
+                  : meta.dat_sources[d.source]?.side
+                    ? meta.dat_sources[d.source].short_label
+                    : d.label}
               </Button>
             ))}
             {row.pages.map((p) => (

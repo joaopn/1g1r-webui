@@ -167,6 +167,9 @@ WII_DEV_KIT = NOINTRO.replace(NES_HEADER, b"Nintendo - Wii (Development Kit Hard
         ("ngc", "Non-Redump - Nintendo - Nintendo GameCube", True),
         ("ps2", "Non-Redump - Sony - PlayStation", False),
         ("nes", "Non-Redump - Nintendo - Nintendo Entertainment System", False),
+        # PSP's digital-only releases are a side set of their own; the minis are not.
+        ("psp", "Sony - PlayStation Portable (PSN)", True),
+        ("psp", "Sony - PlayStation Portable (PSN) (Minis)", False),
     ],
 )
 def test_header_matches_only_format_variants(make_settings, platform, name, matches):
@@ -330,3 +333,38 @@ def test_non_redump_pages_are_offered_only_where_the_set_exists(env):
     ]
     assert registry.pages("nes") == []
     assert registry.pages("neo-geo-cd") == []
+
+
+PSN_PSP = NOINTRO.replace(NES_HEADER, b"Sony - PlayStation Portable (PSN)")
+
+
+def test_psp_downloads_its_psn_set_from_the_mirror_as_a_source_of_its_own(make_settings):
+    settings = make_settings()
+    store = LibraryStore(settings)
+    fetched = []
+
+    def fetch(url):
+        fetched.append(url)
+        return PSN_PSP
+
+    registry = DatRegistry(settings, store, fetch)
+    conn = db.open_database(settings)
+    assert "psn" in registry.downloads("psp")
+    assert "psn" not in registry.downloads("psx")
+    version = registry.download(conn, "psp", "psn")
+    assert fetched == [
+        "https://raw.githubusercontent.com/libretro/libretro-database/master/metadat/"
+        "no-intro/Sony%20-%20PlayStation%20Portable%20%28PSN%29.dat"
+    ]
+    row = conn.execute("SELECT * FROM dat_version WHERE id = ?", (version,)).fetchone()
+    assert row["source"] == "psn" and row["matches_platform"]
+    assert row["original_name"] == "Sony - PlayStation Portable (PSN).dat"
+    # An uploaded copy (DAT-o-MATIC's) goes to the same source, and so does the pack's.
+    upload = registry.add_upload(
+        conn, "psp", PSN_PSP.replace(b"</datafile>", b"<!-- v2 --></datafile>"), "psn.dat"
+    )
+    upload_row = conn.execute("SELECT source FROM dat_version WHERE id = ?", (upload,))
+    assert upload_row.fetchone()["source"] == "psn"
+    results = registry.add_pack(conn, zip_of({"No-Intro/psn.dat": PSN_PSP}))
+    assert [(r.platform, r.message) for r in results] == [("psp", "added")]
+    assert registry.order(store.load(), "psp") == ["psn", "hasheous"]

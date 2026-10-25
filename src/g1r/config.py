@@ -147,11 +147,12 @@ PLATFORM_KINDS = ("console", "handheld", "arcade", "computer")
 DAT_FAMILIES = ("nointro", "redump", "fbneo", "tosec")
 
 
-class NonRedumpDat(_Strict):
-    # DAT-o-MATIC's number for the set (the `s=` of its download page).
-    system: int
+class SideDat(_Strict):
     # The set's DAT header name ("Non-Redump - Sony - PlayStation").
     dat_name: str
+    # DAT-o-MATIC's number for the set (the `s=` of its download page), for a source that
+    # opens that page.
+    system: int | None = None
 
 
 class PlatformProfile(_Strict):
@@ -164,9 +165,10 @@ class PlatformProfile(_Strict):
     dat_family: str = "nointro"
     # redump.info's name for the system, for the Download button (Redump platforms).
     redump_system: str | None = None
-    # No-Intro's Non-Redump set for this disc platform (discs Redump does not list:
-    # prototypes, betas, unlicensed), downloaded by hand from DAT-o-MATIC.
-    nonredump: NonRedumpDat | None = None
+    # No-Intro sets beside the platform's own DAT, keyed by the source that carries them:
+    # `nonredump` (discs Redump does not list: prototypes, betas, unlicensed), `psn`
+    # (digital-only releases).
+    side_dats: dict[str, SideDat] = Field(default_factory=dict)
     # Files that are only part of a game (a cue sheet and its tracks): no versions in the
     # 1G1R table until a conversion makes one file of them.
     part_extensions: list[str] = Field(default_factory=list)
@@ -265,9 +267,12 @@ class DatSourceConfig(_Strict):
     identification_only: bool
     url_template: str | None = None
     website: str | None = None
-    # The page a platform's DAT is downloaded from by hand; {system} is the platform's
-    # DAT-o-MATIC number (`nonredump.system`).
+    # The page a platform's DAT is downloaded from by hand; {system} is the set's
+    # DAT-o-MATIC number (`side_dats.<source>.system`).
     page_template: str | None = None
+    # The source holds platforms' side sets: offered only where a platform names one in
+    # `side_dats`, and {name} in its URL is that set's DAT name.
+    side: bool = False
     # The DAT families this source has (empty: every family).
     families: list[str] = Field(default_factory=list)
     # A pack found through a release index (TOSEC): the index page, the regex of release

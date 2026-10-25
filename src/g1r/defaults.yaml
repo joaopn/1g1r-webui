@@ -535,7 +535,8 @@ platforms:
       dat_name: Sega - Dreamcast
       dat_family: redump
       redump_system: dc
-      nonredump: {system: 165, dat_name: "Non-Redump - Sega - Dreamcast"}
+      side_dats:
+        nonredump: {system: 165, dat_name: "Non-Redump - Sega - Dreamcast"}
       # GD-ROMs: Redump's cue sheets (with the high-density area) or a .gdi and its tracks.
       # .cdi: DiscJuggler CD-R images; no lossless conversion to CHD exists, so they are
       # listed for discarding.
@@ -559,7 +560,8 @@ platforms:
       dat_name: Sony - PlayStation
       dat_family: redump
       redump_system: psx
-      nonredump: {system: 168, dat_name: "Non-Redump - Sony - PlayStation"}
+      side_dats:
+        nonredump: {system: 168, dat_name: "Non-Redump - Sony - PlayStation"}
       rom_extensions: [chd, cue, bin, iso]
       part_extensions: [cue, bin]
       targets: [chd]
@@ -572,7 +574,8 @@ platforms:
       dat_name: Sega - Saturn
       dat_family: redump
       redump_system: ss
-      nonredump: {system: 167, dat_name: "Non-Redump - Sega - Sega Saturn"}
+      side_dats:
+        nonredump: {system: 167, dat_name: "Non-Redump - Sega - Sega Saturn"}
       rom_extensions: [chd, cue, bin, iso]
       part_extensions: [cue, bin]
       targets: [chd]
@@ -585,7 +588,8 @@ platforms:
       dat_name: Sega - Mega CD & Sega CD
       dat_family: redump
       redump_system: mcd
-      nonredump: {system: 166, dat_name: "Non-Redump - Sega - Sega Mega CD + Sega CD"}
+      side_dats:
+        nonredump: {system: 166, dat_name: "Non-Redump - Sega - Sega Mega CD + Sega CD"}
       rom_extensions: [chd, cue, bin, iso]
       part_extensions: [cue, bin]
       targets: [chd]
@@ -610,7 +614,8 @@ platforms:
       dat_name: Nintendo - GameCube
       dat_family: redump
       redump_system: gc
-      nonredump: {system: 160, dat_name: "Non-Redump - Nintendo - Nintendo GameCube"}
+      side_dats:
+        nonredump: {system: 160, dat_name: "Non-Redump - Nintendo - Nintendo GameCube"}
       rom_extensions: [rvz, iso, gcm]
       targets: [rvz]
       default_target: rvz
@@ -622,7 +627,8 @@ platforms:
       dat_name: Nintendo - Wii
       dat_family: redump
       redump_system: wii
-      nonredump: {system: 161, dat_name: "Non-Redump - Nintendo - Wii"}
+      side_dats:
+        nonredump: {system: 161, dat_name: "Non-Redump - Nintendo - Wii"}
       rom_extensions: [rvz, iso, wbfs]
       targets: [rvz]
       default_target: rvz
@@ -634,7 +640,8 @@ platforms:
       dat_name: Sony - PlayStation 2
       dat_family: redump
       redump_system: ps2
-      nonredump: {system: 169, dat_name: "Non-Redump - Sony - PlayStation 2"}
+      side_dats:
+        nonredump: {system: 169, dat_name: "Non-Redump - Sony - PlayStation 2"}
       rom_extensions: [chd, cue, bin, iso, cso]
       part_extensions: [cue, bin]
       iso_mode: dvd
@@ -648,7 +655,9 @@ platforms:
       dat_name: Sony - PlayStation Portable
       dat_family: redump
       redump_system: psp
-      nonredump: {system: 62, dat_name: "Non-Redump - Sony - PlayStation Portable"}
+      side_dats:
+        nonredump: {system: 62, dat_name: "Non-Redump - Sony - PlayStation Portable"}
+        psn: {dat_name: "Sony - PlayStation Portable (PSN)"}
       rom_extensions: [chd, iso, cso]
       iso_mode: dvd
       targets: [chd]
@@ -738,7 +747,15 @@ dats:
       page_template: "https://datomatic.no-intro.org/index.php?page=download&op=dat&s={system}"
       website: "https://datomatic.no-intro.org/index.php?page=download&op=dat"
       identification_only: false
-      families: [redump]
+      side: true
+    psn:
+      label: No-Intro PSN (libretro-database mirror)
+      short_label: PSN
+      # Digital-only releases. The mirror's copy has no parent/clone data; each game is one
+      # decrypted image (games kept as an EBOOT.PBP folder are listed by their files).
+      url_template: "https://raw.githubusercontent.com/libretro/libretro-database/master/metadat/no-intro/{name}.dat"
+      identification_only: true
+      side: true
     upload:
       label: Uploaded file
       short_label: uploaded DAT
@@ -765,7 +782,7 @@ dats:
   # Settings -> DATs): each source tries the files still unmatched. Complete curated DATs
   # first; libretro keeps one ROM per game; TOSEC names differ from all the others; then the
   # online lookups. Each platform has one active version per source.
-  priority: [nointro, upload, redump, nonredump, fbneo, libretro, tosec, hasheous]
+  priority: [nointro, upload, redump, nonredump, psn, fbneo, libretro, tosec, hasheous]
 
 # Switch names and details from blawar/titledb (MIT): one JSON file per eShop country and
 # language, keyed by eShop ID, each entry carrying its title ID. A downloaded file is kept

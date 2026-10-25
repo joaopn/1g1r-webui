@@ -21,6 +21,13 @@ const MULTI: Meta = {
       label: "No-Intro Non-Redump (DAT-o-MATIC)",
       short_label: "Non-Redump",
       identification_only: false,
+      side: true,
+    },
+    psn: {
+      label: "No-Intro PSN (libretro-database mirror)",
+      short_label: "PSN",
+      identification_only: true,
+      side: true,
     },
   },
 };
@@ -47,7 +54,16 @@ const row = (platform: string, versions: DatVersion[]): DatRow => ({
   own_order: false,
   versions,
   folders: [],
-  downloads: [],
+  downloads:
+    platform === "psp"
+      ? [
+          {
+            source: "psn",
+            label: "No-Intro PSN (libretro-database mirror)",
+            identification_only: true,
+          },
+        ]
+      : [],
   pages:
     platform === "psx"
       ? [{ source: "nonredump", label: "No-Intro Non-Redump (DAT-o-MATIC)", url: NONREDUMP_PAGE }]
@@ -70,6 +86,7 @@ function renderPage() {
             row("gb", [version(3, "gb", "nointro"), version(4, "gb", "libretro")]),
             row("switch", [version(5, "switch", "titledb:US.en")]),
             row("psx", []),
+            row("psp", []),
           ]
         : url.endsWith("/titledb/files")
           ? ["GB.en", "JP.en", "JP.ja", "US.en"]
@@ -139,4 +156,16 @@ test("Non-Redump: a disc platform links to its DAT-o-MATIC page, beside Upload",
   expect(
     within(screen.getByTestId("dats-nes")).queryByRole("link", { name: /Non-Redump/ }),
   ).toBeNull();
+});
+
+test("PSN: PSP downloads its digital-only set in one click, under its short name", async () => {
+  const calls = renderPage();
+  const psp = await screen.findByTestId("dats-psp");
+  const button = within(psp).getByRole("button", { name: "PSN" });
+  expect(button).toHaveAttribute(
+    "title",
+    "No-Intro PSN (libretro-database mirror) (identification only)",
+  );
+  await userEvent.click(button);
+  expect(calls.some((c) => c.url.endsWith("/dats/psp/download?source=psn"))).toBe(true);
 });

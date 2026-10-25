@@ -62,7 +62,14 @@ export type Meta = {
   targets: Record<string, Target>;
   dat_sources: Record<
     string,
-    { label: string; short_label: string; identification_only: boolean; website?: string }
+    {
+      label: string;
+      short_label: string;
+      identification_only: boolean;
+      website?: string;
+      /** It holds platforms' side sets (Non-Redump, PSN): its buttons say its short name. */
+      side?: boolean;
+    }
   >;
   /** Switch names from titledb: each region file ("US.en") is an order entry
    * "<entry_prefix><file>"; `featured` files get a button of their own. */

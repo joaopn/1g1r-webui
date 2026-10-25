@@ -44,6 +44,14 @@ const GUIDE: Record<string, Guide> = {
       "Many entries are unverified dumps: a different build of the same disc does not match by checksum",
     ],
   },
+  psn: {
+    what: "No-Intro's PSN DATs, from libretro's mirror: digital-only releases (PSP).",
+    pros: ["One-click download", "Games sold only on PSN, each a decrypted image like a disc dump"],
+    cons: [
+      "No parent/clone data (identification only)",
+      "Games kept as an EBOOT.PBP folder (minis) are not a supported format",
+    ],
+  },
   fbneo: {
     what: "FinalBurn Neo's DATs: arcade romsets.",
     pros: ["One-click download", "Parent/clone and BIOS data for romsets built for FBNeo"],
