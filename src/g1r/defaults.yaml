@@ -880,6 +880,10 @@ igir:
   default_reader_threads: 6
   default_pool_threads: 4
   max_threads: 64
+  # Matching only the unmatched files names each one to igir; with more than this many, igir
+  # is given the whole folder instead (a command line has a size limit). The result is the
+  # same: matched files keep their identity either way.
+  max_input_files: 2000
 
 # Hashing a file's ROM data (lookups, duplicates, header and byte-order checks) reads it
 # this many bytes at a time, whatever the file's size.

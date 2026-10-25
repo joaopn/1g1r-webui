@@ -71,13 +71,14 @@ def run_report(
     merge: str | None = None,
     threads: int | None = None,
     excess: bool = False,
-    exclude: list[str] | None = None,
+    files: list[Path] | None = None,
 ) -> list[ReportRow]:
     """`cache`: igir's cache file (`cache_path`). `merge`: igir's --merge-roms mode, for
     arcade sets. `threads`: files read at once and Node's worker pool size (None: igir's
     own). `excess`: an archive holding other files besides the game's ROMs still matches.
-    `exclude`: files left out, by exact path (igir takes an existing path as it is, so
-    brackets in ROM names need no escaping; checked with igir 5.7.2)."""
+    `files`: only these files of `input_dir`, by exact path (igir takes an existing path as
+    it is, so brackets in ROM names need no escaping; checked with igir 5.8.0). Its cache
+    is keyed by path, so a file read in a run over the whole folder is not read again."""
     work = settings.paths.data_dir / settings.igir.work_dir
     work.mkdir(parents=True, exist_ok=True)
     cache.parent.mkdir(parents=True, exist_ok=True)
@@ -88,8 +89,7 @@ def run_report(
             "report",
             "--dat",
             str(dat_file),
-            "--input",
-            str(input_dir),
+            *[arg for path in files or [input_dir] for arg in ("--input", str(path))],
             "--cache-path",
             str(cache),
             "--report-output",
@@ -97,7 +97,6 @@ def run_report(
             *(["--merge-roms", merge] if merge else []),
             *(["--reader-threads", str(threads)] if threads else []),
             *(["--allow-excess-sets"] if excess else []),
-            *[arg for path in exclude or [] for arg in ("--input-exclude", path)],
         ]
         env = {**os.environ, POOL_SIZE_ENV: str(threads)} if threads else None
         try:

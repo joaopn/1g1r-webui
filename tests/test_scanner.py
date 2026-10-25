@@ -154,6 +154,56 @@ def test_rescan_replaces_results(env, roms_root):
     assert conn.execute("SELECT COUNT(*) FROM folder_file").fetchone()[0] == 5
 
 
+def test_rematch_identifies_only_the_unmatched_files(env, roms_root):
+    settings, store, registry, conn, folder_scanner = env
+    folder_scanner.run(conn, folder_scanner.start(conn, "nes"), "nes")
+    root = roms_root / "nes"
+    asked = []
+
+    def report(settings_, dat_file, input_dir, files=None, **_):
+        # As igir answers once a DAT listing the unmatched file was added.
+        asked.append(files)
+        loose = str(root / "sub" / "Loose (Europe).zip")
+        return [igir.ReportRow("Loose (Europe)", "FOUND", (loose,))]
+
+    again = scanner.Scanner(settings, store, registry, report)
+    again.run(conn, again.start(conn, "nes"), "nes", rematch=True)
+    assert scanner.latest_scan(conn, "nes")["message"] == "1 of 1 unmatched ROM files matched"
+    # igir reads only the unmatched file; the matched ones keep what they had, though this
+    # run's igir report does not name them.
+    assert asked == [[root / "sub" / "Loose (Europe).zip"]]
+    rows = {
+        r["rel_path"]: (r["game_name"], r["method"]) for r in conn.execute("SELECT * FROM identity")
+    }
+    assert rows == {
+        "Known (USA).zip": ("Known (USA)", "dat-checksum"),
+        "Reheadered (Japan).zip": ("Reheadered (Japan)", "dat-headerless"),
+        "sub/Loose (Europe).zip": ("Loose (Europe)", "dat-checksum"),
+    }
+
+    # Nothing left unmatched: nothing to run.
+    asked.clear()
+    again.run(conn, again.start(conn, "nes"), "nes", rematch=True)
+    assert asked == []
+    assert "nothing to match again" in scanner.latest_scan(conn, "nes")["message"]
+
+
+def test_rematch_with_many_unmatched_files_gives_igir_the_folder(env, make_settings, roms_root):
+    settings, store, registry, conn, _ = env
+    asked = []
+
+    def report(settings_, dat_file, input_dir, files=None, **_):
+        asked.append(files)
+        return []
+
+    few = make_settings({"igir": {"max_input_files": 1}})
+    folder_scanner = scanner.Scanner(few, store, registry, report)
+    folder_scanner.run(conn, folder_scanner.start(conn, "nes"), "nes")
+    folder_scanner.run(conn, folder_scanner.start(conn, "nes"), "nes", rematch=True)
+    # Two unmatched files, more than one: the folder, as a plain scan does.
+    assert asked == [None, None]
+
+
 def test_scan_without_dat_takes_the_inventory_only(env, make_settings):
     settings, store, registry, conn, folder_scanner = env
     store.update(lambda lib: lib.dats.clear())

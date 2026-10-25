@@ -48,7 +48,7 @@ class Jobs:
         self,
         conn,
         label: str,
-        refresh_lookups: bool = False,
+        rematch: bool = False,
         full: bool = False,
         kind: str = IDENTIFY,
     ) -> int:
@@ -58,7 +58,7 @@ class Jobs:
             scan_id = self.scanner.start(conn, label, kind)
             with self.gate:
                 self.queued.append(scan_id)
-            self.scans.submit(self._run_scan, scan_id, label, refresh_lookups, full, kind)
+            self.scans.submit(self._run_scan, scan_id, label, rematch, full, kind)
         return scan_id
 
     def scan_limit(self) -> int:
@@ -70,9 +70,7 @@ class Jobs:
         with self.gate:
             self.gate.notify_all()
 
-    def _run_scan(
-        self, scan_id: int, label: str, refresh_lookups: bool, full: bool, kind: str
-    ) -> None:
+    def _run_scan(self, scan_id: int, label: str, rematch: bool, full: bool, kind: str) -> None:
         with self.gate:
             self.gate.wait_for(
                 lambda: self.queued[0] == scan_id and self.running < self.scan_limit()
@@ -82,7 +80,7 @@ class Jobs:
             self.gate.notify_all()
         conn = self._connect()
         try:
-            self.scanner.run(conn, scan_id, label, refresh_lookups, full, kind)
+            self.scanner.run(conn, scan_id, label, rematch, full, kind)
         finally:
             conn.close()
             with self.gate:

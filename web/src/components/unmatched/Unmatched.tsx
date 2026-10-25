@@ -140,7 +140,7 @@ export function UnmatchedTools({
   onClearSelection: () => void;
 }) {
   const retry = useMutation({
-    mutationFn: () => api(`/folders/${label}/scan?refresh_lookups=true`, { method: "POST" }),
+    mutationFn: () => api(`/folders/${label}/scan?rematch=true`, { method: "POST" }),
     onSuccess: () => invalidateFolder(label),
     onError: (err) => toast.error(errorText(err)),
   });
@@ -191,17 +191,16 @@ export function UnmatchedTools({
         >
           <Trash2 className="size-3.5" aria-hidden="true" /> Delete {formatFiles(target.length)}
         </Button>
-        {lookupsOn ? (
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={scanning || retry.isPending || files.length === 0}
-            onClick={() => retry.mutate()}
-            title="Rescan, asking the online lookups again about files they did not know"
-          >
-            <RefreshCw className="size-3.5" aria-hidden="true" /> Look up again
-          </Button>
-        ) : (
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={scanning || retry.isPending || files.length === 0}
+          onClick={() => retry.mutate()}
+          title="Match the unmatched files again against every DAT and the online lookups, for example after adding a DAT. Matched files are left as they are"
+        >
+          <RefreshCw className="size-3.5" aria-hidden="true" /> Rematch unmatched
+        </Button>
+        {lookupsOn ? null : (
           <Link
             to="/settings/lookups"
             className="inline-flex items-center gap-1 text-muted-foreground text-sm underline underline-offset-2"

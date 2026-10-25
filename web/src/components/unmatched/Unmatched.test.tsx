@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { GamesTable } from "@/components/games/GamesTable";
@@ -122,12 +122,12 @@ test("unmatched files are rows of the table, with a quick view of their own", as
   // "One version" is for games: a file nothing identified is not one.
   expect(within(bar).getByText("One version")).toHaveTextContent(`One version${single}`);
   expect(screen.getByText("Doraemon (Japan) (Rev 1)")).toBeInTheDocument();
-  expect(screen.queryByText("Look up again")).not.toBeInTheDocument();
+  expect(screen.queryByText("Rematch unmatched")).not.toBeInTheDocument();
 
   await userEvent.click(within(bar).getByText("Unmatched"));
   expect(screen.queryByText("Contra")).not.toBeInTheDocument();
   expect(screen.getByText("Doraemon (Japan) (Rev 1)")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: /Look up again/ })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /Rematch unmatched/ })).toBeInTheDocument();
 });
 
 test("the Unmatched view shows each file's 1st match, rows closed", async () => {
@@ -205,10 +205,11 @@ test("shift-click selects a range", async () => {
   expect(screen.getByRole("button", { name: /Match 2 files to 1st/ })).toBeEnabled();
 });
 
-test("with lookups off it links to the settings instead of offering a retry", async () => {
-  renderSection(false, UNMATCHED_VIEW);
+test("with lookups off it still rematches against the DATs and links to the settings", async () => {
+  const calls = renderSection(false, UNMATCHED_VIEW);
   expect(await screen.findByText("Online lookups are off")).toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: /Look up again/ })).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: /Rematch unmatched/ }));
+  await waitFor(() => expect(calls.some((c) => c.url.includes("/scan?rematch=true"))).toBe(true));
 });
 
 test("moving every file shown reviews them all", async () => {

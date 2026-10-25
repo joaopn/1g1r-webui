@@ -631,7 +631,7 @@ export function LookupsSettingsPage() {
           <dt>Caches</dt>
           <dd>
             every answer; a "not found" is asked again after {hasheous.not_found_ttl_days} days, or
-            when you click Look up again on a folder
+            when you click Rematch unmatched on a folder
           </dd>
         </dl>
       </section>

@@ -376,21 +376,22 @@ class Scanner:
         conn: sqlite3.Connection,
         scan_id: int,
         label: str,
-        refresh_lookups: bool = False,
+        rematch: bool = False,
         full: bool = False,
         kind: str = IDENTIFY,
     ) -> None:
         """`kind`: CHECK (what conversion needs, nothing hashed) or IDENTIFY (that, then the
         identification of files with nothing left to convert). `full`: read every file again,
         ignoring what earlier scans read (this app's cache and igir's), for files changed in a
-        way their size and mtime do not show."""
+        way their size and mtime do not show. `rematch`: identify only the files that are not
+        matched yet, asking the online lookups again; matched files keep their identity."""
         progress = Progress(conn, scan_id, self.settings.jobs.progress_interval_seconds)
         try:
             if kind == CHECK:
                 message = self._check(conn, label, progress)
             else:
                 try:
-                    message = self._scan(conn, label, refresh_lookups, progress, full)
+                    message = self._scan(conn, label, rematch, progress, full)
                 except ConvertFirst as stopped:
                     # Recorded as the check it was: the set still needs its scan.
                     conn.execute("UPDATE scan SET kind = ? WHERE id = ?", (CHECK, scan_id))
@@ -474,12 +475,13 @@ class Scanner:
         self,
         conn: sqlite3.Connection,
         label: str,
-        refresh_lookups: bool,
+        rematch: bool,
         progress: Progress,
         full: bool = False,
     ) -> str:
         """Scan: the check, then the identification of the files with nothing left to convert
-        (a file waiting for a conversion is identified once it is converted)."""
+        (a file waiting for a conversion is identified once it is converted). `rematch`: only
+        of the files no earlier scan or manual match identified."""
         found_files = self._inventory(conn, label, progress, full)
         library, folder, root, files, found = (
             found_files.library,
@@ -496,6 +498,14 @@ class Scanner:
         if left:
             raise ConvertFirst(f"{left} files to convert or discard first; nothing identified")
         final = [f for f in files if f.rel_path not in waiting]
+        # The files this scan identifies; with `rematch`, the matched ones count as found.
+        again = final
+        if rematch:
+            matched = self._matched(conn, label, found)
+            again = [f for f in final if f.rel_path not in matched]
+        todo = [f for f in again if f.kind in ("rom", "archive")]
+        if rematch and not todo:
+            return "every ROM file is matched; nothing to match again"
         igir_cache = igir.cache_path(self.settings, label)
         if full:
             igir_cache.unlink(missing_ok=True)
@@ -504,13 +514,15 @@ class Scanner:
             "timeout": igir.time_limit(self.settings, sum(f.size for f in files)),
             "threads": self.store.igir_threads(library),
         }
+        if rematch and len(todo) <= self.settings.igir.max_input_files:
+            run_igir["files"] = [root / f.rel_path for f in todo]
         if self.settings.platforms.profiles[folder.platform].excess_files:
             run_igir["excess"] = True
         every = [e for e in self.registry.entries(conn, library, folder.platform) if e.on]
         if self.settings.platforms.profiles[folder.platform].title_ids:
             names = self.registry.titledb_titles(conn, library, folder.platform)
             contents = self.registry.titledb_contents(folder.platform)
-            self._title_ids(root, final, found, progress, names, contents)
+            self._title_ids(root, again, found, progress, names, contents)
         # titledb files name title IDs; they hold no checksums to match files against.
         entries = [e for e in every if not e.titledb]
         dats = [(e, self.registry.load(e.version)) for e in entries if e.version is not None]
@@ -518,14 +530,14 @@ class Scanner:
         if not dats and found.identified:
             # Title IDs identify without a DAT.
             progress.stage("Saving")
-            self._store_identity(conn, label, final, found)
+            self._store_identity(conn, label, again, found)
             found.cache.save(conn, {f.rel_path for f in files})
             self._record_dat(conn, label, first)
             identified = sum(1 for f in candidates if f.rel_path not in waiting)
             return f"{len(found.identified)} of {identified} files identified by title ID"
         if not dats:
             progress.stage("Saving")
-            self._store_identity(conn, label, final, found)
+            self._store_identity(conn, label, again, found)
             found.cache.save(conn, {f.rel_path for f in files})
             self._record_dat(conn, label, first)
             return (
@@ -566,7 +578,7 @@ class Scanner:
                     root,
                     unmatched(),
                     found,
-                    refresh_lookups,
+                    rematch,
                     progress,
                     entry.id,
                     set(dat_of_name),
@@ -586,12 +598,18 @@ class Scanner:
             )
         self._suggest(dat_of_name, [d for _, d in dats], unmatched(), found, progress)
         progress.stage("Saving")
-        self._apply_manual(conn, label, final, found, dat_of_name)
-        self._store_identity(conn, label, final, found)
+        self._apply_manual(conn, label, again, found, dat_of_name)
+        self._store_identity(conn, label, again, found)
         found.cache.save(conn, {f.rel_path for f in files})
         self._record_dat(conn, label, first)
-        summary = [f"{len(found.identified)} of {len(roms)} ROM files identified"]
-        by_dat = Counter(found.dat_of[rel] for rel in found.identified if found.dat_of.get(rel))
+        counted = todo if rematch else roms
+        now = [f.rel_path for f in counted if f.rel_path in found.identified]
+        summary = [
+            f"{len(now)} of {len(counted)} unmatched ROM files matched"
+            if rematch
+            else f"{len(now)} of {len(counted)} ROM files identified"
+        ]
+        by_dat = Counter(found.dat_of[rel] for rel in now if found.dat_of.get(rel))
         if len(by_dat) > 1:
             summary.append(
                 ", ".join(
@@ -600,10 +618,26 @@ class Scanner:
                     if by_dat[e.version["sha1"]]
                 )
             )
-        online = sum(1 for m in found.identified.values() if m == METHOD_HASHEOUS)
+        online = sum(1 for rel in now if found.identified[rel] == METHOD_HASHEOUS)
         if online:
             summary.append(f"{online} of them via Hasheous")
         return "; ".join(summary + notes)
+
+    @staticmethod
+    def _matched(conn, label: str, found: "Found") -> set[str]:
+        """The folder's files an earlier scan or a manual match identified, entered in `found`
+        as identified: the identification steps then pass them by, and duplicates still see
+        their games."""
+        matched: set[str] = set()
+        for rel, game, method, score, dat_sha1 in conn.execute(
+            "SELECT i.rel_path, i.game_name, i.method, i.score, i.dat_sha1 FROM identity i "
+            "JOIN folder_file f USING (folder_label, rel_path) "
+            "WHERE i.folder_label = ? AND f.place = 'folder'",
+            (label,),
+        ):
+            found.identify(rel, {game}, method, score, dat_sha1)
+            matched.add(rel)
+        return matched
 
     def _source_label(self, entry) -> str:
         source = self.settings.dats.sources.get(entry.id)
@@ -1093,8 +1127,10 @@ class Scanner:
 
     def _store_identity(self, conn, label, files, found: "Found") -> None:
         """What identification found for `files` (those with nothing left to convert),
-        replacing what an earlier scan found for them. Other files keep theirs."""
+        replacing what an earlier scan found for them. Other files keep theirs, though the
+        hashes read from them are stored too: they describe the bytes, whoever asked."""
         rels = [(label, f.rel_path) for f in files]
+        mine = {f.rel_path for f in files}
         conn.execute("BEGIN IMMEDIATE")
         try:
             for table in IDENTIFICATION_TABLES:
@@ -1113,10 +1149,11 @@ class Scanner:
                 [
                     (label, rel, game, method, dat_sha1, score)
                     for rel, game, method, score, dat_sha1 in found.identities
+                    if rel in mine
                 ],
             )
             conn.executemany(
-                "INSERT INTO content_hash VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "INSERT OR REPLACE INTO content_hash VALUES (?, ?, ?, ?, ?, ?, ?)",
                 [
                     (label, rel, h.variant, h.size, h.crc32, h.md5, h.sha1)
                     for rel, hashes in found.hashes.items()
@@ -1128,21 +1165,23 @@ class Scanner:
                 [
                     (label, rel, service, status, detail)
                     for (rel, service), (status, detail) in found.lookups.items()
+                    if rel in mine
                 ],
             )
             conn.executemany(
-                "INSERT INTO payload_hash VALUES (?, ?, ?, ?)",
+                "INSERT OR REPLACE INTO payload_hash VALUES (?, ?, ?, ?)",
                 [(label, rel, size, sha1) for rel, (size, sha1) in found.payloads.items()],
             )
             conn.executemany(
                 "INSERT INTO content_check VALUES (?, ?, ?)",
-                [(label, rel, note) for rel, note in found.content_checks.items()],
+                [(label, rel, note) for rel, note in found.content_checks.items() if rel in mine],
             )
             conn.executemany(
                 "INSERT INTO suggestion VALUES (?, ?, ?, ?)",
                 [
                     (label, rel, game, score)
                     for rel, best in found.suggestions.items()
+                    if rel in mine
                     for game, score in best
                 ],
             )

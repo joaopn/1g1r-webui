@@ -367,6 +367,7 @@ class IgirConfig(_Strict):
     default_reader_threads: int = Field(gt=0)
     default_pool_threads: int = Field(gt=0)
     max_threads: int = Field(gt=0)
+    max_input_files: int = Field(gt=0)
 
 
 HASHEOUS_NAME_FROM = ("rom", "game")

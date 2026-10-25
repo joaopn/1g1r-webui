@@ -1758,14 +1758,15 @@ def build_router(
         label: str,
         request: Request,
         conn: Conn,
-        refresh_lookups: bool = False,
+        rematch: bool = False,
         full: bool = False,
     ):
         """Check the files, then identify those with nothing left to convert. A quick scan
-        reads only new and changed files; `full` reads every file again."""
+        reads only new and changed files; `full` reads every file again. `rematch`: identify
+        only the files not matched yet, against every DAT and lookup (lookups asked again)."""
         folder_or_404(label)
         try:
-            request.app.state.jobs.scan(conn, label, refresh_lookups, full)
+            request.app.state.jobs.scan(conn, label, rematch, full)
         except scanner.ScanError as exc:
             raise HTTPException(status_code=HTTPStatus.CONFLICT, detail=str(exc)) from exc
         return row_dict(scanner.latest_scan(conn, label))
