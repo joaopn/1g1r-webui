@@ -9,6 +9,7 @@ before its first rename in `rename_origin`, which a revert gives back.
 
 import re
 import sqlite3
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 
@@ -43,6 +44,10 @@ class RenameRow:
     original: str | None = None
 
 
+# A game's name by its title ID (hex), from titledb: a DLC's name carries its game's.
+GameName = Callable[[str], str | None]
+
+
 def origins(conn: sqlite3.Connection, label: str) -> dict[str, str]:
     """Renamed files of the folder: their path now -> their path before the first rename."""
     return {
@@ -71,29 +76,56 @@ def without_tags(config: RenameConfig, name: str) -> str:
     return re.sub(config.tag_pattern, drop, name).strip()
 
 
-def new_stem(settings: Settings, template: str, game: str, method: str) -> tuple[str | None, str]:
-    """The new name without its extension, or None and why it cannot be built."""
+def cleaned(config: RenameConfig, template: str, name: str) -> str:
+    """A name as the template writes it: its own cleaning (Tinfoil's: one space for every
+    run of what a file name cannot hold), else unsafe characters replaced."""
+    chosen = config.templates[template]
+    if chosen.clean_pattern is not None:
+        return re.sub(chosen.clean_pattern, chosen.clean_with or "", name).strip()
+    return safe(config, name).strip()
+
+
+def new_stem(
+    settings: Settings,
+    template: str,
+    game: str,
+    method: str,
+    game_name: GameName | None = None,
+) -> tuple[str | None, str]:
+    """The new name without its extension, or None and why it cannot be built. `game_name`
+    names a DLC's game (its title ID's base)."""
     config = settings.rename
-    form = config.templates[template].format
+    chosen = config.templates[template]
+    form = chosen.format
     if form is None:
         return None, "names are kept"
-    tokens = {"game": game, "title": without_tags(config, game)}
-    if settings.title_ids is not None and method == scanner.METHOD_TITLE_ID:
-        title = titles.from_name(game, settings.title_ids)
+    tokens: dict = {"game": game, "title": without_tags(config, game)}
+    ids = settings.title_ids
+    if ids is not None and method == scanner.METHOD_TITLE_ID:
+        title = titles.from_name(game, ids)
         if title is None:
             return None, "no title ID in its identity"
         tokens = {
             "game": title.name,
             "title": without_tags(config, title.name),
-            "title_id": titles.hex_id(title.title_id, settings.title_ids),
+            "title_id": titles.hex_id(title.title_id, ids),
             "version": title.version,
         }
+        if title.role(ids) == titles.DLC and chosen.dlc_format is not None:
+            form = chosen.dlc_format
+            base = game_name(titles.hex_id(title.app_id(ids), ids)) if game_name else None
+            tokens["base"] = base
     needed = set(re.findall(r"{(\w+)}", form))
     if "title_id" in needed and "title_id" not in tokens:
         return None, "no title ID"
     if "version" in needed and tokens.get("version") is None:
         return None, "version unknown (prod.keys read it)"
-    return safe(config, form.format(**tokens)).strip(), ""
+    if "base" in needed and not tokens.get("base"):
+        return None, "its game's name is unknown"
+    names = {
+        k: cleaned(config, template, v) if isinstance(v, str) else v for k, v in tokens.items()
+    }
+    return form.format(**names).strip(), ""
 
 
 def rows(
@@ -103,6 +135,7 @@ def rows(
     template: str,
     pending: dict[str, str] | None = None,
     parts: frozenset[str] = frozenset(),
+    game_name: GameName | None = None,
 ) -> list[RenameRow]:
     """Every ROM file of the folder with what the template proposes for it. `pending`: files
     with another operation pending (a conversion, a move to discarded/), by why, and `parts`
@@ -131,6 +164,7 @@ def rows(
         )
     }
     renamed = origins(conn, label)
+    base_name = _game_names(settings, identities, game_name)
     claimed: dict[str, str] = {}
     result = []
     for f in files:
@@ -156,7 +190,7 @@ def rows(
         if method not in config.methods:
             row.reason = "identified by name only: not renamed"
             continue
-        stem, why = new_stem(settings, template, game, method)
+        stem, why = new_stem(settings, template, game, method, base_name)
         if stem is None:
             row.reason = why
             continue
@@ -179,6 +213,24 @@ def rows(
         row.status = TO_RENAME
         row.new_path = new
     return result
+
+
+def _game_names(settings: Settings, identities: dict, game_name: GameName | None) -> GameName:
+    """A game's name by its title ID: titledb's, else the name of the folder's base file of
+    that game."""
+    ids = settings.title_ids
+    here: dict[str, str] = {}
+    if ids is not None:
+        for found in identities.values():
+            for name, method in found:
+                title = titles.from_name(name, ids) if method == scanner.METHOD_TITLE_ID else None
+                if title is not None and title.role(ids) == titles.BASE:
+                    here.setdefault(titles.hex_id(title.title_id, ids), title.name)
+
+    def name(title_id: str) -> str | None:
+        return (game_name(title_id) if game_name else None) or here.get(title_id)
+
+    return name
 
 
 def counts(found: list[RenameRow]) -> dict:

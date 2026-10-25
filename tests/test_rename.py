@@ -271,3 +271,54 @@ def test_files_to_convert_wait_and_the_others_are_renamed(renames):
     done = run(client, "rename", {"rel_paths": ["contra.zip"]})
     assert (done["status"], done["message"]) == ("done", "1 file renamed")
     assert (folder / "Contra (USA).zip").is_file() and (folder / "odd.nes").is_file()
+
+
+def test_switch_names_are_tinfoil_s(make_settings):
+    """As nut (Tinfoil's renamer) writes them: the name cleaned to spaces, never "_"; an
+    update under its game's name; a DLC keeps its game's name, its own in brackets."""
+    settings = make_settings()
+    base = "Attack on Titan 2 [010034500641A000][v0]"
+    assert renaming.new_stem(settings, "switch", base, "title-id")[0] == (
+        "Attack on Titan 2 [010034500641A000][v0]"
+    )
+    dlc = 'Additional Episode: "Second Victory" [010034500641B00C][v327680]'
+    games = {"010034500641A000": "Attack on Titan 2"}
+    assert renaming.new_stem(settings, "switch", dlc, "title-id", games.get)[0] == (
+        "Attack on Titan 2 [Additional Episode Second Victory] [010034500641B00C][v327680]"
+    )
+    # Without its game's name a DLC is left as it is.
+    assert renaming.new_stem(settings, "switch", dlc, "title-id", {}.get) == (
+        None,
+        "its game's name is unknown",
+    )
+    # Dots, symbols and parentheses become spaces, as nut cleans them.
+    odd = "Vol. 2: The (Final) Cut~ [0100AAAA00010000][v0]"
+    assert renaming.new_stem(settings, "switch", odd, "title-id")[0] == (
+        "Vol 2 The Final Cut [0100AAAA00010000][v0]"
+    )
+
+
+def test_a_dlc_takes_its_game_s_name_from_the_base_file_in_the_folder(tmp_path, make_settings):
+    settings = make_settings()
+    conn = db.connect(tmp_path / "s.db", 1000)
+    db.migrate(conn)
+    names = {
+        "aot2.nsp": "Attack on Titan 2 [010034500641A000][v0]",
+        "dlc.nsp": 'Additional Episode: "Second Victory" [010034500641B00C][v327680]',
+    }
+    for rel, name in names.items():
+        conn.execute(
+            "INSERT INTO folder_file (folder_label, rel_path, size, mtime_ns, kind) "
+            "VALUES ('switch', ?, 1, 1, 'rom')",
+            (rel,),
+        )
+        conn.execute(
+            "INSERT INTO identity (folder_label, rel_path, game_name, method, dat_sha1) "
+            "VALUES ('switch', ?, ?, 'title-id', '')",
+            (rel, name),
+        )
+    rows = {r.rel_path: r for r in renaming.rows(settings, conn, "switch", "switch")}
+    assert rows["aot2.nsp"].new_path == "Attack on Titan 2 [010034500641A000][v0].nsp"
+    assert rows["dlc.nsp"].new_path == (
+        "Attack on Titan 2 [Additional Episode Second Victory] [010034500641B00C][v327680].nsp"
+    )

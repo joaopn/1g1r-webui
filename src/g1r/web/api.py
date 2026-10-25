@@ -477,7 +477,23 @@ def build_router(
             store.rename_template(folder),
             pending_of(library, folder, conn) if pending is None else pending,
             parts_of(folder),
+            game_names(library, folder, conn),
         )
+
+    def game_names(library: Library, folder: FolderEntry, conn) -> renaming.GameName | None:
+        """Title-ID sets: a game's name by its title ID from the platform's titledb files
+        (read once asked: only a DLC's name needs it)."""
+        if not title_ids(folder.platform):
+            return None
+        ordered: list[list[dict]] = []
+
+        def name(title_id: str) -> str | None:
+            if not ordered:
+                ordered.append(registry.titledb_titles(conn, library, folder.platform))
+            found = titledb.lookup(ordered[0], title_id)
+            return found.name if found is not None else None
+
+        return name
 
     def conversion_rows(library: Library, folder: FolderEntry, conn) -> list:
         target = settings.platforms.targets[store.target_for(library, folder.platform)]

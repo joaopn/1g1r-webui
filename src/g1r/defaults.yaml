@@ -1356,13 +1356,18 @@ rename:
       example: Legend of Zelda, The - A Link to the Past.sfc
       format: "{title}"
     switch:
-      label: Switch style
+      label: Switch (Tinfoil)
       description: >-
-        The game's name, its title ID and its version, as Tinfoil-style tools name NSPs.
-        RomM finds games by the title ID. Needs the version (prod.keys read it when the
-        file has no cnmt.xml).
-      example: 80 DAYS [0100B9900A1D0000][v0].nsp
-      format: "{title} [{title_id}][v{version}]"
+        The game's name, its title ID and its version, as Tinfoil and nut name NSPs; a DLC
+        also keeps its game's name. RomM finds games by the title ID. Needs the version
+        (prod.keys read it when the file has no cnmt.xml).
+      example: Attack on Titan 2 [Additional Episode Second Victory] [010034500641B00C][v327680].nsp
+      format: "{game} [{title_id}][v{version}]"
+      dlc_format: "{base} [{game}] [{title_id}][v{version}]"
+      # nut's cleaning: characters a file name cannot hold, dots, symbols, parentheses and
+      # whitespace become one space.
+      clean_pattern: '[/\\:*?"<>|.\s™©®()~]+'
+      clean_with: " "
       title_ids: true
   # How a file must have been identified to take its name: a checksum (or an identical copy
   # of a file matched by one), a title ID, or the user's own assignment. A name from

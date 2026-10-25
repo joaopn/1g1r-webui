@@ -749,6 +749,12 @@ class RenameTemplate(_Strict):
     format: str | None = None
     # Built from a title ID: offered on title-ID platforms only.
     title_ids: bool = False
+    # A DLC's name, from {base} (its game's name) and the tokens above (None: `format`).
+    dlc_format: str | None = None
+    # What each name in it is cleaned with: every run of what `clean_pattern` matches becomes
+    # `clean_with` (None: rename.unsafe_characters each become rename.replacement).
+    clean_pattern: str | None = None
+    clean_with: str | None = None
 
 
 class RenameConfig(_Strict):
