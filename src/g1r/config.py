@@ -454,6 +454,9 @@ class ChdmanConfig(_Strict):
     timeout_seconds: float = Field(gt=0)
     # Extra options for createcd/createdvd (codecs, hunk size, processors); empty: chdman's.
     create_args: list[str] = Field(default_factory=list)
+    # Bytes per sector of each cue track type: a track file ending in part of a sector is
+    # padded with zeros to a whole one before createcd (chdman would drop the part).
+    sector_bytes: dict[str, int] = Field(default_factory=dict)
 
 
 class DolphinConfig(_Strict):

@@ -941,6 +941,21 @@ chdman:
   # Extra options for createcd/createdvd, e.g. ["--numprocessors", "4"]; empty: chdman's
   # own defaults (its standard codecs and hunk size).
   create_args: []
+  # Bytes per sector of each cue sheet track type. chdman counts whole sectors and drops a
+  # track file's last part sector (some translation patches leave audio tracks that way):
+  # such a file is padded with zero bytes to a whole sector before createcd, and the run
+  # reports it. A type not listed is never padded.
+  sector_bytes:
+    AUDIO: 2352
+    CDG: 2448
+    MODE1/2048: 2048
+    MODE1/2352: 2352
+    MODE2/2048: 2048
+    MODE2/2324: 2324
+    MODE2/2336: 2336
+    MODE2/2352: 2352
+    CDI/2336: 2336
+    CDI/2352: 2352
 
 dolphin:
   binary: dolphin-tool

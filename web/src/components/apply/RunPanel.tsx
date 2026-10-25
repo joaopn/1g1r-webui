@@ -88,6 +88,21 @@ export function RunPanel({
           ))}
         </ul>
       ) : null}
+      {run.warnings.length > 0 ? (
+        <>
+          <ul className="mt-1 list-disc pl-5 text-status-warn">
+            {run.warnings.map((w) => (
+              <li key={w.rel_path}>
+                {w.rel_path}: {w.warning}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-1 text-muted-foreground">
+            The CHD gives these tracks back with the zero bytes at their end. If that is not
+            acceptable, restore the original from Discarded or remove the file.
+          </p>
+        </>
+      ) : null}
       {onMove && unconverted.length > 0 ? (
         <Button
           size="sm"

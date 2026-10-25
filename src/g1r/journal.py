@@ -20,7 +20,7 @@ from pathlib import Path, PurePosixPath
 
 from g1r import cards, conversion, moves, stopping
 from g1r.config import ApplyConfig
-from g1r.converter import CRC_FORMAT
+from g1r.converter import CRC_FORMAT, Converted
 
 # The discarded/ subfolder of 1G1R moves (matching.REASON_DISCARDED names the same one).
 REASON_1G1R = "1g1r"
@@ -670,14 +670,17 @@ def _finish_run(conn: sqlite3.Connection, run_id: int, status: str, message: str
     )
 
 
-def _set_state(conn, op_id: int, state: str, error: str = "", moved=None) -> None:
+def _set_state(
+    conn, op_id: int, state: str, error: str = "", moved=None, warning: str = ""
+) -> None:
     conn.execute(
-        "UPDATE operation SET state = ?, error = ?, moved_mtime_ns = COALESCE(?, moved_mtime_ns), "
-        "moved_size = COALESCE(?, moved_size), "
+        "UPDATE operation SET state = ?, error = ?, warning = ?, "
+        "moved_mtime_ns = COALESCE(?, moved_mtime_ns), moved_size = COALESCE(?, moved_size), "
         "updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?",
         (
             state,
             error,
+            warning,
             moved.st_mtime_ns if moved else None,
             moved.st_size if moved else None,
             op_id,
@@ -795,13 +798,13 @@ def _wrapped_members(m: Move) -> list[tuple]:
         ]
 
 
-def _settle(conn, kind: str, label: str, op_id: int, m: Move, moved) -> None:
+def _settle(conn, kind: str, label: str, op_id: int, m: Move, moved, warning: str = "") -> None:
     """The step is done: record it and update where the table finds the files."""
     members = _wrapped_members(m) if m.action == CONVERT else []
     # Write lock first: runs of other folders write at the same time.
     conn.execute("BEGIN IMMEDIATE")
     try:
-        _set_state(conn, op_id, DONE, moved=moved)
+        _set_state(conn, op_id, DONE, moved=moved, warning=warning)
         if m.action == MOVE:
             place = PLACE_DISCARDED if kind == APPLY else PLACE_FOLDER
             conn.execute(
@@ -851,8 +854,8 @@ def _settle(conn, kind: str, label: str, op_id: int, m: Move, moved) -> None:
         raise
 
 
-# Writes a conversion's output: (step) -> the output's stat. Raises moves.MoveError.
-Convert = Callable[[Move], os.stat_result]
+# Writes a conversion's output: (step) -> its stat and warning. Raises moves.MoveError.
+Convert = Callable[[Move], Converted]
 
 
 def _unchanged(m: Move) -> None:
@@ -864,9 +867,9 @@ def _unchanged(m: Move) -> None:
         raise moves.MoveError(f"{m.source} changed since the plan was made")
 
 
-def _carry_out(config: ApplyConfig, convert: Convert | None, m: Move):
+def _carry_out(config: ApplyConfig, convert: Convert | None, m: Move) -> Converted | None:
     if m.action in (MOVE, RENAME):
-        return moves.move(config, m.source, m.destination)
+        return Converted(moves.move(config, m.source, m.destination))
     if m.action == CONVERT:
         if convert is None:
             raise moves.MoveError("this run cannot convert")
@@ -881,9 +884,12 @@ def _files(n: int) -> str:
     return f"{n} {'file' if n == 1 else 'files'}"
 
 
-def _summary(kind: str, plan: list[Move], finished: list[Move], failed: int, left: int = 0) -> str:
-    """What the run did (the steps in `finished`), then how many files failed; a stopped
-    conversion says so first, with the files it `left` as they were."""
+def _summary(
+    kind: str, plan: list[Move], finished: list[Move], failed: int, left: int = 0, warned: int = 0
+) -> str:
+    """What the run did (the steps in `finished`), how many conversions came with a warning,
+    then how many files failed; a stopped conversion says so first, with the files it `left`
+    as they were."""
     converted = sum(1 for m in finished if m.action == CONVERT)
     if left:
         done = f"stopped: {_files(converted)} converted, {left} not converted"
@@ -895,6 +901,8 @@ def _summary(kind: str, plan: list[Move], finished: list[Move], failed: int, lef
         done = f"{_files(len(finished))} deleted"
     elif kind == APPLY and any(m.action == CONVERT for m in plan):
         done = f"{_files(converted)} converted"
+        if warned:
+            done = f"{done} ({warned} with a warning)"
     elif kind == RESTORE:
         done = f"{_files(sum(1 for m in finished if m.action == MOVE))} restored"
     else:
@@ -944,6 +952,7 @@ def _run(config, conn, run_id: int, label: str, plan: list[Move], convert, worke
     lock = threading.Lock()
     finished: list[Move] = []
     failed = 0  # units (files) that failed
+    warned = 0  # conversions done with a warning
     stopped = False  # an unexpected error: nothing new starts
     left = 0  # files the user's stop left unconverted (not started, or cut off)
     # Restore: conversions with an original that did not come back keep their output.
@@ -959,7 +968,7 @@ def _run(config, conn, run_id: int, label: str, plan: list[Move], convert, worke
             raise
 
     def carry_steps(unit: list[Move]) -> None:
-        nonlocal failed, left
+        nonlocal failed, left, warned
         converting = None  # the convert step the following steps finish
         with lock:
             if stop is not None and stop.is_set():
@@ -997,8 +1006,18 @@ def _run(config, conn, run_id: int, label: str, plan: list[Move], convert, worke
                         not_back.add(m.back_for)
                 return
             with lock:
-                _settle(conn, kind, label, op_id, m, moved)
+                _settle(
+                    conn,
+                    kind,
+                    label,
+                    op_id,
+                    m,
+                    moved and moved.stat,
+                    moved.warning if moved else "",
+                )
                 finished.append(m)
+                if moved and moved.warning:
+                    warned += 1
             if m.action == CONVERT:
                 converting = op_id
 
@@ -1012,7 +1031,10 @@ def _run(config, conn, run_id: int, label: str, plan: list[Move], convert, worke
         for unit in units:
             carry_unit(unit)
     _finish_run(
-        conn, run_id, FAILED if failed else DONE, _summary(kind, plan, finished, failed, left)
+        conn,
+        run_id,
+        FAILED if failed else DONE,
+        _summary(kind, plan, finished, failed, left, warned),
     )
 
 
@@ -1052,11 +1074,15 @@ def progress(conn: sqlite3.Connection, run_id: int) -> dict | None:
         "SELECT rel_path, error, action FROM operation WHERE run_id = ? AND state = ?",
         (run_id, FAILED),
     ).fetchall()
+    warned = conn.execute(
+        "SELECT rel_path, warning FROM operation WHERE run_id = ? AND warning != ''", (run_id,)
+    ).fetchall()
     return {
         **dict(run_row),
         "stopping": bool(run_row["stopping"]),
         "done": states.get(DONE, 0) + states.get(RESTORED, 0),
         "failed": [dict(r) for r in failed],
+        "warnings": [dict(r) for r in warned],
         "waiting_for": waiting_for(conn, run_row),
     }
 

@@ -9,6 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from g1r import db, discs
+from g1r.config import ChdmanConfig
 from g1r.web.app import create_app
 
 from .waits import finished
@@ -26,6 +27,26 @@ def test_cue_sheets_name_their_track_files():
         "file track2.wav WAVE\n  TRACK 02 AUDIO\nREM FILE nope\n"
     )
     assert discs.cue_files(text) == ["Game (USA) (Track 1).bin", "track2.wav"]
+
+
+def test_short_tracks_are_the_files_ending_in_part_of_a_sector(tmp_path):
+    config = ChdmanConfig(
+        binary="chdman", timeout_seconds=1, sector_bytes={"AUDIO": SECTOR, "MODE1/2048": 2048}
+    )
+    (tmp_path / "d.bin").write_bytes(b"\1" * (2048 + 1))
+    (tmp_path / "a.bin").write_bytes(b"\1" * (SECTOR + SECTOR - 1))
+    (tmp_path / "w.bin").write_bytes(b"\1" * SECTOR)
+    (tmp_path / "x.bin").write_bytes(b"\1")
+    (tmp_path / "g.cue").write_text(
+        'FILE "d.bin" BINARY\n  TRACK 01 MODE1/2352\n  TRACK 02 MODE1/2048\n'
+        'FILE "a.bin" BINARY\n  TRACK 03 AUDIO\nFILE "w.bin" BINARY\n  TRACK 04 AUDIO\n'
+        'FILE "x.bin" BINARY\n  TRACK 05 CDG\n'
+    )
+    # The last track of a file decides; a type without a sector size is left alone.
+    assert discs.short_tracks(config, tmp_path / "g.cue") == {
+        tmp_path / "d.bin": 2048 - 1,
+        tmp_path / "a.bin": 1,
+    }
 
 
 def audio_cue(folder: Path, stem: str, tracks: int, sectors: int = MIN_TRACK_SECTORS) -> list[Path]:
@@ -217,3 +238,35 @@ def test_a_flagged_cue_sheet_and_its_tracks_can_be_set_aside(psx):
     assert sorted(flagged) == sorted(["A (USA).cue", *(t.name for t in tracks)])
     plan = client.post("/api/folders/psx/set-aside/preview", json={"rel_paths": flagged}).json()
     assert [f["rel_path"] for f in plan["files"]] == sorted(flagged)
+
+
+@pytest.mark.skipif(not HAS_CHDMAN, reason="chdman is not installed (it is in the image)")
+def test_a_track_ending_in_part_of_a_sector_is_padded_with_a_warning(psx, roms_root):
+    """Some translation patches leave an audio track that does not end on a sector; chdman
+    would drop that part, so the track is padded with zeros and the run says so."""
+    client, folder = psx
+    tracks = audio_cue(folder, "A (USA)", 2)
+    part = SECTOR // 2
+    with tracks[1].open("ab") as handle:
+        handle.write(os.urandom(part))
+    data = [t.read_bytes() for t in tracks]
+    with zipfile.ZipFile(folder / "Z (USA).zip", "w") as z:
+        zipped = audio_cue(roms_root, "Z (USA)", 1)
+        z.writestr(zipped[0].name, zipped[0].read_bytes() + os.urandom(part))
+        z.write(roms_root / "Z (USA).cue", "Z (USA).cue")
+    scan(client)
+    run = convert_all(client)
+    assert (run["status"], run["message"]) == ("done", "2 files converted (2 with a warning)"), run[
+        "failed"
+    ]
+    warned = {w["rel_path"]: w["warning"] for w in run["warnings"]}
+    padded = f"padded with {SECTOR - part} zero bytes to a whole CD sector"
+    assert warned == {
+        "A (USA).cue": f"A (USA) (Track 2).bin {padded}",
+        "Z (USA).zip": f"Z (USA) (Track 1).bin {padded}",
+    }
+    assert (folder / "A (USA).chd").is_file() and (folder / "Z (USA).chd").is_file()
+    # The originals are untouched in originals/, and nothing is left beside the CHDs.
+    originals = roms_root / "discarded" / "psx" / "originals"
+    assert [(originals / t.name).read_bytes() for t in tracks] == data
+    assert sorted(p.name for p in folder.iterdir()) == ["A (USA).chd", "Z (USA).chd"]

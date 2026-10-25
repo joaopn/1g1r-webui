@@ -420,6 +420,8 @@ export type Run = {
   finished_at: string | null;
   /** Steps that failed; `action` "convert" is a file a conversion could not convert. */
   failed: { rel_path: string; error: string; action: string }[];
+  /** Steps done with a warning (a disc track padded to a whole sector). */
+  warnings: { rel_path: string; warning: string }[];
   /** A conversion not begun yet: the folder whose conversion it waits for ("" when about to
    * begin); null otherwise. */
   waiting_for: string | null;

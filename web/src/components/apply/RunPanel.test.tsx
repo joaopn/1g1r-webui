@@ -19,6 +19,7 @@ const RUN: Run = {
   started_at: "2026-10-21T10:00:00Z",
   finished_at: null,
   failed: [],
+  warnings: [],
   waiting_for: null,
 };
 
@@ -90,4 +91,27 @@ test("a running conversion offers no move yet", async () => {
   renderPanel({ ...RUN, failed: [{ rel_path: "a.3ds", error: "x", action: "convert" }] }, () => {});
   expect(await screen.findByText(/Conversion running/)).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: /Move failed/ })).toBeNull();
+});
+
+test("a finished conversion lists the files converted with a warning", async () => {
+  renderPanel({
+    ...RUN,
+    status: "done",
+    finished_at: "2026-10-21T11:00:00Z",
+    message: "2 files converted (1 with a warning)",
+    warnings: [
+      {
+        rel_path: "A.7z",
+        warning: "A (Track 2).bin padded with 1072 zero bytes to a whole CD sector",
+      },
+    ],
+  });
+  expect(
+    await screen.findByText(
+      "A.7z: A (Track 2).bin padded with 1072 zero bytes to a whole CD sector",
+    ),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByText(/restore the original from Discarded or remove the file/),
+  ).toBeInTheDocument();
 });

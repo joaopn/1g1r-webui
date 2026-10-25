@@ -39,6 +39,7 @@ EXTRACTED_CUE = "disc.cue"
 EXTRACTED_TRACKS = "track%t.bin"
 
 _FILE_LINE = re.compile(r'^\s*FILE\s+(?:"(?P<quoted>[^"]+)"|(?P<bare>\S+))\s+\S+\s*$', re.I)
+_TRACK_LINE = re.compile(r"^\s*TRACK\s+\d+\s+(?P<type>\S+)\s*$", re.I)
 
 
 # A .gdi track line; the file name is quoted when it has spaces.
@@ -59,6 +60,35 @@ def cue_files(text: str) -> list[str]:
         if match:
             names.append(match.group("quoted") or match.group("bare"))
     return names
+
+
+def cue_last_tracks(text: str) -> list[tuple[str, str]]:
+    """Each file a cue sheet refers to, with the type of the last track it holds (upper
+    case; "" when it names none): chdman takes that track's length from the file's size."""
+    files: list[tuple[str, str]] = []
+    for line in text.splitlines():
+        if match := _FILE_LINE.match(line):
+            files.append((match.group("quoted") or match.group("bare"), ""))
+        elif (match := _TRACK_LINE.match(line)) and files:
+            files[-1] = (files[-1][0], match.group("type").upper())
+    return files
+
+
+def short_tracks(config: ChdmanConfig, cue: Path) -> dict[Path, int]:
+    """The track files of a cue sheet that end in part of a sector, with the zero bytes that
+    fill that sector. chdman counts whole sectors only and drops such a part; some translation
+    patches leave audio tracks that way. Track types without a sector size in the config are
+    left out (the round trip then decides)."""
+    try:
+        text = cue.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        raise DiscError(f"cannot read {cue.name}: {exc.strerror}") from exc
+    short = {}
+    for path, (_, kind) in zip(sheet_paths(cue), cue_last_tracks(text), strict=True):
+        sector = config.sector_bytes.get(kind)
+        if sector and (part := path.stat().st_size % sector):
+            short[path] = sector - part
+    return short
 
 
 def gdi_files(text: str) -> list[str]:

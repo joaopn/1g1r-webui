@@ -114,6 +114,14 @@ def unpack_archive(settings: Settings, archive: Path, directory: Path) -> None:
         raise moves.MoveError(detail[-1] if detail else f"7-Zip exited with {result.returncode}")
 
 
+def _padded_warning(pads: dict[Path, int]) -> str:
+    """What the run says about padded tracks; the user removes the CHD if that will not do."""
+    return "; ".join(
+        f"{track.name} padded with {zeros} zero bytes to a whole CD sector"
+        for track, zeros in pads.items()
+    )
+
+
 def _drop_unpacked(work: Path) -> None:
     """Remove what was unpacked for the conversion as soon as the output is written."""
     shutil.rmtree(work / UNPACKED, ignore_errors=True)
@@ -131,6 +139,14 @@ class Swapped:
     rest: bytes
 
 
+@dataclass(frozen=True)
+class Converted:
+    """A conversion's output: its stat, and what the run reports about it ("" for nothing)."""
+
+    stat: os.stat_result
+    warning: str = ""
+
+
 class Converter:
     def __init__(
         self,
@@ -145,14 +161,16 @@ class Converter:
         self.unpack = unpack
         self.seven_zip = seven_zip
 
-    def __call__(self, step) -> os.stat_result:
-        """Write `step.destination` from `step.source` (a journal.Move); return its stat."""
+    def __call__(self, step) -> Converted:
+        """Write `step.destination` from `step.source` (a journal.Move); return its stat and
+        any warning."""
         if os.path.lexists(step.destination):
             raise moves.MoveError(f"{step.destination} already exists")
         temp = moves.temp_path(self.config, step.destination)
+        warning = ""
         try:
             if step.recipe in (conversion.RECIPE_DISC, conversion.RECIPE_ARCHIVE_DISC):
-                self._disc(step, temp)
+                warning = self._disc(step, temp)
             elif step.recipe == conversion.RECIPE_BYTESWAP:
                 self._byteswap(step, temp)
             elif step.recipe == conversion.RECIPE_DECRYPT:
@@ -176,7 +194,7 @@ class Converter:
             temp.unlink(missing_ok=True)
             raise
         moves.fsync_dir(step.destination.parent)
-        return step.destination.stat()
+        return Converted(step.destination.stat(), warning)
 
     def _wrap(self, source: Path, temp: Path) -> None:
         crc, size = crc_and_size(self.config.copy_chunk_bytes, source)
@@ -399,10 +417,15 @@ class Converter:
         except (OSError, zipfile.BadZipFile, KeyError) as exc:
             raise moves.MoveError(f"cannot read {step.source.name} again: {exc}") from exc
 
-    def _disc(self, step, temp: Path) -> None:
+    def _disc(self, step, temp: Path) -> str:
         """chdman makes the CHD; it must pass `verify`, and its tracks extracted back must
         equal the originals: the same data in order, and per file when there are several.
-        For GameCube and Wii, dolphin-tool makes an RVZ instead (`_rvz`)."""
+        For GameCube and Wii, dolphin-tool makes an RVZ instead (`_rvz`).
+
+        A cue track file that ends in part of a sector is padded with zeros to a whole one
+        first (maintainer, 2026-10-25: pad, "but add a warning that you did need to pad"):
+        the tracks must then come back as the originals followed by those zeros. Returns the
+        warning naming the padded files, or ""."""
         chdman = self.settings.chdman
         work = moves.work_path(self.config, step.destination)
         try:
@@ -419,10 +442,17 @@ class Converter:
                 disc = self._decode_cso(disc, work)
             sheet = disc.suffix.lower().lstrip(".") in discs.SHEETS
             originals = discs.sheet_paths(disc) if sheet else [disc]
-            each, whole = self._digests(originals)
+            pads = (
+                discs.short_tracks(chdman, disc)
+                if step.disc_mode == discs.CREATECD and disc.suffix.lower().lstrip(".") == discs.CUE
+                else {}
+            )
+            each, whole = self._digests(originals, pads)
             if step.disc_mode == discs.RVZ:
                 self._rvz(step, disc, whole, temp, work)
-                return
+                return ""
+            if pads:
+                disc = self._pad(disc, pads, work)
             discs.create(chdman, step.disc_mode, disc, temp)
             # The checks below compare with the digests above: the unpacked copy goes now.
             _drop_unpacked(work)
@@ -440,11 +470,35 @@ class Converter:
                 raise moves.MoveError(
                     f"the CHD of {step.source.name} does not give back the same tracks"
                 )
+            return _padded_warning(pads)
         except (discs.DiscError, cso.CsoError) as exc:
             temp.unlink(missing_ok=True)
             raise moves.MoveError(str(exc)) from exc
         finally:
             shutil.rmtree(work, ignore_errors=True)
+
+    def _pad(self, cue: Path, pads: dict[Path, int], work: Path) -> Path:
+        """The cue sheet to make the CHD from, its short tracks padded with zeros. Unpacked
+        tracks are padded where they are; a disc in the folder is never changed, so its sheet
+        and short tracks are copied to `work/source` and its other tracks linked there."""
+        unpacked = work / UNPACKED
+        if not cue.is_relative_to(unpacked):
+            copy = unpacked / cue.name
+            copy.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(cue, copy)
+            for track in discs.sheet_paths(cue):
+                target = unpacked / track.relative_to(cue.parent)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                if track in pads:
+                    shutil.copyfile(track, target)
+                else:
+                    target.symlink_to(track.absolute())
+            pads = {unpacked / t.relative_to(cue.parent): n for t, n in pads.items()}
+            cue = copy
+        for track, zeros in pads.items():
+            with track.open("ab") as handle:
+                handle.write(bytes(zeros))
+        return cue
 
     def _decode_cso(self, source: Path, work: Path) -> Path:
         """The ISO a CSO holds, decoded into `work/source`; the CHD is made from it and
@@ -489,8 +543,11 @@ class Converter:
             raise moves.MoveError(f"{step.source.name} holds no cue sheet or disc image")
         return found
 
-    def _digests(self, paths: list[Path]) -> tuple[list[str], str]:
-        """SHA1 of each file, and of all of them in order (the disc's data)."""
+    def _digests(
+        self, paths: list[Path], pads: dict[Path, int] | None = None
+    ) -> tuple[list[str], str]:
+        """SHA1 of each file, and of all of them in order (the disc's data); a file in `pads`
+        counts with that many zero bytes after it."""
         whole = hashlib.sha1(usedforsecurity=False)
         each = []
         for path in paths:
@@ -500,6 +557,9 @@ class Converter:
                     stopping.check()
                     one.update(chunk)
                     whole.update(chunk)
+            zeros = bytes((pads or {}).get(path, 0))
+            one.update(zeros)
+            whole.update(zeros)
             each.append(one.hexdigest())
         return each, whole.hexdigest()
 
