@@ -28,6 +28,7 @@ from g1r import (
     mounts,
     nca,
     notifications,
+    renaming,
     scanner,
     statistics,
     titledb,
@@ -146,6 +147,18 @@ class UpdatesScope(BaseModel):
     rel_paths: list[str] | None = None
     token: str | None = None
     confirm: str | None = None
+
+
+class RenameScope(BaseModel):
+    # Files to rename (or give back their names); None = every one proposed (or renamed).
+    rel_paths: list[str] | None = None
+    token: str | None = None
+    confirm: str | None = None
+
+
+class RenameTemplateChoice(BaseModel):
+    # None: back to the configured default.
+    template: str | None = None
 
 
 class LeaveAlone(BaseModel):
@@ -320,6 +333,9 @@ def build_router(
             "ignored_files": folder.ignored_files,
             # Identified by title ID (Switch): the set has an Updates tab.
             "title_ids": title_ids(folder.platform),
+            # The Rename tab's naming template, and those the platform offers.
+            "rename_template": store.rename_template(folder),
+            "rename_templates": settings.rename_templates(folder.platform),
         }
 
     def parts_of(folder: FolderEntry) -> frozenset[str]:
@@ -425,6 +441,18 @@ def build_router(
             return None
         return root if root.is_dir() else None
 
+    def rename_rows(
+        library: Library, folder: FolderEntry, conn, waiting: frozenset[str] | None = None
+    ) -> list[renaming.RenameRow]:
+        return renaming.rows(
+            settings,
+            conn,
+            folder.label,
+            store.rename_template(folder),
+            waiting_of(library, folder, conn) if waiting is None else waiting,
+            parts_of(folder),
+        )
+
     def conversion_rows(library: Library, folder: FolderEntry, conn) -> list:
         target = settings.platforms.targets[store.target_for(library, folder.platform)]
         return conversion.rows(
@@ -474,6 +502,9 @@ def build_router(
             },
             "label_pattern": settings.folders.label_pattern,
             "discarded_root": str(settings.paths.discarded_root),
+            "rename_templates": {
+                k: v.model_dump(exclude={"format"}) for k, v in settings.rename.templates.items()
+            },
         }
 
     # Folders -----------------------------------------------------------------------
@@ -550,6 +581,10 @@ def build_router(
             "updates": update_counts(updates.rows(settings, folder.label, games, kept))
             if title_ids(folder.platform)
             else None,
+            "rename": {
+                "template": store.rename_template(folder),
+                **renaming.counts(rename_rows(library, folder, conn, waiting)),
+            },
         }
         with cards_lock:
             cards[folder.label] = (key, figures)
@@ -590,6 +625,8 @@ def build_router(
                     "progress": figures["progress"],
                     # Title-ID sets: their updates (the Updates tab), else None.
                     "updates": figures["updates"],
+                    # The Rename tab: its template and how many files it proposes.
+                    "rename": figures["rename"],
                     "discarded": discarded.totals(settings, folder.label),
                     "converting": journal.running_conversion(conn, folder.label),
                     # An apply or a restore runs: Home polls until it ends.
@@ -1196,7 +1233,9 @@ def build_router(
             "busy": journal.busy(conn, label),
         }
 
-    def start_guarded(request, conn, label, scope, body, make_plan, nothing, after=None):
+    def start_guarded(
+        request, conn, label, scope, body, make_plan, nothing, after=None, kind=journal.APPLY
+    ):
         def check():
             plan, problems = make_plan()
             if journal.token(plan) != body.token:
@@ -1214,7 +1253,7 @@ def build_router(
             return plan
 
         try:
-            run_id = request.app.state.jobs.apply(conn, label, journal.APPLY, scope, check, after)
+            run_id = request.app.state.jobs.apply(conn, label, kind, scope, check, after)
         except journal.PlanError as exc:
             raise conflict(str(exc), exc.problems) from exc
         return journal.progress(conn, run_id)
@@ -1355,6 +1394,97 @@ def build_router(
             body,
             lambda: updates_plan(conn, label, body),
             "there is no older update to move",
+        )
+
+    # Renames (the Rename tab) -------------------------------------------------------
+
+    @router.get("/folders/{label}/rename")
+    def folder_renames(label: str, conn: Conn):
+        folder = folder_or_404(label)
+        library = store.load()
+        waiting = waiting_of(library, folder, conn)
+        found = rename_rows(library, folder, conn, waiting)
+        return {
+            "template": store.rename_template(folder),
+            "rows": [asdict(r) for r in found],
+            "counts": renaming.counts(found),
+            # Files still to convert: renaming waits for them (conversion comes first).
+            "waiting": len(waiting),
+        }
+
+    @router.put("/folders/{label}/rename-template")
+    def save_rename_template(label: str, body: RenameTemplateChoice):
+        folder = folder_or_404(label)
+        offered = settings.rename_templates(folder.platform)
+        if body.template is not None and body.template not in offered:
+            raise bad_request(f"{body.template!r} is not a naming template for {folder.platform!r}")
+
+        def change(library: Library) -> None:
+            library.folder(label).rename_template = body.template
+
+        return folder_info(store.update(change), folder_or_404(label))
+
+    def wanted_of(found: list, rel_paths: list[str] | None, gone: str) -> list:
+        if rel_paths is None:
+            return found
+        wanted = set(rel_paths)
+        if not wanted <= {r.rel_path for r in found}:
+            raise conflict(gone)
+        return [r for r in found if r.rel_path in wanted]
+
+    def rename_plan(conn, label: str, body: RenameScope):
+        folder = folder_or_404(label)
+        proposed = [
+            r for r in rename_rows(store.load(), folder, conn) if r.status == renaming.TO_RENAME
+        ]
+        proposed = wanted_of(
+            proposed, body.rel_paths, "some of these files are not proposed any more"
+        )
+        root = folder_root(folder)
+        plan = journal.plan_renames(conn, label, root, [(r.rel_path, r.new_path) for r in proposed])
+        return plan, journal.preflight(plan, root, discarded.folder_root(settings, label))
+
+    def revert_plan(conn, label: str, body: RenameScope):
+        folder = folder_or_404(label)
+        renamed = [r for r in rename_rows(store.load(), folder, conn) if r.original is not None]
+        renamed = wanted_of(renamed, body.rel_paths, "some of these files were not renamed")
+        root = folder_root(folder)
+        plan = journal.plan_renames(conn, label, root, [(r.rel_path, r.original) for r in renamed])
+        return plan, journal.preflight(plan, root, discarded.folder_root(settings, label))
+
+    @router.post("/folders/{label}/rename/preview")
+    def rename_preview(label: str, body: RenameScope, conn: Conn):
+        converted_first(conn, label)
+        return guarded_preview(conn, label, *rename_plan(conn, label, body))
+
+    @router.post("/folders/{label}/rename", status_code=HTTPStatus.ACCEPTED)
+    def rename_apply(label: str, body: RenameScope, request: Request, conn: Conn):
+        converted_first(conn, label)
+        return start_guarded(
+            request,
+            conn,
+            label,
+            journal.SCOPE_RENAME,
+            body,
+            lambda: rename_plan(conn, label, body),
+            "there is nothing to rename",
+        )
+
+    @router.post("/folders/{label}/rename/revert/preview")
+    def revert_preview(label: str, body: RenameScope, conn: Conn):
+        return guarded_preview(conn, label, *revert_plan(conn, label, body))
+
+    @router.post("/folders/{label}/rename/revert", status_code=HTTPStatus.ACCEPTED)
+    def revert_apply(label: str, body: RenameScope, request: Request, conn: Conn):
+        return start_guarded(
+            request,
+            conn,
+            label,
+            journal.SCOPE_RENAME,
+            body,
+            lambda: revert_plan(conn, label, body),
+            "no file was renamed",
+            kind=journal.RESTORE,
         )
 
     def empty_plan(conn, label: str):

@@ -47,6 +47,8 @@ MOVE = "move"
 CONVERT = "convert"
 DELETE = "delete"
 REMOVE = "remove"
+# A file given another name in its folder (to a naming template, or back by a revert).
+RENAME = "rename"
 # Run scopes besides 1G1R (a group key or '' for the folder).
 SCOPE_UNMATCHED = "unmatched"
 SCOPE_EMPTY = "empty"
@@ -55,9 +57,11 @@ SCOPE_SET_ASIDE = "set-aside"
 SCOPE_UPDATES = "updates"
 # Files the user moved out (unmatched, flagged, unsupported) go to this discarded/ subfolder.
 REASON_MANUAL = "manual"
+# Renames to a naming template (an apply) and their reverts (a restore), the Rename tab.
+SCOPE_RENAME = "rename"
 
 # Steps that write a new name for the file and must find that name free.
-WRITES = (MOVE, CONVERT)
+WRITES = (MOVE, CONVERT, RENAME)
 
 # The per-file rows a conversion's output inherits from its original (same ROM data).
 CARRIED = (
@@ -77,6 +81,24 @@ CARRIED = (
 # or unmade, an archive repacked); a disc, a decryption or a byteswap writes other bytes,
 # hashed again by the next scan.
 HASH_ROWS = ("content_hash", "payload_hash")
+
+# Every per-file row a renamed file takes to its new name: the scan's rows, the user's
+# choices, our scan cache. A new table with a rel_path is listed here or in RENAME_SKIPS
+# (a test checks).
+RENAMED = (
+    *CARRIED,
+    "archive_member",
+    "archive_problem",
+    "byte_order",
+    "file_cache",
+    "keep_choice",
+    "update_keep",
+)
+# Tables without a foreign key on folder_file: an old row at the new name is dropped first.
+UNTIED = ("manual_identity", "file_cache", "keep_choice", "update_keep")
+# Rows that stay under the path they were written with: the files themselves (moved by
+# `_rename_rows`), the journal (a record), and where renamed files came from (kept apart).
+RENAME_SKIPS = ("folder_file", "operation", "rename_origin")
 SAME_BYTES = (conversion.RECIPE_WRAP, conversion.RECIPE_UNWRAP, conversion.RECIPE_REPACK)
 
 
@@ -435,6 +457,38 @@ def plan_empty(conn: sqlite3.Connection, label: str, discarded_root: Path, files
     return plan
 
 
+def plan_renames(
+    conn: sqlite3.Connection, label: str, root: Path, renames: list[tuple[str, str]]
+) -> list[Move]:
+    """Give files of the folder, as scanned, new names in it: (rel_path, new rel_path) each."""
+    scanned = {
+        r["rel_path"]: r
+        for r in conn.execute(
+            "SELECT rel_path, size, mtime_ns FROM folder_file WHERE folder_label = ? AND place = ?",
+            (label, PLACE_FOLDER),
+        )
+    }
+    plan = []
+    for rel, new in sorted(renames):
+        f = scanned.get(rel)
+        if f is None:
+            continue
+        plan.append(
+            Move(
+                rel,
+                "",
+                SCOPE_RENAME,
+                root / rel,
+                root / new,
+                f["size"],
+                f["mtime_ns"],
+                action=RENAME,
+                paired_rel=new,
+            )
+        )
+    return plan
+
+
 def irreversible(plan: list[Move]) -> list[Move]:
     return [m for m in plan if m.action == DELETE]
 
@@ -534,6 +588,8 @@ def _roots(m: Move, kind: str, folder: Path, discarded: Path) -> tuple[Path, Pat
     """Where a step's source and destination must be."""
     if m.action == MOVE:
         return (folder, discarded) if kind == APPLY else (discarded, folder)
+    if m.action == RENAME:
+        return folder, folder
     if m.in_discarded:
         return discarded, discarded
     return folder, folder
@@ -686,6 +742,47 @@ def _drop_output(conn, label: str, output: str, original: str) -> None:
     conn.execute("DELETE FROM folder_file WHERE folder_label = ? AND rel_path = ?", (label, output))
 
 
+def _rename_rows(conn, label: str, old: str, new: str, moved) -> None:
+    """A file was renamed: every row of it follows it to its new name, and the name it had
+    before its first rename is kept under the new one (dropped once it has it back)."""
+    for table in UNTIED:
+        conn.execute(f"DELETE FROM {table} WHERE folder_label = ? AND rel_path = ?", (label, new))
+    # As a rescan does when a discarded file's path reappears in the folder.
+    conn.execute("DELETE FROM folder_file WHERE folder_label = ? AND rel_path = ?", (label, new))
+    columns = [
+        c[1]
+        for c in conn.execute("PRAGMA table_info(folder_file)")
+        if c[1] not in ("folder_label", "rel_path", "mtime_ns")
+    ]
+    listed = ", ".join(columns)
+    conn.execute(
+        f"INSERT INTO folder_file (folder_label, rel_path, mtime_ns, {listed}) "
+        f"SELECT folder_label, ?, ?, {listed} FROM folder_file "
+        "WHERE folder_label = ? AND rel_path = ?",
+        (new, moved.st_mtime_ns, label, old),
+    )
+    for table in RENAMED:
+        conn.execute(
+            f"UPDATE {table} SET rel_path = ? WHERE folder_label = ? AND rel_path = ?",
+            (new, label, old),
+        )
+    conn.execute("DELETE FROM folder_file WHERE folder_label = ? AND rel_path = ?", (label, old))
+    row = conn.execute(
+        "SELECT original FROM rename_origin WHERE folder_label = ? AND rel_path = ?",
+        (label, old),
+    ).fetchone()
+    original = row["original"] if row else old
+    conn.execute(
+        "DELETE FROM rename_origin WHERE folder_label = ? AND rel_path IN (?, ?)",
+        (label, old, new),
+    )
+    if new != original:
+        conn.execute(
+            "INSERT INTO rename_origin (folder_label, rel_path, original) VALUES (?, ?, ?)",
+            (label, new, original),
+        )
+
+
 def _wrapped_members(m: Move) -> list[tuple]:
     """The archive_member rows of a conversion's output (none for a bare ROM)."""
     if m.destination.suffix.lower() != conversion.ZIP_SUFFIX:
@@ -726,6 +823,8 @@ def _settle(conn, kind: str, label: str, op_id: int, m: Move, moved) -> None:
                     "WHERE folder_label = ? AND rel_path = ?",
                     (label, m.paired_rel),
                 )
+        elif m.action == RENAME:
+            _rename_rows(conn, label, m.rel_path, m.paired_rel, moved)
         elif m.action == DELETE and m.in_discarded:
             # Gone from discarded/: the table stops showing it as a discarded version.
             if m.paired_rel is not None:
@@ -766,7 +865,7 @@ def _unchanged(m: Move) -> None:
 
 
 def _carry_out(config: ApplyConfig, convert: Convert | None, m: Move):
-    if m.action == MOVE:
+    if m.action in (MOVE, RENAME):
         return moves.move(config, m.source, m.destination)
     if m.action == CONVERT:
         if convert is None:
@@ -789,7 +888,10 @@ def _summary(kind: str, plan: list[Move], finished: list[Move], failed: int, lef
     if left:
         done = f"stopped: {_files(converted)} converted, {left} not converted"
         return f"{done}; {failed} failed" if failed else done
-    if plan and all(m.action == DELETE for m in plan):
+    if plan and all(m.action == RENAME for m in plan):
+        renamed = _files(len(finished))
+        done = f"{renamed} renamed" if kind == APPLY else f"{renamed} given back their names"
+    elif plan and all(m.action == DELETE for m in plan):
         done = f"{_files(len(finished))} deleted"
     elif kind == APPLY and any(m.action == CONVERT for m in plan):
         done = f"{_files(converted)} converted"
@@ -1081,7 +1183,7 @@ def _step_of_row(conn: sqlite3.Connection, op: sqlite3.Row) -> Move:
     source = Path(op["source"])
     destination = Path(op["destination"]) if op["destination"] else None
     paired = undoes = None
-    if op["action"] == CONVERT:
+    if op["action"] in (CONVERT, RENAME):
         paired = destination.relative_to(_root_of(op)).as_posix()
     elif op["action"] == REMOVE:
         undoes = op["step_of"]

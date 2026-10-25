@@ -437,6 +437,8 @@ platforms:
       rom_extensions: [bin, rom]
       romsets: true
       names_from: description
+      # Set names are what emulators load: never renamed.
+      rename_templates: [keep]
       igir_merge_modes: [split, nonmerged]
       # Clones are hacks, bootlegs and other releases of the parent: parent first.
       ranking_criteria: [parent, prerelease, region]
@@ -507,6 +509,7 @@ platforms:
       targets: [nsp]
       default_target: nsp
       title_ids: true
+      rename_templates: [keep, switch]
       # No public Switch DAT exists: files are identified by title ID.
       dat_download: false
     tg16:
@@ -1312,3 +1315,53 @@ ranking:
   languages: [En]
   # A release listing several regions counts as its best one ("best") or its first ("first").
   multi_region: best
+
+# Renaming files to a template (a set's Rename tab), for the tools that read the library
+# after us (RomM and other frontends read tags from file names). Each set picks one in
+# Settings -> Romset management; a revert gives a file the name it had before its first
+# rename.
+rename:
+  # What a set starts with, and what a platform without a list of its own offers
+  # (platforms.profiles.<id>.rename_templates).
+  default_template: keep
+  offered: [keep, dat, clean]
+  templates:
+    keep:
+      label: Keep names
+      description: Files keep the names they have; nothing is proposed.
+      example: ""
+    dat:
+      label: DAT name
+      description: >-
+        The name the DAT gives the game, with its tags (region, languages, revision). RomM,
+        ES-DE and RetroArch's thumbnails read these names.
+      example: Legend of Zelda, The - A Link to the Past (USA).sfc
+      format: "{game}"
+    clean:
+      label: Clean title
+      description: >-
+        The DAT name without its tags (disc, side and tape numbers stay), for frontends
+        that show the file name as the title.
+      example: Legend of Zelda, The - A Link to the Past.sfc
+      format: "{title}"
+    switch:
+      label: Switch style
+      description: >-
+        The game's name, its title ID and its version, as Tinfoil-style tools name NSPs.
+        RomM finds games by the title ID. Needs the version (prod.keys read it when the
+        file has no cnmt.xml).
+      example: 80 DAYS [0100B9900A1D0000][v0].nsp
+      format: "{title} [{title_id}][v{version}]"
+  # How a file must have been identified to take its name: a checksum (or an identical copy
+  # of a file matched by one), a title ID, or the user's own assignment. A name from
+  # Hasheous or a name match is not proof enough.
+  methods: [dat-checksum, dat-headerless, duplicate, title-id, manual]
+  # Characters some filesystems refuse in a name (exFAT, Windows shares), each replaced.
+  unsafe_characters: '\/:*?"<>|'
+  replacement: "_"
+  # A tag of a name: a (...) or [...] group. Clean title drops every tag except those
+  # starting with one of clean_keeps.
+  tag_pattern: '\s*[(\[]([^)\]]*)[)\]]'
+  clean_keeps: [Disc, Disk, Side, Tape, Part]
+  # The longest file name most filesystems take, in bytes (UTF-8).
+  max_name_bytes: 255

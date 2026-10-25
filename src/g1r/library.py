@@ -38,6 +38,8 @@ class FolderEntry(BaseModel):
     # ignored by their exact path in the folder (POSIX separators).
     ignored_patterns: list[str] | None = None
     ignored_files: list[str] = Field(default_factory=list)
+    # The naming template of the Rename tab (None: the configured default).
+    rename_template: str | None = None
 
 
 class ActiveDat(BaseModel):
@@ -238,6 +240,14 @@ class LibraryStore:
     def igir_threads(self, library: Library) -> int | None:
         chosen = library.igir_threads
         return chosen if chosen is not None and chosen <= self.settings.igir.max_threads else None
+
+    def rename_template(self, folder: FolderEntry) -> str:
+        """The folder's naming template, else the default (also when its platform no longer
+        offers the one chosen)."""
+        chosen = folder.rename_template
+        if chosen is not None and chosen in self.settings.rename_templates(folder.platform):
+            return chosen
+        return self.settings.rename.default_template
 
     def ignored_patterns(self, folder: FolderEntry) -> list[str]:
         if folder.ignored_patterns is None:

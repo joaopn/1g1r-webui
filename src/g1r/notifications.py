@@ -13,6 +13,9 @@ TABLES = {SCAN: "scan", RUN: "apply_run"}
 # What a run was, from its kind and scope (a 1G1R apply's scope is a group key or '').
 CONVERSION = "conversion"
 APPLY_1G1R = "1g1r"
+# Renames to a template, and their reverts (a restore of scope rename).
+RENAME = "rename"
+RENAME_BACK = "rename-back"
 TITLES = {
     SCAN: "Scan",
     CHECK: "Check files",
@@ -23,10 +26,14 @@ TITLES = {
     journal.SCOPE_SET_ASIDE: "Moved to discarded/",
     journal.SCOPE_UPDATES: "Older updates",
     journal.RESTORE: "Restore",
+    RENAME: "Rename",
+    RENAME_BACK: "Names given back",
 }
 
 
 def _run_kind(row: sqlite3.Row) -> str:
+    if row["scope"] == journal.SCOPE_RENAME:
+        return RENAME_BACK if row["kind"] == journal.RESTORE else RENAME
     if row["kind"] == journal.RESTORE:
         return journal.RESTORE
     if row["scope"] == journal.CONVERT:
