@@ -133,7 +133,7 @@ ui:
     folder: {rem: 8, min: 4, max: 30}
     status: {rem: 14, min: 8, max: 30}
     size: {rem: 5.5, min: 4.5, max: 10}
-  rename_columns_default: [name, new_name, original, status, size]
+  rename_columns_default: [name, new_name, original, status]
   # The Statistics table: the set, its platform, and one DATs column holding a bar per DAT
   # source side by side. The DATs column starts as wide as the most sources a set has
   # (each `statistics_source_rem` wide, `statistics_source_gap_rem` apart), within its

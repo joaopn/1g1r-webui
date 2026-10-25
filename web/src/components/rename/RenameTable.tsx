@@ -30,7 +30,7 @@ const VIEWS: RowView<Row>[] = [
 
 /** Every ROM file of the set: its name now, the one its template proposes (or why none),
  * and the name it had before its first rename. Each row can be renamed on its own, and a
- * renamed one given back its first name. */
+ * renamed one given back its original name. */
 export function RenameTable({
   rows: renames,
   meta,
@@ -76,7 +76,7 @@ export function RenameTable({
       },
       {
         id: "original",
-        label: "First name",
+        label: "Original name",
         sortValue: (r) => (r.original ? baseName(r.original).toLowerCase() : ""),
         render: (r) =>
           r.original ? <span className="text-muted-foreground">{baseName(r.original)}</span> : null,
@@ -156,7 +156,7 @@ export function RenameTable({
             size="xs"
             disabled={busy}
             onClick={() => onRevert(r.rel_path)}
-            aria-label={`Give ${r.rel_path} back its first name`}
+            aria-label={`Give ${r.rel_path} back its original name`}
             title={`Back to ${baseName(r.original)}`}
           >
             <Undo2 aria-hidden="true" />

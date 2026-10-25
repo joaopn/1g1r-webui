@@ -90,7 +90,7 @@ export const META: Meta = {
         size(8),
       ]),
     ),
-    rename_columns_default: ["name", "new_name", "original", "status", "size"],
+    rename_columns_default: ["name", "new_name", "original", "status"],
     statistics_columns: Object.fromEntries(
       ["folder", "size", "discarded", "platform", "dats"].map((id) => [id, size(8)]),
     ),

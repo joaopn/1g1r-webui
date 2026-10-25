@@ -98,7 +98,7 @@ export function FolderRenamePage() {
           <p className="text-muted-foreground">
             {keeps
               ? "This set keeps its file names. "
-              : `${template?.description ?? ""} Reverting gives a file the name it had before its first rename. `}
+              : `${template?.description ?? ""} Reverting gives a file back its original name. `}
             <Link
               to="/settings/romsets"
               className="text-primary underline-offset-2 hover:underline"
@@ -143,12 +143,12 @@ export function FolderRenamePage() {
           title={
             acting.kind === "rename"
               ? `Rename ${one(acting.relPaths)?.[0] ?? `files of ${label}`}`
-              : `Give ${one(acting.relPaths)?.[0] ?? `the files of ${label}`} back their first names`
+              : `Give ${one(acting.relPaths)?.[0] ?? `the files of ${label}`} back their original names`
           }
           description={
             acting.kind === "rename"
               ? "Each file gets its new name in its folder. Nothing else changes, and each can be reverted."
-              : "Each file gets the name it had before its first rename."
+              : "Each file gets its original name back: the one it had before its first rename."
           }
           note="igir reads renamed files again at the next scan (the size above)."
           action={(n) => `${acting.kind === "rename" ? "Rename" : "Revert"} ${formatFiles(n)}`}

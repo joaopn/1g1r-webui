@@ -118,7 +118,7 @@ test("proposed names are listed, renamed once reviewed, and a renamed file can b
   expect(posts.some((p) => p.url.endsWith("/folders/nes/rename"))).toBe(true);
 
   await userEvent.click(
-    screen.getByRole("button", { name: "Give Gradius (USA).zip back its first name" }),
+    screen.getByRole("button", { name: "Give Gradius (USA).zip back its original name" }),
   );
   await screen.findByRole("dialog");
   const reverts = posts.filter((p) => p.url.endsWith("/rename/revert/preview"));

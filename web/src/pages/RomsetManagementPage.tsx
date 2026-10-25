@@ -92,7 +92,7 @@ export function RomsetManagementPage() {
             <p className="text-muted-foreground">
               What a set's Rename tab proposes. Only files identified by checksum, title ID or by
               you are renamed, in their folder, keeping their extension; every rename can be
-              reverted to the file's first name.
+              reverted to the file's original name.
             </p>
             <dl className="grid gap-x-4 gap-y-2 sm:grid-cols-[auto_1fr]">
               {offered.map((id) => (
