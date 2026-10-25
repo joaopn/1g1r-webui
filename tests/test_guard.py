@@ -124,6 +124,67 @@ def test_a_changed_discarded_file_refuses_emptying(setup, roms_root):  # noqa: F
     assert stray.exists()
 
 
+def test_empty_every_set_needs_the_typed_words(setup, roms_root):  # noqa: F811
+    client, _, _ = setup
+    scanned(client)
+    stray = roms_root / "discarded" / "nes" / "elsewhere" / "x.bin"
+    stray.parent.mkdir(parents=True)
+    stray.write_bytes(b"a")
+    # Not a set of the library: never listed, never touched.
+    other = roms_root / "discarded" / "gone" / "y.bin"
+    other.parent.mkdir(parents=True)
+    other.write_bytes(b"b")
+
+    plan = client.post("/api/discarded/empty/preview").json()
+    assert [f["rel_path"] for f in plan["files"]] == ["nes/elsewhere/x.bin"]
+    assert plan["irreversible"] == 1 and plan["confirm"] == "DELETE ALL"
+    refused = client.post("/api/discarded/empty", json={"token": plan["token"], "confirm": "nes"})
+    assert refused.status_code == HTTPStatus.CONFLICT and stray.exists()
+
+    started = client.post(
+        "/api/discarded/empty", json={"token": plan["token"], "confirm": "DELETE ALL"}
+    )
+    assert started.status_code == HTTPStatus.ACCEPTED
+    assert wait_run(client)["message"] == "1 file deleted"
+    assert not stray.exists() and other.exists()
+    assert client.post("/api/discarded/empty/preview").json()["files"] == []
+
+
+def test_a_set_whose_folder_is_gone_is_left_alone(setup, roms_root):  # noqa: F811
+    client, store, _ = setup
+    scanned(client)
+    body = {"platform": "gb", "mount": "roms", "path": "gb", "label": "gb"}
+    assert client.post("/api/folders", json=body).status_code == HTTPStatus.CREATED
+    store.update(lambda lib: setattr(lib.folder("gb"), "mount", "gone"))
+    kept = roms_root / "discarded" / "gb" / "x.bin"
+    kept.parent.mkdir(parents=True)
+    kept.write_bytes(b"a")
+    stray = roms_root / "discarded" / "nes" / "x.bin"
+    stray.parent.mkdir(parents=True)
+    stray.write_bytes(b"b")
+
+    plan = client.post("/api/discarded/empty/preview").json()
+    assert [f["rel_path"] for f in plan["files"]] == ["nes/x.bin"]
+    assert [s["label"] for s in plan["skipped"]] == ["gb"]
+    client.post("/api/discarded/empty", json={"token": plan["token"], "confirm": "DELETE ALL"})
+    wait_run(client)
+    assert not stray.exists() and kept.exists()
+
+
+def test_a_changed_file_refuses_emptying_every_set(setup, roms_root):  # noqa: F811
+    client, _, _ = setup
+    scanned(client)
+    stray = roms_root / "discarded" / "nes" / "x.bin"
+    stray.parent.mkdir(parents=True)
+    stray.write_bytes(b"a")
+    plan = client.post("/api/discarded/empty/preview").json()
+    stray.write_bytes(b"changed")
+    refused = client.post(
+        "/api/discarded/empty", json={"token": plan["token"], "confirm": "DELETE ALL"}
+    )
+    assert refused.status_code == HTTPStatus.CONFLICT and stray.exists()
+
+
 def test_recovery_settles_a_cut_off_empty(tmp_path):
     conn = db.connect(tmp_path / "state.db", 1000)
     db.migrate(conn)

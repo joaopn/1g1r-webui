@@ -1,8 +1,9 @@
 import { useMutation } from "@tanstack/react-query";
-import { ChevronRight, RefreshCw } from "lucide-react";
+import { ChevronRight, RefreshCw, Trash2 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
+import { GuardedDialog } from "@/components/apply/GuardedDialog";
 import { PlatformIcon } from "@/components/PlatformIcon";
 import { type DataColumn, DataTable } from "@/components/table/DataTable";
 import { Button } from "@/components/ui/button";
@@ -14,7 +15,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ApiError, api } from "@/lib/api";
-import { formatBytes, formatCount, formatWhen } from "@/lib/format";
+import { formatBytes, formatCount, formatFiles, formatWhen } from "@/lib/format";
 import { keys, queryClient, useFolders, useMeta, useMissing, useStatistics } from "@/lib/queries";
 import { folderState, openingSection, sectionPath } from "@/lib/sections";
 import type {
@@ -62,6 +63,7 @@ export function StatisticsPage() {
   const stats = useStatistics();
   const refresh = useRefreshStatistics();
   const [open, setOpen] = useState<{ label: string; source: string } | null>(null);
+  const [emptying, setEmptying] = useState(false);
   const [params, setParams] = useSearchParams();
 
   const close = () => {
@@ -76,22 +78,34 @@ export function StatisticsPage() {
       <div className="space-y-1">
         <div className="flex items-center justify-between gap-4">
           <h1 className="font-semibold text-2xl tracking-tight">Statistics</h1>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={refresh.isPending || !stats.data}
-            onClick={() => refresh.mutate()}
-            data-testid="refresh-statistics"
-          >
-            <RefreshCw
-              className={cn(
-                "size-4",
-                refresh.isPending && "animate-spin motion-reduce:animate-none",
-              )}
-              aria-hidden="true"
-            />
-            {refresh.isPending ? "Refreshing…" : "Refresh"}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="destructive"
+              disabled={!stats.data}
+              onClick={() => setEmptying(true)}
+              data-testid="delete-all-discarded"
+            >
+              <Trash2 className="size-4" aria-hidden="true" />
+              Delete all discarded
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={refresh.isPending || !stats.data}
+              onClick={() => refresh.mutate()}
+              data-testid="refresh-statistics"
+            >
+              <RefreshCw
+                className={cn(
+                  "size-4",
+                  refresh.isPending && "animate-spin motion-reduce:animate-none",
+                )}
+                aria-hidden="true"
+              />
+              {refresh.isPending ? "Refreshing…" : "Refresh"}
+            </Button>
+          </div>
         </div>
         <p className="text-muted-foreground text-sm">
           Games of each local DAT found in the set. Click a percentage for the missing games.
@@ -113,6 +127,26 @@ export function StatisticsPage() {
               />
             ) : null}
           </Dialog>
+          {emptying ? (
+            <GuardedDialog
+              label="every romset"
+              path="discarded/empty"
+              every
+              body={{}}
+              title="Delete all discarded"
+              description={
+                <>
+                  Every file in <code className="text-xs">{meta.data.discarded_root}</code> of the
+                  romsets listed here is deleted for good, including files this app did not put
+                  there.
+                </>
+              }
+              action={(n) => `Delete ${formatFiles(n)}`}
+              meta={meta.data}
+              open
+              onOpenChange={setEmptying}
+            />
+          ) : null}
         </>
       ) : (
         <p className="text-muted-foreground text-sm">Loading…</p>

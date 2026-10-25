@@ -403,6 +403,10 @@ export type GuardedPreview = {
   bytes: number;
   problems: { rel_path: string; problem: string }[];
   busy: string | null;
+  /** What to type to confirm, when not the folder label (every set at once). */
+  confirm?: string;
+  /** Sets left alone (their folder cannot be found), every set at once only. */
+  skipped?: { label: string; reason: string }[];
 };
 
 export type Run = {

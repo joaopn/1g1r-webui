@@ -1,5 +1,6 @@
 """The JSON API the web app talks to. Every route is read-only towards ROM folders."""
 
+import hashlib
 import json
 import re
 import sqlite3
@@ -1557,6 +1558,88 @@ def build_router(
             "discarded/ is already empty",
             after=lambda: discarded.prune_empty(root),
         )
+
+    def empty_all_plans(conn) -> tuple[list[tuple[str, list, list]], dict[str, str]]:
+        """(label, plan, problems) of every set Statistics lists with files in discarded/, and
+        the sets left alone because their folder cannot be found (label: why)."""
+        library = store.load()
+        plans, skipped = [], {}
+        for folder in library.folders:
+            if folder.hidden or folder.platform not in platforms:
+                continue
+            try:
+                plan, problems = empty_plan(conn, folder.label)
+            except HTTPException as exc:
+                skipped[folder.label] = exc.detail["message"]
+                continue
+            if plan:
+                plans.append((folder.label, plan, problems))
+        return plans, skipped
+
+    def empty_all_token(plans, skipped) -> str:
+        # A skipped set is part of the plan: if it comes back, its files were never reviewed.
+        digest = journal.token([m for _, plan, _ in plans for m in plan])
+        return hashlib.sha1(f"{digest}\0{sorted(skipped)}".encode()).hexdigest()
+
+    @router.post("/discarded/empty/preview")
+    def empty_all_preview(conn: Conn):
+        plans, skipped = empty_all_plans(conn)
+        busy = [f"{label}: {r}" for label, _, _ in plans if (r := journal.busy(conn, label))]
+        return {
+            "token": empty_all_token(plans, skipped),
+            "files": [
+                {**step_dict(m), "rel_path": f"{label}/{m.rel_path}"}
+                for label, plan, _ in plans
+                for m in plan
+            ],
+            "irreversible": sum(len(journal.irreversible(plan)) for _, plan, _ in plans),
+            "bytes": sum(m.size for _, plan, _ in plans for m in plan),
+            "problems": [
+                {"rel_path": f"{label}/{r}", "problem": p}
+                for label, _, problems in plans
+                for r, p in problems
+            ],
+            "busy": "; ".join(busy) or None,
+            "confirm": settings.apply.empty_all_confirm,
+            "skipped": [{"label": k, "reason": v} for k, v in skipped.items()],
+        }
+
+    @router.post("/discarded/empty", status_code=HTTPStatus.ACCEPTED)
+    def empty_all(body: Guarded, request: Request, conn: Conn):
+        """Empty discarded/ of every set at once: one guarded run per set, all checked first."""
+        if body.confirm != settings.apply.empty_all_confirm:
+            raise conflict(
+                f"this deletes files for good: type {settings.apply.empty_all_confirm!r} to confirm"
+            )
+        plans, skipped = empty_all_plans(conn)
+        if empty_all_token(plans, skipped) != body.token:
+            raise conflict("the plan changed since you reviewed it; look again")
+        if not plans:
+            raise conflict("discarded/ is already empty")
+        problems = [(f"{label}/{r}", p) for label, _, found in plans for r, p in found]
+        if problems:
+            raise conflict("nothing was changed: some files are not as listed", problems)
+        busy = [f"{label}: {r}" for label, _, _ in plans if (r := journal.busy(conn, label))]
+        if busy:
+            raise conflict("; ".join(busy))
+        runs = []
+        for label, plan, _ in plans:
+            # Each set's run re-plans under the lock and must still match the reviewed plan.
+            guarded = Guarded(token=journal.token(plan), confirm=label)
+            root = discarded.folder_root(settings, label)
+            runs.append(
+                start_guarded(
+                    request,
+                    conn,
+                    label,
+                    journal.SCOPE_EMPTY,
+                    guarded,
+                    lambda label=label: empty_plan(conn, label),
+                    "discarded/ is already empty",
+                    after=lambda root=root: discarded.prune_empty(root),
+                )
+            )
+        return runs
 
     @router.post("/folders/{label}/restore", status_code=HTTPStatus.ACCEPTED)
     def restore(label: str, body: RestoreScope, request: Request, conn: Conn):

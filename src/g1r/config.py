@@ -483,6 +483,8 @@ class ApplyConfig(_Strict):
     work_suffix: str = Field(min_length=1)
     # A tool running for a conversion that is being stopped is killed within this many seconds.
     stop_poll_seconds: float = Field(gt=0)
+    # Typed to confirm emptying discarded/ of every romset at once.
+    empty_all_confirm: str = Field(min_length=1)
 
 
 class HeaderRule(_Strict):

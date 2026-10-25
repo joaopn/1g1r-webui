@@ -412,3 +412,53 @@ test("titledb: one source for the region files, explained in DAT info, title IDs
   expect(within(dialog).getByRole("button", { name: /Title ID/ })).toBeInTheDocument();
   expect(within(dialog).getByRole("button", { name: /Release/ })).toBeInTheDocument();
 });
+
+test("Delete all discarded lists every file and needs DELETE ALL typed", async () => {
+  const plan = {
+    token: "t",
+    files: [{ rel_path: "nes/1g1r/Contra (Japan).zip", size: 4, destination: null }],
+    irreversible: 1,
+    bytes: 4,
+    problems: [],
+    busy: null,
+    confirm: "DELETE ALL",
+    skipped: [{ label: "gb", reason: "unknown mount 'gone'" }],
+  };
+  const calls: string[] = [];
+  vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+    calls.push(`${init?.method ?? "GET"} ${url} ${init?.body ?? ""}`);
+    const body = url.endsWith("/meta")
+      ? META
+      : url.endsWith("/discarded/empty/preview")
+        ? plan
+        : url.endsWith("/discarded/empty")
+          ? []
+          : url.endsWith("/statistics")
+            ? STATS
+            : null;
+    return new Response(JSON.stringify(body));
+  });
+  queryClient.clear();
+  render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>
+        <StatisticsPage />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+  await screen.findByTestId("computed-statistics");
+  await userEvent.click(screen.getByTestId("delete-all-discarded"));
+  expect(await screen.findByTestId("guarded-files")).toHaveTextContent(
+    "nes/1g1r/Contra (Japan).zip",
+  );
+  expect(screen.getByTestId("guarded-skipped")).toHaveTextContent("gb: unknown mount 'gone'");
+  const run = screen.getByRole("button", { name: "Delete 1 file" });
+  await userEvent.type(screen.getByLabelText("Confirmation"), "nes");
+  expect(run).toBeDisabled();
+  await userEvent.clear(screen.getByLabelText("Confirmation"));
+  await userEvent.type(screen.getByLabelText("Confirmation"), "DELETE ALL");
+  await userEvent.click(run);
+  await waitFor(() =>
+    expect(calls).toContain('POST /api/discarded/empty {"token":"t","confirm":"DELETE ALL"}'),
+  );
+});

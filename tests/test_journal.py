@@ -20,6 +20,7 @@ CONFIG = ApplyConfig(
     extract_min_bytes_per_second=1024,
     work_suffix=".work",
     stop_poll_seconds=0.05,
+    empty_all_confirm="DELETE ALL",
 )
 
 

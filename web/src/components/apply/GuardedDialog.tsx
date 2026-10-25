@@ -14,16 +14,18 @@ import {
 import { Input } from "@/components/ui/input";
 import { ApiError, api, json } from "@/lib/api";
 import { formatBytes, formatFiles } from "@/lib/format";
-import { invalidateFolder } from "@/lib/queries";
+import { invalidateFolder, queryClient } from "@/lib/queries";
 import type { GuardedPreview, Meta } from "@/lib/types";
 
 /**
  * Review, then run a plan the server made from `body` (`<path>/preview`, then `<path>`). A
- * plan that deletes anything also needs the folder label typed (the guard, design §8).
+ * plan that deletes anything also needs the folder label typed (the guard), or the words the
+ * plan asks for (`GuardedPreview.confirm`).
  */
 export function GuardedDialog({
   label,
   path,
+  every = false,
   body,
   title,
   description,
@@ -35,8 +37,10 @@ export function GuardedDialog({
   note,
 }: {
   label: string;
-  /** Relative to the folder: `unmatched`, `discarded/empty`. */
+  /** Relative to the folder: `unmatched`, `discarded/empty`; with `every`, to the API. */
   path: string;
+  /** The plan spans every set (`label` only names it): `path` is not under a folder. */
+  every?: boolean;
   body: Record<string, unknown>;
   title: string;
   description: ReactNode;
@@ -51,7 +55,7 @@ export function GuardedDialog({
   note?: ReactNode;
 }) {
   const [confirm, setConfirm] = useState("");
-  const base = `/folders/${label}/${path}`;
+  const base = every ? `/${path}` : `/folders/${label}/${path}`;
   const preview = useQuery({
     queryKey: ["guarded-preview", label, path, body],
     queryFn: () => api<GuardedPreview>(`${base}/preview`, json("POST", body)),
@@ -64,7 +68,7 @@ export function GuardedDialog({
       api(base, json("POST", { ...body, token, ...(confirm ? { confirm } : {}) })),
     onSuccess: () => {
       onOpenChange(false);
-      return invalidateFolder(label);
+      return every ? queryClient.invalidateQueries() : invalidateFolder(label);
     },
     onError: (err) => {
       toast.error(err instanceof ApiError ? err.message : String(err));
@@ -75,12 +79,13 @@ export function GuardedDialog({
   const formatSize = (value: number) =>
     formatBytes(value, meta.ui.byte_unit_base, meta.ui.byte_units);
   const guarded = !!plan && plan.irreversible > 0;
+  const word = plan?.confirm ?? label;
   const blocked =
     !plan ||
     plan.files.length === 0 ||
     plan.problems.length > 0 ||
     !!plan.busy ||
-    (guarded && confirm !== label);
+    (guarded && confirm !== word);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -105,6 +110,18 @@ export function GuardedDialog({
                 <ul className="list-disc pl-5 text-muted-foreground" data-testid="guarded-problems">
                   {plan.problems.map((p) => (
                     <li key={`${p.rel_path}:${p.problem}`}>{p.problem}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            {plan.skipped?.length ? (
+              <div className="space-y-1 text-muted-foreground" data-testid="guarded-skipped">
+                <p>Left alone, their folder cannot be found:</p>
+                <ul className="list-disc pl-5">
+                  {plan.skipped.map((s) => (
+                    <li key={s.label}>
+                      {s.label}: {s.reason}
+                    </li>
                   ))}
                 </ul>
               </div>
@@ -166,11 +183,12 @@ export function GuardedDialog({
                   {formatFiles(plan.irreversible)} will be deleted for good. This cannot be undone.
                 </p>
                 <label htmlFor="guarded-label" className="block text-muted-foreground">
-                  Type the folder label <code className="text-xs">{label}</code> to confirm
+                  Type {plan.confirm ? "" : "the folder label "}
+                  <code className="text-xs">{word}</code> to confirm
                 </label>
                 <Input
                   id="guarded-label"
-                  aria-label="Folder label"
+                  aria-label={plan.confirm ? "Confirmation" : "Folder label"}
                   value={confirm}
                   autoComplete="off"
                   onChange={(event) => setConfirm(event.target.value)}
