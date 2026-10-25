@@ -58,6 +58,11 @@ const GUIDE: Record<string, Guide> = {
       "Games kept as an EBOOT.PBP folder (minis) are not a supported format",
     ],
   },
+  supergrafx: {
+    what: "No-Intro's SuperGrafx DAT, from libretro's mirror: HuCards that need the SuperGrafx (PC Engine).",
+    pros: ["One-click download", "Games the PC Engine DAT leaves out"],
+    cons: ["No parent/clone data (identification only)"],
+  },
   fbneo: {
     what: "FinalBurn Neo's DATs: arcade romsets.",
     pros: ["One-click download", "Parent/clone and BIOS data for romsets built for FBNeo"],

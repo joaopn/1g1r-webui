@@ -170,6 +170,9 @@ WII_DEV_KIT = NOINTRO.replace(NES_HEADER, b"Nintendo - Wii (Development Kit Hard
         # PSP's digital-only releases are a side set of their own; the minis are not.
         ("psp", "Sony - PlayStation Portable (PSN)", True),
         ("psp", "Sony - PlayStation Portable (PSN) (Minis)", False),
+        # SuperGrafx HuCards are a side set of the PC Engine.
+        ("tg16", "NEC - PC Engine SuperGrafx", True),
+        ("nes", "NEC - PC Engine SuperGrafx", False),
     ],
 )
 def test_header_matches_only_format_variants(make_settings, platform, name, matches):
@@ -386,3 +389,29 @@ def test_psp_downloads_its_psn_set_from_the_mirror_as_a_source_of_its_own(make_s
     results = registry.add_pack(conn, zip_of({"No-Intro/psn.dat": PSN_PSP}))
     assert [(r.platform, r.message) for r in results] == [("psp", "added")]
     assert registry.order(store.load(), "psp") == ["psn", "hasheous"]
+
+
+SUPERGRAFX = NOINTRO.replace(NES_HEADER, b"NEC - PC Engine SuperGrafx")
+
+
+def test_pc_engine_downloads_its_supergrafx_set_from_the_mirror(make_settings):
+    settings = make_settings()
+    store = LibraryStore(settings)
+    fetched = []
+
+    def fetch(url):
+        fetched.append(url)
+        return SUPERGRAFX
+
+    registry = DatRegistry(settings, store, fetch)
+    conn = db.open_database(settings)
+    assert "supergrafx" in registry.downloads("tg16")
+    assert "supergrafx" not in registry.downloads("psp")
+    version = registry.download(conn, "tg16", "supergrafx")
+    assert fetched == [
+        "https://raw.githubusercontent.com/libretro/libretro-database/master/metadat/"
+        "no-intro/NEC%20-%20PC%20Engine%20SuperGrafx.dat"
+    ]
+    row = conn.execute("SELECT * FROM dat_version WHERE id = ?", (version,)).fetchone()
+    assert row["source"] == "supergrafx" and row["matches_platform"]
+    assert registry.order(store.load(), "tg16") == ["supergrafx", "hasheous"]

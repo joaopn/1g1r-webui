@@ -515,7 +515,9 @@ platforms:
       kind: console
       aliases: ["pcengine", "pce", "turbografx16", "turbografx", "turbografx-16"]
       dat_name: NEC - PC Engine - TurboGrafx 16
-      rom_extensions: [pce]
+      side_dats:
+        supergrafx: {dat_name: "NEC - PC Engine SuperGrafx"}
+      rom_extensions: [pce, sgx]
       targets: [zip, plain]
       default_target: zip
     virtualboy:
@@ -756,6 +758,14 @@ dats:
       url_template: "https://raw.githubusercontent.com/libretro/libretro-database/master/metadat/no-intro/{name}.dat"
       identification_only: true
       side: true
+    supergrafx:
+      label: No-Intro SuperGrafx (libretro-database mirror)
+      short_label: SuperGrafx
+      # HuCards that need the SuperGrafx; No-Intro keeps them out of the PC Engine DAT.
+      # The mirror's copy has no parent/clone data.
+      url_template: "https://raw.githubusercontent.com/libretro/libretro-database/master/metadat/no-intro/{name}.dat"
+      identification_only: true
+      side: true
     upload:
       label: Uploaded file
       short_label: uploaded DAT
@@ -782,7 +792,7 @@ dats:
   # Settings -> DATs): each source tries the files still unmatched. Complete curated DATs
   # first; libretro keeps one ROM per game; TOSEC names differ from all the others; then the
   # online lookups. Each platform has one active version per source.
-  priority: [nointro, upload, redump, nonredump, psn, fbneo, libretro, tosec, hasheous]
+  priority: [nointro, upload, redump, nonredump, psn, supergrafx, fbneo, libretro, tosec, hasheous]
 
 # Switch names and details from blawar/titledb (MIT): one JSON file per eShop country and
 # language, keyed by eShop ID, each entry carrying its title ID. A downloaded file is kept

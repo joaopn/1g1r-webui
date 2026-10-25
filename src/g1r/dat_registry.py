@@ -1,8 +1,8 @@
 """The per-platform DAT registry: stored versions (database) and the active one (library.yaml).
 
 Sources: the libretro mirror (one-click download), No-Intro DAT-o-MATIC files (uploaded,
-singly or as a daily pack, which is split by platform; a platform's side sets, Non-Redump
-and PSN, are sources of their own), and any uploaded override.
+singly or as a daily pack, which is split by platform; a platform's side sets, Non-Redump,
+PSN and SuperGrafx, are sources of their own), and any uploaded override.
 """
 
 import hashlib
@@ -163,8 +163,8 @@ class DatRegistry:
             raise RegistryError(f"not a usable DAT: {exc}") from exc
         if not dat.games:
             raise RegistryError("the DAT contains no games")
-        # An uploaded side set (Non-Redump, PSN; singly or in the daily pack) goes to its own
-        # source, beside the platform's DAT.
+        # An uploaded side set (Non-Redump, PSN, SuperGrafx; singly or in the daily pack)
+        # goes to its own source, beside the platform's DAT.
         side = side_source(self.settings, profile, dat.header.name)
         if source in UPLOADED and side is not None:
             source = side
