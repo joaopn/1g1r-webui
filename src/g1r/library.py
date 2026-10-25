@@ -38,7 +38,7 @@ class FolderEntry(BaseModel):
     # ignored by their exact path in the folder (POSIX separators).
     ignored_patterns: list[str] | None = None
     ignored_files: list[str] = Field(default_factory=list)
-    # The naming template of the Rename tab (None: the configured default).
+    # The naming template of the Rename tab (None: its platform's default).
     rename_template: str | None = None
 
 
@@ -247,7 +247,7 @@ class LibraryStore:
         chosen = folder.rename_template
         if chosen is not None and chosen in self.settings.rename_templates(folder.platform):
             return chosen
-        return self.settings.rename.default_template
+        return self.settings.rename_default(folder.platform)
 
     def ignored_patterns(self, folder: FolderEntry) -> list[str]:
         if folder.ignored_patterns is None:

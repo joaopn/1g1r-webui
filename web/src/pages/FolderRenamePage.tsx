@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api";
 import { formatCount, formatFiles } from "@/lib/format";
 import { useFolder, useFolderCard, useMeta, useRenames } from "@/lib/queries";
+import { useSaveRenameTemplate } from "@/lib/rename";
 import { FolderHeader } from "@/pages/FolderHeader";
 
 const errorText = (err: unknown) => (err instanceof ApiError ? err.message : String(err));
@@ -27,6 +28,7 @@ export function FolderRenamePage() {
   const folder = useFolder(label, false);
   const renames = useRenames(label);
   const [acting, setActing] = useState<Acting | null>(null);
+  const saveTemplate = useSaveRenameTemplate();
 
   if (folder.error) return <p className="text-status-bad">{errorText(folder.error)}</p>;
   if (!meta.data || !folder.data) return <p className="text-muted-foreground">Loading…</p>;
@@ -72,14 +74,25 @@ export function FolderRenamePage() {
           </>
         }
       >
-        <p data-testid="rename-template">
-          <span className="font-medium">{template?.label ?? f.rename_template}</span>
-          {template?.example ? (
-            <span className="text-muted-foreground">
-              {" "}
-              · e.g. <code className="text-xs">{template.example}</code>
-            </span>
-          ) : null}
+        <p className="flex flex-wrap items-center gap-2" data-testid="rename-template">
+          <span className="text-muted-foreground">File names:</span>
+          {f.rename_templates.length > 1 ? (
+            <select
+              aria-label="Naming template"
+              className="h-8 rounded-md border border-input bg-background px-2 text-sm"
+              value={f.rename_template}
+              disabled={saveTemplate.isPending}
+              onChange={(event) => saveTemplate.mutate({ label, template: event.target.value })}
+            >
+              {f.rename_templates.map((t) => (
+                <option key={t} value={t} title={meta.data?.rename_templates[t]?.description}>
+                  {meta.data?.rename_templates[t]?.label ?? t}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span className="font-medium">{template?.label ?? f.rename_template}</span>
+          )}
         </p>
         {f.rename_templates.length > 1 ? (
           <p className="text-muted-foreground">
@@ -90,7 +103,7 @@ export function FolderRenamePage() {
               to="/settings/romsets"
               className="text-primary underline-offset-2 hover:underline"
             >
-              Pick the template in Romset management
+              Every template is explained in Romset management
             </Link>
             .
           </p>

@@ -92,6 +92,9 @@ test("each set picks its file names template, explained below the table", async 
   const calls = renderPage();
   const select = await screen.findByRole("combobox", { name: "File names for nes" });
   expect(select).toHaveValue("keep");
+  // Above the table, closed until opened; no example under each set's select.
+  expect(screen.getByTestId("templates")).not.toHaveAttribute("open");
+  expect(screen.queryByText("Contra (USA).zip", { selector: "span" })).toBeNull();
   expect(screen.getByTestId("template-dat")).toHaveTextContent(
     "DAT nameThe name the DAT gives the game. e.g. Contra (USA).zip",
   );

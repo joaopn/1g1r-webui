@@ -77,6 +77,9 @@ def test_names_from_templates(make_settings):
     assert renaming.new_stem(settings, "switch", switch, "title-id")[0] == (
         "80 DAYS [0100B9900A1D0800][v65536]"
     )
+    # The other templates work on title IDs too: the name without its IDs.
+    assert renaming.new_stem(settings, "clean", switch, "title-id")[0] == "80 DAYS"
+    assert renaming.new_stem(settings, "dat", switch, "title-id")[0] == "80 DAYS"
     unread = "80 DAYS [0100B9900A1D0800]"
     assert renaming.new_stem(settings, "switch", unread, "title-id") == (
         None,
@@ -87,14 +90,20 @@ def test_names_from_templates(make_settings):
 
 def test_platforms_offer_their_templates(renames):
     client, _, settings = renames
+    # Arcade set names are what emulators load; a template built from title IDs is offered
+    # only where there are title IDs, the others everywhere.
     assert settings.rename_templates("neogeomvs") == ["keep"]
-    assert settings.rename_templates("switch") == ["keep", "switch"]
+    assert settings.rename_default("neogeomvs") == "keep"
+    assert settings.rename_templates("switch") == ["keep", "dat", "clean", "switch"]
+    assert settings.rename_default("switch") == "switch"
     detail = client.get("/api/folders/nes").json()
     assert (detail["rename_template"], detail["rename_templates"]) == (
-        "keep",
+        "dat",
         ["keep", "dat", "clean"],
     )
     refused = client.put("/api/folders/nes/rename-template", json={"template": "switch"})
+    assert refused.status_code == HTTPStatus.BAD_REQUEST
+    refused = client.put("/api/folders/nes/rename-template", json={"template": "bogus"})
     assert refused.status_code == HTTPStatus.BAD_REQUEST
     meta = client.get("/api/meta").json()
     assert meta["rename_templates"]["dat"]["label"] == "DAT name"
@@ -102,11 +111,14 @@ def test_platforms_offer_their_templates(renames):
 
 def test_rename_to_dat_names_then_clean_titles_then_back(renames):
     client, folder, settings = renames
-    # Keep names (the default): nothing proposed, the tab has nothing to do.
+    # Keep names: nothing proposed, the tab has nothing to do.
+    kept = client.put("/api/folders/nes/rename-template", json={"template": "keep"}).json()
+    assert kept["rename_template"] == "keep"
     assert {r["status"] for r in rows_of(client).values()} == {"skipped"}
     assert client.get("/api/folders").json()[0]["rename"]["proposed"] == 0
 
-    saved = client.put("/api/folders/nes/rename-template", json={"template": "dat"}).json()
+    # Back to the platform's default, DAT name.
+    saved = client.put("/api/folders/nes/rename-template", json={"template": None}).json()
     assert saved["rename_template"] == "dat"
     rows = rows_of(client)
     assert rows["contra.zip"]["new_path"] == "Contra (USA).zip"

@@ -60,7 +60,8 @@ afterEach(() => {
 function renderPage(renames: Renames = RENAMES) {
   const posts: { url: string; body: unknown }[] = [];
   vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
-    if (init?.method === "POST") posts.push({ url, body: JSON.parse(String(init.body)) });
+    if (init?.method === "POST" || init?.method === "PUT")
+      posts.push({ url, body: JSON.parse(String(init.body)) });
     const body = url.endsWith("/meta")
       ? META
       : url.endsWith("/folders")
@@ -131,4 +132,14 @@ test("renaming waits while files are to convert; reverting does not", async () =
   );
   expect(screen.getByRole("button", { name: "Rename (1 file)" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "Revert (1 file)" })).toBeEnabled();
+});
+
+test("the set's naming template is picked on the tab too", async () => {
+  const posts = renderPage();
+  const select = await screen.findByRole("combobox", { name: "Naming template" });
+  expect(select).toHaveValue("dat");
+  await userEvent.selectOptions(select, "clean");
+  expect(posts.find((p) => p.url.endsWith("/folders/nes/rename-template"))?.body).toEqual({
+    template: "clean",
+  });
 });

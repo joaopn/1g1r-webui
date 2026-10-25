@@ -450,6 +450,7 @@ platforms:
       names_from: description
       # Set names are what emulators load: never renamed.
       rename_templates: [keep]
+      rename_default: keep
       igir_merge_modes: [split, nonmerged]
       # Clones are hacks, bootlegs and other releases of the parent: parent first.
       ranking_criteria: [parent, prerelease, region]
@@ -520,7 +521,7 @@ platforms:
       targets: [nsp]
       default_target: nsp
       title_ids: true
-      rename_templates: [keep, switch]
+      rename_default: switch
       # No public Switch DAT exists: files are identified by title ID.
       dat_download: false
     tg16:
@@ -1330,12 +1331,11 @@ ranking:
 # Renaming files to a template (a set's Rename tab), for the tools that read the library
 # after us (RomM and other frontends read tags from file names). Each set picks one in
 # Settings -> Romset management; a revert gives a file the name it had before its first
-# rename.
+# rename. Every template is offered where it can work, unless the platform lists its own
+# (platforms.profiles.<id>.rename_templates).
 rename:
-  # What a set starts with, and what a platform without a list of its own offers
-  # (platforms.profiles.<id>.rename_templates).
-  default_template: keep
-  offered: [keep, dat, clean]
+  # What a set starts with, unless its platform says otherwise (rename_default).
+  default_template: dat
   templates:
     keep:
       label: Keep names
@@ -1363,6 +1363,7 @@ rename:
         file has no cnmt.xml).
       example: 80 DAYS [0100B9900A1D0000][v0].nsp
       format: "{title} [{title_id}][v{version}]"
+      title_ids: true
   # How a file must have been identified to take its name: a checksum (or an identical copy
   # of a file matched by one), a title ID, or the user's own assignment. A name from
   # Hasheous or a name match is not proof enough.

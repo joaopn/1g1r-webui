@@ -1,5 +1,5 @@
 import { useMutation } from "@tanstack/react-query";
-import { Eye, EyeOff, Trash2 } from "lucide-react";
+import { ChevronRight, Eye, EyeOff, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { PlatformIcon } from "@/components/PlatformIcon";
@@ -15,14 +15,8 @@ import {
 import { ApiError, api, json } from "@/lib/api";
 import { formatFiles } from "@/lib/format";
 import { foldersByName } from "@/lib/platforms";
-import {
-  invalidateFolder,
-  keys,
-  queryClient,
-  useFolders,
-  useMeta,
-  useSettingsData,
-} from "@/lib/queries";
+import { keys, queryClient, useFolders, useMeta, useSettingsData } from "@/lib/queries";
+import { useSaveRenameTemplate } from "@/lib/rename";
 import { folderState } from "@/lib/sections";
 import type { FolderCard } from "@/lib/types";
 import { Page } from "@/pages/SettingsPages";
@@ -65,15 +59,7 @@ export function RomsetManagementPage() {
     },
     onError: (err) => toast.error(errorText(err)),
   });
-  const saveTemplate = useMutation({
-    mutationFn: ({ label, template }: { label: string; template: string }) =>
-      api(`/folders/${label}/rename-template`, json("PUT", { template })),
-    onSuccess: (_, { label }) => {
-      toast.success("Naming template saved");
-      invalidateFolder(label);
-    },
-    onError: (err) => toast.error(errorText(err)),
-  });
+  const saveTemplate = useSaveRenameTemplate();
   if (!meta.data || !folders.data || !data.data)
     return <p className="text-muted-foreground">Loading…</p>;
   const sets = foldersByName(folders.data, meta.data.platforms);
@@ -89,6 +75,45 @@ export function RomsetManagementPage() {
       title="Romset management"
       intro="Each platform folder you added (a set), with its label. The target format applies to every set of that platform; the file names template is the set's own (its Rename tab). Hidden sets leave the sidebar and Home but stay added: their folder cannot be added again until removed. Removing one touches no file."
     >
+      {offered.length > 0 ? (
+        <details
+          aria-label="File name templates"
+          className="group rounded-lg border border-border bg-card px-4 py-3 text-sm"
+          data-testid="templates"
+        >
+          <summary className="flex cursor-pointer list-none items-center gap-2 font-semibold">
+            <ChevronRight
+              className="size-4 shrink-0 transition-transform group-open:rotate-90"
+              aria-hidden="true"
+            />
+            File name templates
+          </summary>
+          <div className="mt-2 space-y-2">
+            <p className="text-muted-foreground">
+              What a set's Rename tab proposes. Only files identified by checksum, title ID or by
+              you are renamed, in their folder, keeping their extension; every rename can be
+              reverted to the file's first name.
+            </p>
+            <dl className="grid gap-x-4 gap-y-2 sm:grid-cols-[auto_1fr]">
+              {offered.map((id) => (
+                <div key={id} className="contents" data-testid={`template-${id}`}>
+                  <dt className="font-medium">{templates[id].label}</dt>
+                  <dd className="text-muted-foreground">
+                    {templates[id].description}
+                    {templates[id].example ? (
+                      <>
+                        {" "}
+                        e.g.{" "}
+                        <code className="text-foreground text-xs">{templates[id].example}</code>
+                      </>
+                    ) : null}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        </details>
+      ) : null}
       {sets.length === 0 ? (
         <p className="text-muted-foreground text-sm">No sets yet.</p>
       ) : (
@@ -172,14 +197,6 @@ export function RomsetManagementPage() {
                           </option>
                         ))}
                       </select>
-                      {templates[set.rename_template]?.example ? (
-                        <span
-                          className="mt-0.5 block max-w-40 truncate text-muted-foreground text-xs"
-                          title={`${templates[set.rename_template]?.description} e.g. ${templates[set.rename_template]?.example}`}
-                        >
-                          {templates[set.rename_template]?.example}
-                        </span>
-                      ) : null}
                     </td>
                     <td className="px-3 py-2">
                       <div className="flex justify-end gap-2">
@@ -215,36 +232,6 @@ export function RomsetManagementPage() {
           </table>
         </div>
       )}
-
-      {offered.length > 0 ? (
-        <section
-          aria-label="File name templates"
-          className="space-y-2 rounded-lg border border-border bg-card px-4 py-3 text-sm"
-        >
-          <h2 className="font-semibold">File name templates</h2>
-          <p className="text-muted-foreground">
-            What a set's Rename tab proposes. Only files identified by checksum, title ID or by you
-            are renamed, in their folder, keeping their extension; every rename can be reverted to
-            the file's first name.
-          </p>
-          <dl className="grid gap-x-4 gap-y-2 sm:grid-cols-[auto_1fr]">
-            {offered.map((id) => (
-              <div key={id} className="contents" data-testid={`template-${id}`}>
-                <dt className="font-medium">{templates[id].label}</dt>
-                <dd className="text-muted-foreground">
-                  {templates[id].description}
-                  {templates[id].example ? (
-                    <>
-                      {" "}
-                      e.g. <code className="text-foreground text-xs">{templates[id].example}</code>
-                    </>
-                  ) : null}
-                </dd>
-              </div>
-            ))}
-          </dl>
-        </section>
-      ) : null}
 
       <Dialog open={removing !== null} onOpenChange={(open) => (open ? null : setRemoving(null))}>
         <DialogContent>

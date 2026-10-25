@@ -215,8 +215,10 @@ class PlatformProfile(_Strict):
     excess_files: bool = False
     # The default ranking criteria for this platform's folders (None: the global default).
     ranking_criteria: list[str] | None = None
-    # The naming templates its sets may pick (None: rename.offered).
+    # The naming templates its sets may pick (None: every template that works on it), and
+    # the one a set starts with (None: rename.default_template).
     rename_templates: list[str] | None = None
+    rename_default: str | None = None
 
 
 class PlatformsConfig(_Strict):
@@ -745,11 +747,12 @@ class RenameTemplate(_Strict):
     # The new name without its extension, from {game} (the identified name), {title} (it
     # without tags), {title_id} and {version} (title-ID platforms); None: names are kept.
     format: str | None = None
+    # Built from a title ID: offered on title-ID platforms only.
+    title_ids: bool = False
 
 
 class RenameConfig(_Strict):
     default_template: str
-    offered: list[str] = Field(min_length=1)
     templates: dict[str, RenameTemplate]
     methods: list[str] = Field(min_length=1)
     unsafe_characters: str
@@ -760,11 +763,10 @@ class RenameConfig(_Strict):
 
     @model_validator(mode="after")
     def _known(self) -> "RenameConfig":
-        unknown = [t for t in [self.default_template, *self.offered] if t not in self.templates]
-        if unknown:
-            raise ValueError(f"rename: unknown templates {unknown}")
-        if self.default_template not in self.offered:
-            raise ValueError("rename: default_template must be offered")
+        if self.default_template not in self.templates:
+            raise ValueError(f"rename: unknown default template {self.default_template}")
+        if self.templates[self.default_template].title_ids:
+            raise ValueError("rename: the default template must work without title IDs")
         return self
 
 
@@ -839,21 +841,27 @@ class Settings(_Strict):
     @model_validator(mode="after")
     def _rename_templates(self) -> "Settings":
         for platform_id, profile in self.platforms.profiles.items():
-            offered = profile.rename_templates
-            if offered is None:
-                continue
-            unknown = [t for t in offered if t not in self.rename.templates]
+            unknown = [t for t in profile.rename_templates or [] if t not in self.rename.templates]
             if unknown:
                 raise ValueError(f"platform {platform_id}: unknown rename templates {unknown}")
-            if self.rename.default_template not in offered:
-                raise ValueError(f"platform {platform_id}: rename templates miss the default")
+            if self.rename_default(platform_id) not in self.rename_templates(platform_id):
+                raise ValueError(f"platform {platform_id}: its rename default is not offered")
         return self
 
     def rename_templates(self, platform: str) -> list[str]:
-        """The naming templates a set of this platform may pick."""
+        """The naming templates a set of this platform may pick: its own list, else every
+        one that can work on it (those built from a title ID need title IDs)."""
         profile = self.platforms.profiles.get(platform)
-        offered = profile.rename_templates if profile is not None else None
-        return list(offered if offered is not None else self.rename.offered)
+        if profile is not None and profile.rename_templates is not None:
+            return list(profile.rename_templates)
+        title_ids = profile is not None and profile.title_ids
+        return [k for k, t in self.rename.templates.items() if title_ids or not t.title_ids]
+
+    def rename_default(self, platform: str) -> str:
+        """The naming template a set of this platform starts with."""
+        profile = self.platforms.profiles.get(platform)
+        chosen = profile.rename_default if profile is not None else None
+        return chosen if chosen is not None else self.rename.default_template
 
     @property
     def dats_root(self) -> Path:
