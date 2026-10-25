@@ -173,7 +173,7 @@ export const META: Meta = {
   },
   label_pattern: "^[a-z0-9][a-z0-9._-]*$",
   rename_templates: {
-    keep: { label: "Keep names", description: "Files keep the names they have.", example: "" },
+    keep: { label: "Disabled", description: "Files keep the names they have.", example: "" },
     dat: {
       label: "DAT name",
       description: "The name the DAT gives the game.",

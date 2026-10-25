@@ -22,9 +22,13 @@ export function setSections(folder: FolderInfo) {
 export const needsConversion = (f: FolderCard) => f.progress.to_convert > 0;
 
 /** Where a set opens from Home and the sidebar: conversion work comes first (the same test as
- * Home's badge and border), so a set needing both opens Conversion. */
+ * Home's badge and border), so a set needing both opens Conversion; a set whose only work
+ * left is renaming opens Rename. */
 export function openingSection(folder: FolderCard): SectionId {
-  return needsConversion(folder) ? "conversion" : "matching";
+  if (needsConversion(folder)) return "conversion";
+  if (folder.progress.to_process === 0 && !updatesLeft(folder) && renamesLeft(folder))
+    return "rename";
+  return "matching";
 }
 
 /** The page has nothing left to do (a check on its tab). Conversion: every file in the

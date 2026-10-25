@@ -38,6 +38,7 @@
   --color-status-convert: var(--status-convert);
   --color-status-match: var(--status-match);
   --color-status-unscanned: var(--status-unscanned);
+  --color-status-rename: var(--status-rename);
 }
 
 :root {
@@ -69,10 +70,11 @@
   --status-warn: #9a6200;
   --status-bad: var(--destructive);
   --status-info: #3b5bcc;
-  /* Home: sets needing conversion, sets needing matching, sets never scanned. */
+  /* Home: sets needing conversion, matching, scanning, renaming. */
   --status-convert: #7546c2;
   --status-match: #2a7590;
   --status-unscanned: #6b7280;
+  --status-rename: #ad3c7a;
   color-scheme: light;
 }
 
@@ -107,6 +109,7 @@
   --status-convert: #b9a0f5;
   --status-match: #7cc4dc;
   --status-unscanned: #a3a9b5;
+  --status-rename: #f0a0cb;
   color-scheme: dark;
 }
 

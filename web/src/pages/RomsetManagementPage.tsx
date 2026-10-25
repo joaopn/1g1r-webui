@@ -16,12 +16,70 @@ import { ApiError, api, json } from "@/lib/api";
 import { formatFiles } from "@/lib/format";
 import { foldersByName } from "@/lib/platforms";
 import { keys, queryClient, useFolders, useMeta, useSettingsData } from "@/lib/queries";
-import { useSaveRenameTemplate } from "@/lib/rename";
+import { useSaveRenameMode, useSaveRenameTemplate } from "@/lib/rename";
 import { folderState } from "@/lib/sections";
-import type { FolderCard } from "@/lib/types";
+import type { FolderCard, RenameMode } from "@/lib/types";
+import { cn } from "@/lib/utils";
 import { Page } from "@/pages/SettingsPages";
 
 const errorText = (err: unknown) => (err instanceof ApiError ? err.message : String(err));
+
+/** The renaming badge: Disabled or Recommended for every set; Custom once a set picks its own
+ * template (it cannot be chosen, only reached that way). */
+const RENAME_CHOICES = [
+  { id: "disabled", label: "Disabled", hint: "Every set keeps its file names." },
+  { id: "recommended", label: "Recommended", hint: "Every set takes its platform's template." },
+  { id: "custom", label: "Custom", hint: "Some set picked a template of its own below." },
+] as const;
+type RenameChoice = (typeof RENAME_CHOICES)[number]["id"];
+
+function RenameSwitch({
+  value,
+  busy,
+  onChange,
+}: {
+  value: RenameChoice;
+  busy: boolean;
+  onChange: (mode: RenameMode) => void;
+}) {
+  return (
+    <fieldset
+      className="flex shrink-0 overflow-hidden rounded-full border border-border text-sm"
+      data-testid="rename-mode"
+    >
+      <legend className="sr-only">Renaming</legend>
+      {RENAME_CHOICES.map((c) => {
+        const active = c.id === value;
+        const off = busy || (c.id === "custom" && !active);
+        return (
+          <label
+            key={c.id}
+            title={c.hint}
+            className={cn(
+              "px-3 py-1 transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring",
+              active
+                ? "bg-primary text-primary-foreground"
+                : off
+                  ? "cursor-not-allowed bg-card text-muted-foreground"
+                  : "cursor-pointer bg-card hover:bg-accent hover:text-accent-foreground",
+            )}
+          >
+            <input
+              type="radio"
+              name="rename-mode"
+              className="sr-only"
+              value={c.id}
+              checked={active}
+              disabled={off}
+              onChange={() => (c.id === "custom" ? null : onChange(c.id))}
+            />
+            {c.label}
+          </label>
+        );
+      })}
+    </fieldset>
+  );
+}
 
 /**
  * Every set, hidden ones included: its platform's target format, show or hide it, or remove it
@@ -60,10 +118,15 @@ export function RomsetManagementPage() {
     onError: (err) => toast.error(errorText(err)),
   });
   const saveTemplate = useSaveRenameTemplate();
+  const saveMode = useSaveRenameMode();
+  // Leaving Custom drops every set's own template: asked first.
+  const [switching, setSwitching] = useState<RenameMode | null>(null);
   if (!meta.data || !folders.data || !data.data)
     return <p className="text-muted-foreground">Loading…</p>;
   const sets = foldersByName(folders.data, meta.data.platforms);
   const targets = data.data.targets;
+  const rename = data.data.rename;
+  const renameChoice: RenameChoice = rename.custom ? "custom" : rename.mode;
   const templates = meta.data.rename_templates;
   // The templates some set here may pick, in their configured order.
   const offered = Object.keys(templates).filter((id) =>
@@ -73,8 +136,19 @@ export function RomsetManagementPage() {
   return (
     <Page
       title="Romset management"
-      intro="Each platform folder you added (a set), with its label. The target format applies to every set of that platform; the file names template is the set's own (its Rename tab). Hidden sets leave the sidebar and Home but stay added: their folder cannot be added again until removed. Removing one touches no file."
+      intro="Each platform folder you added (a set), with its label. The target format applies to every set of that platform; renaming starts disabled; Recommended gives each set its platform's file names template (its Rename tab), and a set may pick its own (Custom). Hidden sets leave the sidebar and Home but stay added: their folder cannot be added again until removed. Removing one touches no file."
     >
+      <div className="flex flex-wrap items-center gap-3 text-sm">
+        <span className="font-semibold">Renaming</span>
+        <RenameSwitch
+          value={renameChoice}
+          busy={saveMode.isPending}
+          onChange={(mode) => (rename.custom ? setSwitching(mode) : saveMode.mutate(mode))}
+        />
+        <span className="text-muted-foreground">
+          {RENAME_CHOICES.find((c) => c.id === renameChoice)?.hint}
+        </span>
+      </div>
       {offered.length > 0 ? (
         <details
           aria-label="File name templates"
@@ -232,6 +306,33 @@ export function RomsetManagementPage() {
           </table>
         </div>
       )}
+
+      <Dialog open={switching !== null} onOpenChange={(open) => (open ? null : setSwitching(null))}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              Renaming: {RENAME_CHOICES.find((c) => c.id === switching)?.label}?
+            </DialogTitle>
+            <DialogDescription>
+              The templates picked on single sets are dropped:{" "}
+              {RENAME_CHOICES.find((c) => c.id === switching)?.hint.toLowerCase()}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSwitching(null)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={saveMode.isPending}
+              onClick={() =>
+                switching && saveMode.mutate(switching, { onSuccess: () => setSwitching(null) })
+              }
+            >
+              Switch
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={removing !== null} onOpenChange={(open) => (open ? null : setRemoving(null))}>
         <DialogContent>

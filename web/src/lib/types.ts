@@ -226,7 +226,7 @@ export type FolderCard = FolderInfo & {
   dat_download: { source: string; label: string } | null;
   /** No active DAT, and the platform needs one to identify anything. */
   needs_dat: boolean;
-  /** Which run is due ("Needing scanning"): Check files before any run, else a Scan when
+  /** Which run is due ("Needs scanning"): Check files before any run, else a Scan when
    * never scanned, after a failed one, a DAT change or a conversion; null when none is. */
   needs: "check" | "identify" | null;
   needs_scan: boolean;
@@ -455,8 +455,13 @@ export type DatRow = {
   titledb: boolean;
 };
 
+/** Renaming for every set: off, or each platform's recommended template. */
+export type RenameMode = "disabled" | "recommended";
+
 export type SettingsData = {
   targets: Record<string, string>;
+  /** `custom`: some set picked a template of its own. */
+  rename: { mode: RenameMode; custom: boolean };
   lookups: { hasheous: boolean };
   hasheous: {
     site: string;

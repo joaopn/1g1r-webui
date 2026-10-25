@@ -1,7 +1,7 @@
 import { formatCount } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-export type ChipTone = "good" | "convert" | "match" | "unscanned";
+export type ChipTone = "good" | "convert" | "match" | "unscanned" | "rename";
 /** `note`: a few words after the count, e.g. the share of the view needing a look. */
 export type QuickViewChip = {
   id: string;
@@ -32,6 +32,11 @@ const TONES: Record<ChipTone, { idle: string; dot: string; active: string }> = {
     idle: "border-status-unscanned/60",
     dot: "bg-status-unscanned",
     active: "border-status-unscanned bg-status-unscanned",
+  },
+  rename: {
+    idle: "border-status-rename/60",
+    dot: "bg-status-rename",
+    active: "border-status-rename bg-status-rename",
   },
 };
 

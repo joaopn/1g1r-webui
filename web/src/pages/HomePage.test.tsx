@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -398,6 +398,28 @@ test("a set with nothing left to process gets a green border in both views", asy
   }
 });
 
+test("a set whose only work left is renaming has its own badge and colour, and opens Rename", async () => {
+  const filled = (label: string, proposed: number): FolderCard => ({
+    ...card(label, "gb", SCAN),
+    summary: { counts: {}, roms: 10, bytes: 0, identified: 10, unmatched: 0, methods: {} },
+    progress: { processed: 10, to_process: 0, to_match: 0, to_convert: 0 },
+    rename: { template: "dat", files: 10, proposed, named: 10 - proposed, skipped: 0, renamed: 0 },
+  });
+  renderPage([filled("done", 0), filled("named", 3)]);
+  const named = await screen.findByTestId("folder-card-named");
+  // Names to change are work left: not done, renaming's own colour.
+  expect(named.dataset.tone).toBe("rename");
+  expect(named).toHaveClass("border-status-rename");
+  expect(screen.getByTestId("folder-card-done").dataset.tone).toBe("good");
+  expect(screen.getByTestId("quick-views")).toHaveTextContent("Done1");
+  await userEvent.click(screen.getByLabelText(/^Needs renaming/));
+  expect(screen.queryByTestId("folder-card-done")).toBeNull();
+  expect(within(named).getByRole("link", { name: META.platforms.gb.name })).toHaveAttribute(
+    "href",
+    "/folders/named/rename",
+  );
+});
+
 test("the badges filter the sets by state, with counts, and are remembered", async () => {
   const filled = (label: string, toMatch: number, toConvert: number): FolderCard => ({
     ...card(label, "gb", SCAN),
@@ -423,7 +445,7 @@ test("the badges filter the sets by state, with counts, and are remembered", asy
       .sort();
   expect(await screen.findByTestId("folder-card-done")).toBeInTheDocument();
   expect(screen.getByTestId("quick-views")).toHaveTextContent(
-    "All5Done1Needing conversion2Needing matching2Needing scanning1",
+    "All5Done1Needs conversion2Needs matching2Needs renaming0Needs scanning1",
   );
   expect(cards()).toEqual(["both", "convert", "done", "empty", "match"]);
   // Borders and badges share the colour of the state; a set needing both shows conversion.
@@ -438,37 +460,37 @@ test("the badges filter the sets by state, with counts, and are remembered", asy
   expect(screen.getByTestId("folder-card-match")).toHaveClass("border-status-match");
   expect(
     [...screen.getByTestId("quick-views").querySelectorAll("label")].map((l) => l.dataset.tone),
-  ).toEqual([undefined, "good", "convert", "match", "unscanned"]);
+  ).toEqual([undefined, "good", "convert", "match", "rename", "unscanned"]);
   const badge = (label: RegExp) => screen.getByLabelText(label);
   await userEvent.click(badge(/^Done/));
   expect(cards()).toEqual(["done"]);
   expect(badge(/^All/)).not.toBeChecked();
   // Badges add up: a set shows when it is in any badge chosen.
-  await userEvent.click(badge(/^Needing conversion/));
+  await userEvent.click(badge(/^Needs conversion/));
   expect(cards()).toEqual(["both", "convert", "done"]);
-  await userEvent.click(badge(/^Needing scanning/));
+  await userEvent.click(badge(/^Needs scanning/));
   expect(cards()).toEqual(["both", "convert", "done", "empty"]);
   expect(localStorage.getItem("g1r.home.show.v2")).toBe('["done","conversion","unscanned"]');
   // Clicking a chosen badge drops it; dropping the last one is All again.
   await userEvent.click(badge(/^Done/));
   expect(cards()).toEqual(["both", "convert", "empty"]);
-  await userEvent.click(badge(/^Needing conversion/));
-  await userEvent.click(badge(/^Needing scanning/));
+  await userEvent.click(badge(/^Needs conversion/));
+  await userEvent.click(badge(/^Needs scanning/));
   expect(badge(/^All/)).toBeChecked();
   expect(cards()).toEqual(["both", "convert", "done", "empty", "match"]);
   // All turns the others off.
-  await userEvent.click(badge(/^Needing matching/));
+  await userEvent.click(badge(/^Needs matching/));
   await userEvent.click(badge(/^Done/));
   expect(cards()).toEqual(["both", "done", "match"]);
   await userEvent.click(badge(/^All/));
   expect(cards()).toEqual(["both", "convert", "done", "empty", "match"]);
   expect(
-    [badge(/^Done/), badge(/^Needing matching/)].some((b) => (b as HTMLInputElement).checked),
+    [badge(/^Done/), badge(/^Needs matching/)].some((b) => (b as HTMLInputElement).checked),
   ).toBe(false);
   expect(localStorage.getItem("g1r.home.show.v2")).toBe('["all"]');
 });
 
-test("Needing scanning holds sets never scanned, whose last scan failed, or with a new DAT", async () => {
+test("Needs scanning holds sets never scanned, whose last scan failed, or with a new DAT", async () => {
   renderPage([
     card("never", "gb", null),
     card("failed", "gb", { ...SCAN, status: "failed" }),
@@ -476,7 +498,7 @@ test("Needing scanning holds sets never scanned, whose last scan failed, or with
     card("fine", "gb", SCAN),
     card("busy", "gb", { ...SCAN, status: "running" }),
   ]);
-  await userEvent.click(await screen.findByLabelText(/^Needing scanning/));
+  await userEvent.click(await screen.findByLabelText(/^Needs scanning/));
   expect(
     screen
       .queryAllByTestId(/^folder-card-/)

@@ -53,12 +53,13 @@ const needsMatching = (f: FolderCard) => f.progress.to_match > 0;
 const needsScan = (f: FolderCard) => f.needs_scan;
 
 /** The card's border: needing a scan, done, else needing conversion (it opens there), else
- * matching. */
+ * matching, else renaming. */
 function cardTone(folder: FolderCard): ChipTone | null {
   if (needsScan(folder)) return "unscanned";
   if (isCompleted(folder)) return "good";
   if (needsConversion(folder)) return "convert";
   if (needsMatching(folder)) return "match";
+  if (renamesLeft(folder)) return "rename";
   return null;
 }
 // Literal class names, so Tailwind generates them; ring-1 makes 2px without a layout shift.
@@ -67,6 +68,7 @@ const CARD_BORDERS: Record<ChipTone, string> = {
   convert: "border-status-convert ring-1 ring-status-convert hover:border-status-convert",
   match: "border-status-match ring-1 ring-status-match hover:border-status-match",
   unscanned: "border-status-unscanned ring-1 ring-status-unscanned hover:border-status-unscanned",
+  rename: "border-status-rename ring-1 ring-status-rename hover:border-status-rename",
 };
 
 // v1 held one badge; v2 holds the list of badges chosen.
@@ -76,9 +78,10 @@ const SHOW_KEY = "g1r.home.show.v2";
 const SHOWS = [
   { id: "all", label: "All", test: () => true },
   { id: "done", label: "Done", test: isCompleted, tone: "good" },
-  { id: "conversion", label: "Needing conversion", test: needsConversion, tone: "convert" },
-  { id: "matching", label: "Needing matching", test: needsMatching, tone: "match" },
-  { id: "unscanned", label: "Needing scanning", test: needsScan, tone: "unscanned" },
+  { id: "conversion", label: "Needs conversion", test: needsConversion, tone: "convert" },
+  { id: "matching", label: "Needs matching", test: needsMatching, tone: "match" },
+  { id: "rename", label: "Needs renaming", test: renamesLeft, tone: "rename" },
+  { id: "unscanned", label: "Needs scanning", test: needsScan, tone: "unscanned" },
 ] as const satisfies readonly {
   id: string;
   label: string;

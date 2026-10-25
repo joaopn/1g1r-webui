@@ -25,7 +25,7 @@ const SET = {
   warnings: [],
 };
 
-function renderPage() {
+function renderPage(rename = { mode: "disabled", custom: false }) {
   const calls: { url: string; init?: RequestInit }[] = [];
   vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
     calls.push({ url, init });
@@ -46,7 +46,7 @@ function renderPage() {
             },
           ]
         : url.endsWith("/settings")
-          ? { targets: { nes: "zip", gb: "zip" } }
+          ? { targets: { nes: "zip", gb: "zip" }, rename }
           : {};
     return new Response(JSON.stringify(body), { status: 200 });
   });
@@ -101,4 +101,29 @@ test("each set picks its file names template, explained below the table", async 
   await userEvent.selectOptions(select, "dat");
   const put = calls.find((c) => c.url.endsWith("/folders/nes/rename-template"));
   expect(JSON.parse(String(put?.init?.body))).toEqual({ template: "dat" });
+});
+
+test("renaming starts disabled and switches to recommended for every set", async () => {
+  const calls = renderPage();
+  const mode = await screen.findByTestId("rename-mode");
+  expect(screen.getByLabelText("Disabled", { selector: "input[name=rename-mode]" })).toBeChecked();
+  // Custom is only reached by picking a template on a set.
+  expect(screen.getByLabelText("Custom")).toBeDisabled();
+  expect(mode).toHaveTextContent("DisabledRecommendedCustom");
+  await userEvent.click(screen.getByLabelText("Recommended"));
+  const put = calls.find((c) => c.url.endsWith("/settings/rename-mode"));
+  expect(JSON.parse(String(put?.init?.body))).toEqual({ mode: "recommended" });
+});
+
+test("leaving Custom asks first: the sets' own templates are dropped", async () => {
+  const calls = renderPage({ mode: "disabled", custom: true });
+  expect(await screen.findByLabelText("Custom")).toBeChecked();
+  await userEvent.click(screen.getByLabelText("Recommended"));
+  expect(
+    await screen.findByText(/templates picked on single sets are dropped/),
+  ).toBeInTheDocument();
+  expect(calls.some((c) => c.url.endsWith("/settings/rename-mode"))).toBe(false);
+  await userEvent.click(screen.getByRole("button", { name: "Switch" }));
+  const put = calls.find((c) => c.url.endsWith("/settings/rename-mode"));
+  expect(JSON.parse(String(put?.init?.body))).toEqual({ mode: "recommended" });
 });
