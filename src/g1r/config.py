@@ -757,7 +757,13 @@ class RenameTemplate(_Strict):
     clean_with: str | None = None
 
 
+# Renaming for every set: off (each keeps its names), or each platform's recommended template.
+RenameMode = Literal["disabled", "recommended"]
+
+
 class RenameConfig(_Strict):
+    default_mode: RenameMode
+    disabled_template: str
     default_template: str
     templates: dict[str, RenameTemplate]
     methods: list[str] = Field(min_length=1)
@@ -771,6 +777,8 @@ class RenameConfig(_Strict):
     def _known(self) -> "RenameConfig":
         if self.default_template not in self.templates:
             raise ValueError(f"rename: unknown default template {self.default_template}")
+        if self.disabled_template not in self.templates:
+            raise ValueError(f"rename: unknown disabled template {self.disabled_template}")
         if self.templates[self.default_template].title_ids:
             raise ValueError("rename: the default template must work without title IDs")
         return self
@@ -852,6 +860,8 @@ class Settings(_Strict):
                 raise ValueError(f"platform {platform_id}: unknown rename templates {unknown}")
             if self.rename_default(platform_id) not in self.rename_templates(platform_id):
                 raise ValueError(f"platform {platform_id}: its rename default is not offered")
+            if self.rename.disabled_template not in self.rename_templates(platform_id):
+                raise ValueError(f"platform {platform_id}: the disabled template is not offered")
         return self
 
     def rename_templates(self, platform: str) -> list[str]:
@@ -864,7 +874,7 @@ class Settings(_Strict):
         return [k for k, t in self.rename.templates.items() if title_ids or not t.title_ids]
 
     def rename_default(self, platform: str) -> str:
-        """The naming template a set of this platform starts with."""
+        """The naming template recommended for a set of this platform."""
         profile = self.platforms.profiles.get(platform)
         chosen = profile.rename_default if profile is not None else None
         return chosen if chosen is not None else self.rename.default_template

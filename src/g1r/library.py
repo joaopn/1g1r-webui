@@ -13,7 +13,7 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from g1r.config import RankingConfig, Settings
+from g1r.config import RankingConfig, RenameMode, Settings
 
 LIBRARY_HEADER = (
     "# Written by 1g1r-webui from what you set in the UI. Human-readable on purpose;\n"
@@ -38,7 +38,7 @@ class FolderEntry(BaseModel):
     # ignored by their exact path in the folder (POSIX separators).
     ignored_patterns: list[str] | None = None
     ignored_files: list[str] = Field(default_factory=list)
-    # The naming template of the Rename tab (None: its platform's default).
+    # The naming template of the Rename tab (None: the one renaming gives every set).
     rename_template: str | None = None
 
 
@@ -109,6 +109,8 @@ class Library(BaseModel):
     page_size: int | None = None
     # Threads per igir run (None: igir's own).
     igir_threads: int | None = None
+    # Renaming for every set without a template of its own (None: the configured default).
+    rename_mode: RenameMode | None = None
     folders: list[FolderEntry] = Field(default_factory=list)
 
     def folder(self, label: str) -> FolderEntry | None:
@@ -241,13 +243,31 @@ class LibraryStore:
         chosen = library.igir_threads
         return chosen if chosen is not None and chosen <= self.settings.igir.max_threads else None
 
-    def rename_template(self, folder: FolderEntry) -> str:
-        """The folder's naming template, else the default (also when its platform no longer
-        offers the one chosen)."""
+    def rename_mode(self, library: Library) -> RenameMode:
+        chosen = library.rename_mode
+        return chosen if chosen is not None else self.settings.rename.default_mode
+
+    def mode_template(self, library: Library, platform: str) -> str:
+        """The naming template renaming gives a set of this platform: its recommended one, or
+        the disabled one."""
+        if self.rename_mode(library) == "recommended":
+            return self.settings.rename_default(platform)
+        return self.settings.rename.disabled_template
+
+    def rename_template(self, library: Library, folder: FolderEntry) -> str:
+        """The folder's naming template, else the one renaming gives it (also when its platform
+        no longer offers the one chosen)."""
         chosen = folder.rename_template
         if chosen is not None and chosen in self.settings.rename_templates(folder.platform):
             return chosen
-        return self.settings.rename_default(folder.platform)
+        return self.mode_template(library, folder.platform)
+
+    def rename_custom(self, library: Library) -> bool:
+        """Some set has a template other than the one renaming gives it."""
+        return any(
+            self.rename_template(library, f) != self.mode_template(library, f.platform)
+            for f in library.folders
+        )
 
     def ignored_patterns(self, folder: FolderEntry) -> list[str]:
         if folder.ignored_patterns is None:

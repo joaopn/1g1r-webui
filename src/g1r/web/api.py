@@ -36,7 +36,7 @@ from g1r import (
     unmatched,
     updates,
 )
-from g1r.config import RANKING_CRITERIA, RankingConfig, Settings
+from g1r.config import RANKING_CRITERIA, RankingConfig, RenameMode, Settings
 from g1r.dat_registry import DatRegistry, RegistryError, name_style
 from g1r.hasheous import SERVICE as HASHEOUS
 from g1r.library import FolderEntry, Library, LibraryStore, PlatformDats
@@ -157,8 +157,12 @@ class RenameScope(BaseModel):
 
 
 class RenameTemplateChoice(BaseModel):
-    # None: back to the configured default.
+    # None: back to the one renaming gives every set.
     template: str | None = None
+
+
+class RenameModeChoice(BaseModel):
+    mode: RenameMode
 
 
 class LeaveAlone(BaseModel):
@@ -334,7 +338,7 @@ def build_router(
             # Identified by title ID (Switch): the set has an Updates tab.
             "title_ids": title_ids(folder.platform),
             # The Rename tab's naming template, and those the platform offers.
-            "rename_template": store.rename_template(folder),
+            "rename_template": store.rename_template(library, folder),
             "rename_templates": settings.rename_templates(folder.platform),
         }
 
@@ -474,7 +478,7 @@ def build_router(
             settings,
             conn,
             folder.label,
-            store.rename_template(folder),
+            store.rename_template(library, folder),
             pending_of(library, folder, conn) if pending is None else pending,
             parts_of(folder),
             game_names(library, folder, conn),
@@ -624,7 +628,7 @@ def build_router(
             if title_ids(folder.platform)
             else None,
             "rename": {
-                "template": store.rename_template(folder),
+                "template": store.rename_template(library, folder),
                 **renaming.counts(
                     rename_rows(
                         library, folder, conn, pending_of(library, folder, conn, waiting, games)
@@ -1447,9 +1451,10 @@ def build_router(
     @router.get("/folders/{label}/rename")
     def folder_renames(label: str, conn: Conn):
         folder = folder_or_404(label)
-        found = rename_rows(store.load(), folder, conn)
+        library = store.load()
+        found = rename_rows(library, folder, conn)
         return {
-            "template": store.rename_template(folder),
+            "template": store.rename_template(library, folder),
             "rows": [asdict(r) for r in found],
             "counts": renaming.counts(found),
         }
@@ -1462,7 +1467,9 @@ def build_router(
             raise bad_request(f"{body.template!r} is not a naming template for {folder.platform!r}")
 
         def change(library: Library) -> None:
-            library.folder(label).rename_template = body.template
+            # The one renaming gives it is no choice of its own: it follows the next switch.
+            same = body.template == store.mode_template(library, folder.platform)
+            library.folder(label).rename_template = None if same else body.template
 
         return folder_info(store.update(change), folder_or_404(label))
 
@@ -1823,6 +1830,8 @@ def build_router(
         library = store.load()
         return {
             "targets": {p: store.target_for(library, p) for p in platforms},
+            # Custom: some set picked a template of its own.
+            "rename": {"mode": store.rename_mode(library), "custom": store.rename_custom(library)},
             "lookups": library.lookups.model_dump(),
             "hasheous": {
                 "site": settings.lookups.hasheous.site,
@@ -1874,6 +1883,18 @@ def build_router(
 
         store.update(change)
         return store.load().lookups.model_dump()
+
+    @router.put("/settings/rename-mode")
+    def save_rename_mode(body: RenameModeChoice):
+        """Renaming for every set: each set's own template is dropped."""
+
+        def change(library: Library) -> None:
+            library.rename_mode = body.mode
+            for folder in library.folders:
+                folder.rename_template = None
+
+        store.update(change)
+        return get_settings()
 
     @router.put("/settings/targets")
     def save_targets(body: Targets):

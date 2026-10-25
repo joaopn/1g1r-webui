@@ -1329,16 +1329,21 @@ ranking:
   multi_region: best
 
 # Renaming files to a template (a set's Rename tab), for the tools that read the library
-# after us (RomM and other frontends read tags from file names). Each set picks one in
-# Settings -> Romset management; a revert gives a file the name it had before its first
-# rename. Every template is offered where it can work, unless the platform lists its own
-# (platforms.profiles.<id>.rename_templates).
+# after us (RomM and other frontends read tags from file names). Settings -> Romset
+# management switches renaming for every set (disabled, or each platform's recommended
+# template); a set may then pick its own. A revert gives a file the name it had before its
+# first rename. Every template is offered where it can work, unless the platform lists its
+# own (platforms.profiles.<id>.rename_templates).
 rename:
-  # What a set starts with, unless its platform says otherwise (rename_default).
+  # How the app starts: disabled (every set keeps its names) or recommended.
+  default_mode: disabled
+  # A set's template while renaming is disabled (offered on every platform).
+  disabled_template: keep
+  # The recommended template, unless its platform says otherwise (rename_default).
   default_template: dat
   templates:
     keep:
-      label: Keep names
+      label: Disabled
       description: Files keep the names they have; nothing is proposed.
       example: ""
     dat:

@@ -98,7 +98,7 @@ def test_platforms_offer_their_templates(renames):
     assert settings.rename_default("switch") == "switch"
     detail = client.get("/api/folders/nes").json()
     assert (detail["rename_template"], detail["rename_templates"]) == (
-        "dat",
+        "keep",
         ["keep", "dat", "clean"],
     )
     refused = client.put("/api/folders/nes/rename-template", json={"template": "switch"})
@@ -109,6 +109,34 @@ def test_platforms_offer_their_templates(renames):
     assert meta["rename_templates"]["dat"]["label"] == "DAT name"
 
 
+def test_renaming_starts_disabled_and_switches_for_every_set(renames):
+    client, _, settings = renames
+    # Disabled: every set keeps its names, nothing is proposed.
+    assert client.get("/api/settings").json()["rename"] == {"mode": "disabled", "custom": False}
+    card = client.get("/api/folders").json()[0]
+    assert (card["rename_template"], card["rename"]["proposed"]) == ("keep", 0)
+
+    switched = client.put("/api/settings/rename-mode", json={"mode": "recommended"}).json()
+    assert switched["rename"] == {"mode": "recommended", "custom": False}
+    card = client.get("/api/folders").json()[0]
+    assert card["rename_template"] == "dat" and card["rename"]["proposed"] > 0
+
+    # A set's own pick makes renaming custom; picking the recommended one again does not.
+    client.put("/api/folders/nes/rename-template", json={"template": "clean"})
+    assert client.get("/api/settings").json()["rename"]["custom"] is True
+    client.put("/api/folders/nes/rename-template", json={"template": "dat"})
+    assert client.get("/api/settings").json()["rename"]["custom"] is False
+    assert LibraryStore(settings).load().folder("nes").rename_template is None
+
+    # A switch drops every set's own pick.
+    client.put("/api/folders/nes/rename-template", json={"template": "clean"})
+    client.put("/api/settings/rename-mode", json={"mode": "disabled"})
+    assert client.get("/api/folders/nes").json()["rename_template"] == "keep"
+    assert client.get("/api/settings").json()["rename"]["custom"] is False
+    refused = client.put("/api/settings/rename-mode", json={"mode": "bogus"})
+    assert refused.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
+
+
 def test_rename_to_dat_names_then_clean_titles_then_back(renames):
     client, folder, settings = renames
     # Keep names: nothing proposed, the tab has nothing to do.
@@ -117,9 +145,12 @@ def test_rename_to_dat_names_then_clean_titles_then_back(renames):
     assert {r["status"] for r in rows_of(client).values()} == {"skipped"}
     assert client.get("/api/folders").json()[0]["rename"]["proposed"] == 0
 
-    # Back to the platform's default, DAT name.
+    # Back to what renaming gives every set: disabled, until switched to recommended (DAT
+    # name).
     saved = client.put("/api/folders/nes/rename-template", json={"template": None}).json()
-    assert saved["rename_template"] == "dat"
+    assert saved["rename_template"] == "keep"
+    client.put("/api/settings/rename-mode", json={"mode": "recommended"})
+    assert client.get("/api/folders/nes").json()["rename_template"] == "dat"
     rows = rows_of(client)
     # A file with another operation pending waits for it; the others can be renamed.
     assert rows["contra-jp.zip"]["reason"] == "proposed for discarded/"
@@ -262,6 +293,7 @@ def test_files_to_convert_wait_and_the_others_are_renamed(renames):
     """Renaming never waits for the whole set: a file still to convert is skipped, the
     others are renamed."""
     client, folder, _ = renames
+    client.put("/api/folders/nes/rename-template", json={"template": "dat"})
     (folder / "odd.nes").write_bytes(b"?")
     assert client.post("/api/folders/nes/check").status_code == HTTPStatus.ACCEPTED
     assert finished(client, "nes")["status"] == "done"
