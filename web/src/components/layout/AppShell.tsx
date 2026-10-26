@@ -73,14 +73,14 @@ export function navGroups(folders: FolderCard[], meta: Meta | undefined): NavGro
       label: "Settings",
       icon: SettingsIcon,
       children: [
-        { to: "/settings/dat-sources", label: "Which DATs to use?", title: "Which DATs to use?" },
-        { to: "/settings/romsets", label: "Romset management", title: "Romset management" },
         {
           to: "/settings/dats",
           label: "Platform DATs",
           title: "Platform DATs",
           tour: "platform-dats",
         },
+        { to: "/settings/dat-sources", label: "Which DATs to use?", title: "Which DATs to use?" },
+        { to: "/settings/romsets", label: "Romset management", title: "Romset management" },
         { to: "/settings/lookups", label: "Online lookups", title: "Online lookups" },
         { to: "/settings/advanced", label: "Advanced", title: "Advanced" },
       ],

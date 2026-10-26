@@ -197,3 +197,8 @@ test("the theme toggle sits left of the bell and the license line in the sidebar
   expect(within(sidebar).getByTestId("license")).toHaveTextContent(/^License: AGPL 3\.0 · /);
   expect(screen.queryByRole("contentinfo")).toBeNull();
 });
+
+test("Platform DATs is the first Settings entry", () => {
+  const settings = navGroups([], META).find((g) => g.id === "settings");
+  expect(settings?.children[0].to).toBe("/settings/dats");
+});

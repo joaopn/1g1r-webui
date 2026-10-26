@@ -53,7 +53,7 @@ const row = (platform: string, versions: DatVersion[]): DatRow => ({
   order: [],
   own_order: false,
   versions,
-  folders: [],
+  folders: [platform],
   downloads:
     platform === "psp"
       ? [
@@ -87,6 +87,7 @@ function renderPage() {
             row("switch", [version(5, "switch", "titledb:US.en")]),
             row("psx", []),
             row("psp", []),
+            { ...row("snes", []), folders: [] },
           ]
         : url.endsWith("/titledb/files")
           ? ["GB.en", "JP.en", "JP.ja", "US.en"]
@@ -168,4 +169,14 @@ test("PSN: PSP downloads its digital-only set in one click, under its short name
   );
   await userEvent.click(button);
   expect(calls.some((c) => c.url.endsWith("/dats/psp/download?source=psn"))).toBe(true);
+});
+
+test("only platforms with a set are listed until All platforms is ticked", async () => {
+  renderPage();
+  const toggle = await screen.findByRole("checkbox", { name: /All platforms/ });
+  expect(toggle).not.toBeChecked();
+  expect(screen.getByTestId("dats-psx")).toBeInTheDocument();
+  expect(screen.queryByTestId("dats-snes")).toBeNull();
+  await userEvent.click(toggle);
+  expect(screen.getByTestId("dats-snes")).toBeInTheDocument();
 });

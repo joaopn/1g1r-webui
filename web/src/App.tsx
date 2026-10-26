@@ -25,7 +25,7 @@ export function App() {
         <Route path="folders/:label/ignored" element={<FolderIgnoredPage />} />
         <Route path="folders/:label/updates" element={<FolderUpdatesPage />} />
         <Route path="folders/:label/rename" element={<FolderRenamePage />} />
-        <Route path="settings" element={<Navigate to="/settings/dat-sources" replace />} />
+        <Route path="settings" element={<Navigate to="/settings/dats" replace />} />
         <Route path="settings/dat-sources" element={<DatSourcesPage />} />
         <Route path="settings/romsets" element={<RomsetManagementPage />} />
         {/* The pages' former addresses. */}

@@ -3,6 +3,7 @@ import { ChevronRight, Download, ExternalLink, Pin, PinOff, Trash2, Upload } fro
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
+import { AllPlatformsToggle } from "@/components/AllPlatformsToggle";
 import { Box } from "@/components/Box";
 import { DatOrderEditor } from "@/components/DatOrderEditor";
 import { PlatformIcon } from "@/components/PlatformIcon";
@@ -398,6 +399,7 @@ export function DatsSettingsPage() {
   const dats = useDats();
   const data = useSettingsData();
   const packInput = useRef<HTMLInputElement>(null);
+  const [allPlatforms, setAllPlatforms] = useState(false);
   const pack = useMutation({
     mutationFn: (file: File) =>
       api<{ platform: string | null; version_id: number | null }[]>("/dats/pack", upload(file)),
@@ -409,6 +411,7 @@ export function DatsSettingsPage() {
     onError: (err) => toast.error(errorText(err)),
   });
   if (!meta.data || !dats.data) return <p className="text-muted-foreground">Loading…</p>;
+  const shown = dats.data.filter((row) => allPlatforms || row.folders.length > 0);
   return (
     <Page
       title="Platform DATs"
@@ -461,8 +464,14 @@ export function DatsSettingsPage() {
           }}
         />
       </section>
+      <AllPlatformsToggle checked={allPlatforms} onChange={setAllPlatforms} />
       <div className="rounded-lg border border-border bg-card">
-        {[...dats.data]
+        {shown.length === 0 ? (
+          <p className="px-4 py-3 text-muted-foreground text-sm" data-testid="no-platforms">
+            No platform has a set yet.
+          </p>
+        ) : null}
+        {[...shown]
           .sort((a, b) =>
             (meta.data.platforms[a.platform]?.name ?? a.platform).localeCompare(
               meta.data.platforms[b.platform]?.name ?? b.platform,

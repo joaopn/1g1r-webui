@@ -3,6 +3,7 @@ import { ChevronRight } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
+import { AllPlatformsToggle } from "@/components/AllPlatformsToggle";
 import { PlatformIcon } from "@/components/PlatformIcon";
 import { ApiError, api, json } from "@/lib/api";
 import { keys, queryClient, useDatSources, useDats, useMeta, useSettingsData } from "@/lib/queries";
@@ -322,16 +323,7 @@ export function DatSourcesPage() {
         </div>
       ) : (
         <div className="space-y-4" role="tabpanel">
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              className="size-3.5 accent-primary"
-              checked={allPlatforms}
-              onChange={() => setAllPlatforms(!allPlatforms)}
-            />
-            All platforms{" "}
-            <span className="text-muted-foreground">(else only those with a set)</span>
-          </label>
+          <AllPlatformsToggle checked={allPlatforms} onChange={setAllPlatforms} />
           {single.map((source) => {
             const shown = source.platforms
               .filter((p) => allPlatforms || withSets.has(p.platform))
