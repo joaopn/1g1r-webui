@@ -314,6 +314,8 @@ function CardActions({ folder }: { folder: FolderCard }) {
       (folder.progress.to_convert > 0
         ? "Convert or discard first (Conversion tab): scanning waits until every file is in the target format"
         : undefined));
+  const blocked =
+    Boolean(guard) || running || Boolean(folder.converting) || scan.isPending || check.isPending;
   return (
     <div className="relative flex flex-wrap items-center gap-2 px-4 pb-4">
       {folder.dat_download ? (
@@ -339,13 +341,10 @@ function CardActions({ folder }: { folder: FolderCard }) {
               ? "List the folder and read what conversion needs; nothing is hashed"
               : "Identify the files with nothing left to convert")
         }
-        disabled={
-          Boolean(guard) ||
-          running ||
-          Boolean(folder.converting) ||
-          scan.isPending ||
-          check.isPending
-        }
+        disabled={blocked}
+        data-tour={folder.needs_scan && !blocked ? "scan" : undefined}
+        data-tour-set={folder.label}
+        data-tour-step={folder.needs ?? undefined}
         onClick={() => (checking ? check.mutate() : scan.mutate({}))}
       >
         {checking ? (

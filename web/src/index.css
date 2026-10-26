@@ -121,3 +121,42 @@
     @apply bg-background text-foreground antialiased;
   }
 }
+
+/* First-run tour (driver.js): the popover in the app's colours and type. */
+.driver-popover.g1r-tour {
+  background-color: var(--popover);
+  color: var(--popover-foreground);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: inherit;
+}
+.g1r-tour .driver-popover-title {
+  font-size: 1rem;
+  font-weight: 600;
+}
+.g1r-tour .driver-popover-description {
+  color: var(--muted-foreground);
+}
+.g1r-tour .driver-popover-footer-btn {
+  background-color: var(--secondary);
+  color: var(--secondary-foreground);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  text-shadow: none;
+}
+.g1r-tour .driver-popover-footer-btn:hover,
+.g1r-tour .driver-popover-footer-btn:focus {
+  background-color: var(--accent);
+}
+.g1r-tour .driver-popover-arrow-side-left {
+  border-left-color: var(--popover);
+}
+.g1r-tour .driver-popover-arrow-side-right {
+  border-right-color: var(--popover);
+}
+.g1r-tour .driver-popover-arrow-side-top {
+  border-top-color: var(--popover);
+}
+.g1r-tour .driver-popover-arrow-side-bottom {
+  border-bottom-color: var(--popover);
+}

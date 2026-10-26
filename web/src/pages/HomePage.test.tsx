@@ -570,3 +570,16 @@ test("Home keeps polling while an apply or a restore runs, and stops after", asy
   await new Promise((resolve) => setTimeout(resolve, META.ui.poll_interval_ms * 2));
   expect(idle.filter((c) => c.url.endsWith("/folders"))).toHaveLength(1);
 });
+
+test("the due, enabled card button is the first-run tour's target", async () => {
+  renderPage([
+    card("new", "gb", null),
+    { ...checked("blocked", "gb"), progress: { ...card("x", "gb", SCAN).progress, to_convert: 1 } },
+    card("done", "gb", SCAN),
+  ]);
+  const check = await screen.findByRole("button", { name: "Check files of new" });
+  expect(check).toHaveAttribute("data-tour", "scan");
+  expect(check).toHaveAttribute("data-tour-step", "check");
+  expect(screen.getByRole("button", { name: "Scan blocked" })).not.toHaveAttribute("data-tour");
+  expect(screen.getByRole("button", { name: "Scan done" })).not.toHaveAttribute("data-tour");
+});

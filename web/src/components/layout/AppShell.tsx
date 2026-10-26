@@ -18,6 +18,7 @@ import { AddSetsDialog } from "@/components/AddSetsDialog";
 import { Notifications } from "@/components/layout/Notifications";
 import { PlatformIcon } from "@/components/PlatformIcon";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { Tour } from "@/components/Tour";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { foldersByName } from "@/lib/platforms";
@@ -33,8 +34,11 @@ const OPEN_GROUPS_KEY = "g1r.sidebar.groups.v1";
 const WIDTH_KEY = "g1r.sidebar.width.v1";
 const COLLAPSED_KEY = "g1r.sidebar.collapsed.v1";
 
-/** `prefix`: the paths the entry stands for (a set's every tab), when wider than `to`. */
-type NavChild = { to: string; label: ReactNode; title: string; prefix?: string };
+/**
+ * `prefix`: the paths the entry stands for (a set's every tab), when wider than `to`.
+ * `tour`: the first-run tour's name for it.
+ */
+type NavChild = { to: string; label: ReactNode; title: string; prefix?: string; tour?: string };
 type NavGroupItem = { id: string; label: string; icon: LucideIcon; children: NavChild[] };
 
 const childPrefix = (child: NavChild) => child.prefix ?? child.to;
@@ -71,7 +75,12 @@ export function navGroups(folders: FolderCard[], meta: Meta | undefined): NavGro
       children: [
         { to: "/settings/dat-sources", label: "Which DATs to use?", title: "Which DATs to use?" },
         { to: "/settings/romsets", label: "Romset management", title: "Romset management" },
-        { to: "/settings/dats", label: "Platform DATs", title: "Platform DATs" },
+        {
+          to: "/settings/dats",
+          label: "Platform DATs",
+          title: "Platform DATs",
+          tour: "platform-dats",
+        },
         { to: "/settings/lookups", label: "Online lookups", title: "Online lookups" },
         { to: "/settings/advanced", label: "Advanced", title: "Advanced" },
       ],
@@ -88,7 +97,16 @@ function rowClass(active: boolean) {
   );
 }
 
-function NavGroup({ group, onNavigate }: { group: NavGroupItem; onNavigate?: () => void }) {
+function NavGroup({
+  group,
+  onNavigate,
+  reveal,
+}: {
+  group: NavGroupItem;
+  onNavigate?: () => void;
+  /** Opened for the first-run tour, which points at one of its entries. */
+  reveal?: boolean;
+}) {
   const { pathname } = useLocation();
   const inside = group.children.some((child) => pathname.startsWith(childPrefix(child)));
   const [open, setOpen] = useState(
@@ -99,8 +117,8 @@ function NavGroup({ group, onNavigate }: { group: NavGroupItem; onNavigate?: () 
 
   // The page you are on is never folded out of sight.
   useEffect(() => {
-    if (inside) setOpen(true);
-  }, [inside]);
+    if (inside || reveal) setOpen(true);
+  }, [inside, reveal]);
 
   const toggle = () => {
     const next = !open;
@@ -144,6 +162,7 @@ function NavGroup({ group, onNavigate }: { group: NavGroupItem; onNavigate?: () 
                 to={child.to}
                 title={child.title}
                 onClick={onNavigate}
+                data-tour={child.tour}
                 className={cn(rowClass(pathname.startsWith(childPrefix(child))), "py-1.5")}
               >
                 {child.label}
@@ -156,7 +175,7 @@ function NavGroup({ group, onNavigate }: { group: NavGroupItem; onNavigate?: () 
   );
 }
 
-function NavItems({ onNavigate }: { onNavigate?: () => void }) {
+function NavItems({ onNavigate, reveal }: { onNavigate?: () => void; reveal?: string | null }) {
   const meta = useMeta();
   const folders = useFolders();
   // Hidden sets stay out of the sidebar (Settings → Romset management lists them).
@@ -179,7 +198,12 @@ function NavItems({ onNavigate }: { onNavigate?: () => void }) {
         <span className="flex-1">Statistics</span>
       </NavLink>
       {groups.map((group) => (
-        <NavGroup key={group.id} group={group} onNavigate={onNavigate} />
+        <NavGroup
+          key={group.id}
+          group={group}
+          onNavigate={onNavigate}
+          reveal={group.id === reveal}
+        />
       ))}
     </nav>
   );
@@ -192,7 +216,12 @@ function SidebarFoot({ onAdd }: { onAdd: () => void }) {
   const source = meta.data?.app.source_url;
   return (
     <div className="mt-auto flex flex-col gap-3 pt-4">
-      <Button onClick={onAdd} className="justify-center gap-2" data-testid="add-romsets">
+      <Button
+        onClick={onAdd}
+        className="justify-center gap-2"
+        data-testid="add-romsets"
+        data-tour="add-romsets"
+      >
         <Plus className="size-4" aria-hidden="true" />
         Add romsets
       </Button>
@@ -283,6 +312,17 @@ export function AppShell() {
     },
   });
   const name = meta.data?.app.name ?? "1g1r-webui";
+  const [revealGroup, setRevealGroup] = useState<string | null>(null);
+  // The tour's target sits in the sidebar: open its group, then show the sidebar (expanded for
+  // this visit, not saved) or, at phone width, the menu sheet.
+  const reveal = (group?: string) => {
+    if (group) setRevealGroup(group);
+    const shown = (id: string) =>
+      (document.querySelector(`[data-testid="${id}"]`)?.getClientRects().length ?? 0) > 0;
+    if (shown("sidebar")) return;
+    if (shown("sidebar-collapsed")) setCollapsed(false);
+    else setMobileOpen(true);
+  };
 
   return (
     <div className="flex min-h-screen bg-background">
@@ -315,7 +355,7 @@ export function AppShell() {
           </div>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto">
-          <NavItems />
+          <NavItems reveal={revealGroup} />
         </div>
         <SidebarFoot onAdd={() => setAdding("choose")} />
         {bounds ? (
@@ -354,7 +394,7 @@ export function AppShell() {
                 <ThemeToggle />
                 <Notifications />
               </SheetHeader>
-              <NavItems onNavigate={() => setMobileOpen(false)} />
+              <NavItems onNavigate={() => setMobileOpen(false)} reveal={revealGroup} />
               <SidebarFoot
                 onAdd={() => {
                   setMobileOpen(false);
@@ -370,6 +410,7 @@ export function AppShell() {
           <Outlet />
         </main>
       </div>
+      <Tour reveal={reveal} />
       <AddRomsetsDialog
         open={adding === "choose"}
         onOpenChange={(open) => setAdding(open ? "choose" : null)}

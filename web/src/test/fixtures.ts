@@ -1,4 +1,4 @@
-import type { ConversionRow, Game, Meta, Version } from "@/lib/types";
+import type { ConversionRow, FolderCard, Game, Meta, Version } from "@/lib/types";
 
 const size = (rem: number) => ({ rem, min: rem / 2, max: rem * 3 });
 
@@ -288,3 +288,55 @@ export const CONVERSION_ROWS: ConversionRow[] = [
   conversionRow({ rel_path: "Two.zip", status: "flagged", note: "2 ROM files in one archive" }),
   conversionRow({ rel_path: "Seven.7z", container: "7z", status: "repack", output: "Seven.zip" }),
 ];
+
+/** One set with nothing to do: no DAT needed, scanned, no files. */
+export const FOLDER_CARD: FolderCard = {
+  label: "nes",
+  platform: "nes",
+  mount: "roms",
+  path: "nes",
+  location: "/roms/nes",
+  on_main_mount: true,
+  target: "zip",
+  discarded_to: "/roms/discarded/nes/",
+  scan: null,
+  last_scan: null,
+  dat: null,
+  summary: { counts: {}, roms: 0, bytes: 0, identified: 0, unmatched: 0, methods: {} },
+  dat_download: null,
+  needs_dat: false,
+  needs_scan: false,
+  needs: null,
+  counts: {},
+  reclaim_bytes: 0,
+  progress: { processed: 0, to_process: 0, to_match: 0, to_convert: 0 },
+  delete_originals: false,
+  hidden: false,
+  ignored_patterns: [],
+  ignored_patterns_default: true,
+  ignored_files: [],
+  title_ids: false,
+  rename_template: "keep",
+  rename_templates: ["keep", "dat", "clean"],
+  updates: null,
+  rename: { template: "keep", files: 0, proposed: 0, named: 0, skipped: 0, renamed: 0 },
+  conversion: {
+    wrap: 0,
+    unwrap: 0,
+    "make chd": 0,
+    "make rvz": 0,
+    byteswap: 0,
+    decrypt: 0,
+    "make nsp": 0,
+    flagged: 0,
+    part: 0,
+    repack: 0,
+    done: 0,
+    to_convert: 0,
+    all: 0,
+  },
+  discarded: { files: 0, bytes: 0 },
+  converting: null,
+  running: false,
+  warnings: [],
+};
