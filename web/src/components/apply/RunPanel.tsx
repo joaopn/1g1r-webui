@@ -62,7 +62,7 @@ export function RunPanel({
             {waitingText(run.waiting_for) ?? (
               <>
                 {verb} {run.stopping ? "stopping" : "running"}: {formatCount(run.done)} of{" "}
-                {formatCount(run.total)} steps…
+                {formatCount(run.total)} files…
               </>
             )}
           </p>

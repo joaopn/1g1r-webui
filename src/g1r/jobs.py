@@ -97,7 +97,7 @@ class Jobs:
             plan = check()
             store = self.scanner.store
             workers = store.parallel_conversions(store.load())
-            run_id = journal.start_run(conn, label, kind, scope, len(plan))
+            run_id = journal.start_run(conn, label, kind, scope, journal.files_in(plan))
             self.stops[run_id] = threading.Event()
         pool = self.conversions if journal.is_conversion(kind, scope) else self.applies
         pool.submit(self._run_apply, run_id, label, plan, workers, after)

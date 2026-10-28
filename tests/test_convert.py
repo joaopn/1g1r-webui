@@ -319,7 +319,9 @@ def _conversion_plan(folder: Path, names: list[str]) -> list[journal.Move]:
 def _conversion_run(tmp_path, plan):
     conn = db.connect(tmp_path / "state.db", 1000)
     db.migrate(conn)
-    return conn, journal.start_run(conn, "f", journal.APPLY, journal.CONVERT, len(plan))
+    return conn, journal.start_run(
+        conn, "f", journal.APPLY, journal.CONVERT, journal.files_in(plan)
+    )
 
 
 def test_a_conversion_run_converts_several_files_at_a_time(make_settings, tmp_path):
@@ -349,6 +351,26 @@ def test_a_conversion_run_converts_several_files_at_a_time(make_settings, tmp_pa
             assert s["step_of"] == converts[s["rel_path"]]
 
 
+def test_a_conversion_run_counts_files_not_steps(make_settings, tmp_path):
+    """Converting a file and deleting its original is one file of the run's progress."""
+    folder = tmp_path / "folder"
+    folder.mkdir()
+    plan = _conversion_plan(folder, ["a", "b", "c"])
+    conn, run_id = _conversion_run(tmp_path, plan)
+    wrap = Converter(make_settings())
+    seen = []
+
+    def convert(m):
+        running = journal.running_conversion(conn, "f")
+        seen.append((running["done"], running["total"]))
+        return wrap(m)
+
+    journal.run(CONFIG, conn, run_id, "f", plan, convert, workers=1)
+    assert seen == [(0, 3), (1, 3), (1 + 1, 3)]
+    run = journal.progress(conn, run_id)
+    assert (run["done"], run["total"]) == (3, 3)
+
+
 def test_a_failed_conversion_keeps_its_original_and_the_run_goes_on(
     make_settings, tmp_path, monkeypatch
 ):
@@ -369,6 +391,7 @@ def test_a_failed_conversion_keeps_its_original_and_the_run_goes_on(
     journal.run(CONFIG, conn, run_id, "f", plan, convert, workers=1 + 1)
     run = journal.progress(conn, run_id)
     assert (run["status"], run["message"]) == ("failed", "3 files converted; 1 failed")
+    assert (run["done"], run["total"]) == (4, 4)  # the failed file is finished with too
     assert run["failed"] == [
         {"rel_path": "b.nes", "error": "chdman exited with 1", "action": "convert"}
     ]

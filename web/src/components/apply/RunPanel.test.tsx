@@ -48,7 +48,7 @@ test("a running conversion has a Stop button that stops it", async () => {
 
 test("a stopping conversion says so and cannot be stopped again", async () => {
   renderPanel({ ...RUN, stopping: true });
-  expect(await screen.findByText(/Conversion stopping: 4 of 10 steps/)).toBeInTheDocument();
+  expect(await screen.findByText(/Conversion stopping: 4 of 10 files/)).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Stop the conversion of psx" })).toBeDisabled();
 });
 

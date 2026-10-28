@@ -241,7 +241,7 @@ export type FolderCard = FolderInfo & {
   /** The Rename tab: the set's template and how many files it proposes to rename. */
   rename: RenameCounts & { template: string };
   discarded: { files: number; bytes: number };
-  /** The conversion running in the folder: steps finished of the planned total, files failed,
+  /** The conversion running in the folder: files finished of the planned total, files failed,
    * and whether a stop was asked for. */
   converting: {
     done: number;

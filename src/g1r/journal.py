@@ -647,10 +647,17 @@ def is_conversion(kind: str, scope: str) -> bool:
 
 
 def start_run(conn: sqlite3.Connection, label: str, kind: str, scope: str, total: int) -> int:
+    """`total`: the files the run works on (`files_in`)."""
     return conn.execute(
         "INSERT INTO apply_run (folder_label, kind, scope, status, total) VALUES (?, ?, ?, ?, ?)",
         (label, kind, scope, RUNNING, total),
     ).lastrowid
+
+
+def files_in(plan: list["Move"]) -> int:
+    """The files a run of the plan reports progress on: a conversion's steps after its convert
+    step belong to the same file."""
+    return sum(1 for unit in _units(plan) if _counts(unit))
 
 
 def begin_run(conn: sqlite3.Connection, run_id: int) -> None:
@@ -935,6 +942,12 @@ def run(
         raise
 
 
+def _counts(unit: list[Move]) -> bool:
+    """The unit is a file of the run's progress: every unit but the removal of a conversion's
+    output, which a restore does after moving the originals back."""
+    return unit[0].action != REMOVE
+
+
 def _units(plan: list[Move]) -> list[list[Move]]:
     """The plan in pieces that run in order: a step and the steps that follow it."""
     units: list[list[Move]] = []
@@ -959,23 +972,28 @@ def _run(config, conn, run_id: int, label: str, plan: list[Move], convert, worke
     not_back: set[int] = set()
 
     def carry_unit(unit: list[Move]) -> None:
-        nonlocal stopped
-        try:
-            carry_steps(unit)
-        except Exception:  # a bug or a database error: run() records it
-            with lock:
-                stopped = True
-            raise
-
-    def carry_steps(unit: list[Move]) -> None:
-        nonlocal failed, left, warned
-        converting = None  # the convert step the following steps finish
+        nonlocal stopped, left
         with lock:
             if stop is not None and stop.is_set():
                 left += sum(1 for m in unit if m.action == CONVERT)
                 return
             if stopped:
                 return  # nothing new starts; a started unit is finished below
+        try:
+            carry_steps(unit)
+        except Exception:  # a bug or a database error: run() records it
+            with lock:
+                stopped = True
+            raise
+        if _counts(unit):
+            with lock:
+                conn.execute(
+                    "UPDATE apply_run SET files_done = files_done + 1 WHERE id = ?", (run_id,)
+                )
+
+    def carry_steps(unit: list[Move]) -> None:
+        nonlocal failed, left, warned
+        converting = None  # the convert step the following steps finish
         for m in unit:
             with lock:
                 op_id = _start_step(conn, run_id, label, m, converting)
@@ -1065,11 +1083,6 @@ def progress(conn: sqlite3.Connection, run_id: int) -> dict | None:
     run_row = conn.execute("SELECT * FROM apply_run WHERE id = ?", (run_id,)).fetchone()
     if run_row is None:
         return None
-    states = dict(
-        conn.execute(
-            "SELECT state, COUNT(*) FROM operation WHERE run_id = ? GROUP BY state", (run_id,)
-        ).fetchall()
-    )
     failed = conn.execute(
         "SELECT rel_path, error, action FROM operation WHERE run_id = ? AND state = ?",
         (run_id, FAILED),
@@ -1080,7 +1093,7 @@ def progress(conn: sqlite3.Connection, run_id: int) -> dict | None:
     return {
         **dict(run_row),
         "stopping": bool(run_row["stopping"]),
-        "done": states.get(DONE, 0) + states.get(RESTORED, 0),
+        "done": run_row["files_done"],
         "failed": [dict(r) for r in failed],
         "warnings": [dict(r) for r in warned],
         "waiting_for": waiting_for(conn, run_row),
@@ -1133,7 +1146,7 @@ def failed_conversions(conn: sqlite3.Connection, label: str) -> set[str]:
 
 
 def running_conversion(conn: sqlite3.Connection, label: str) -> dict | None:
-    """The folder's conversion while it runs: steps finished (failed ones too) of the
+    """The folder's conversion while it runs: files finished (failed ones too) of the
     planned total, how many files failed so far, whether a stop was asked for, and the folder
     whose conversion it waits for while not begun (`waiting_for`). None when no conversion
     runs."""
@@ -1144,13 +1157,12 @@ def running_conversion(conn: sqlite3.Connection, label: str) -> dict | None:
     ).fetchone()
     if run_row is None:
         return None
-    finished, failed = conn.execute(
-        "SELECT COALESCE(SUM(state != ?), 0), COALESCE(SUM(state = ? AND action = ?), 0) "
-        "FROM operation WHERE run_id = ?",
-        (STARTED, FAILED, CONVERT, run_row["id"]),
-    ).fetchone()
+    failed = conn.execute(
+        "SELECT COUNT(*) FROM operation WHERE run_id = ? AND state = ? AND action = ?",
+        (run_row["id"], FAILED, CONVERT),
+    ).fetchone()[0]
     return {
-        "done": finished,
+        "done": run_row["files_done"],
         "total": run_row["total"],
         "failed": failed,
         "stopping": bool(run_row["stopping"]),

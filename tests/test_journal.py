@@ -219,15 +219,16 @@ def test_recovery_settles_interrupted_moves(tmp_path):
     assert run["status"] == "failed" and "restart" in run["message"]
 
 
-def test_running_conversion_counts_finished_steps_and_failed_files(tmp_path):
+def test_running_conversion_counts_finished_files_and_failed_ones(tmp_path):
     conn = db.connect(tmp_path / "state.db", 1000)
     db.migrate(conn)
     assert journal.running_conversion(conn, "f") is None
     moves_run = journal.start_run(conn, "f", journal.APPLY, "", 1)
     assert journal.running_conversion(conn, "f") is None  # a 1G1R apply is not a conversion
     conn.execute("UPDATE apply_run SET status = 'done' WHERE id = ?", (moves_run,))
-    run_id = journal.start_run(conn, "f", journal.APPLY, journal.CONVERT, 1 + 1 + 1 + 1)
+    run_id = journal.start_run(conn, "f", journal.APPLY, journal.CONVERT, 3)
     journal.begin_run(conn, run_id)
+    conn.execute("UPDATE apply_run SET files_done = 1 + 1 WHERE id = ?", (run_id,))
     for state, action in (
         ("done", journal.CONVERT),
         ("done", journal.DELETE),
@@ -241,8 +242,8 @@ def test_running_conversion_counts_finished_steps_and_failed_files(tmp_path):
             (run_id, state, action),
         )
     assert journal.running_conversion(conn, "f") == {
-        "done": 1 + 1 + 1,
-        "total": 1 + 1 + 1 + 1,
+        "done": 1 + 1,
+        "total": 3,
         "failed": 1,
         "stopping": False,
         "waiting_for": None,
