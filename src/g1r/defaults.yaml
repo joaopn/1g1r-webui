@@ -1392,16 +1392,16 @@ rename:
       example: Legend of Zelda, The - A Link to the Past.sfc
       format: "{title}"
     switch:
-      label: Switch (Tinfoil)
+      label: Switch (title ID)
       description: >-
-        The game's name, its title ID and its version, as Tinfoil and nut name NSPs; a DLC
+        The game's name, its title ID and its version, the usual naming of NSPs; a DLC
         also keeps its game's name. RomM finds games by the title ID. Needs the version
         (prod.keys read it when the file has no cnmt.xml).
       example: Attack on Titan 2 [Additional Episode Second Victory] [010034500641B00C][v327680].nsp
       format: "{game} [{title_id}][v{version}]"
       dlc_format: "{base} [{game}] [{title_id}][v{version}]"
-      # nut's cleaning: characters a file name cannot hold, dots, symbols, parentheses and
-      # whitespace become one space.
+      # Characters a file name cannot hold, dots, symbols, parentheses and whitespace
+      # become one space.
       clean_pattern: '[/\\:*?"<>|.\s™©®()~]+'
       clean_with: " "
       title_ids: true

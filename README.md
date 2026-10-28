@@ -33,6 +33,8 @@ To add another ROM folder (another disk), add a line under `volumes:` in `compos
 
 The app keeps its database, DATs, caches and console keys in `data/` in the clone. Keys are entered in the web UI.
 
+The app ships no ROMs and no console keys. Use dumps and keys from hardware you own.
+
 ## Platforms
 
 Files are read bare or inside `.zip`/`.7z`. Every file is converted to its platform's target format (a `.7z` becomes a `.zip`); files that cannot be converted are listed for moving to `discarded/`. Scanning (igir, Hasheous) and 1G1R wait until every file is in the target format.

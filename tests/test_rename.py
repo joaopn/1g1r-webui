@@ -305,8 +305,8 @@ def test_files_to_convert_wait_and_the_others_are_renamed(renames):
     assert (folder / "Contra (USA).zip").is_file() and (folder / "odd.nes").is_file()
 
 
-def test_switch_names_are_tinfoil_s(make_settings):
-    """As nut (Tinfoil's renamer) writes them: the name cleaned to spaces, never "_"; an
+def test_switch_names_keep_title_id_and_version(make_settings):
+    """The name cleaned to spaces, never "_"; an
     update under its game's name; a DLC keeps its game's name, its own in brackets."""
     settings = make_settings()
     base = "Attack on Titan 2 [010034500641A000][v0]"
@@ -323,7 +323,7 @@ def test_switch_names_are_tinfoil_s(make_settings):
         None,
         "its game's name is unknown",
     )
-    # Dots, symbols and parentheses become spaces, as nut cleans them.
+    # Dots, symbols and parentheses become spaces.
     odd = "Vol. 2: The (Final) Cut~ [0100AAAA00010000][v0]"
     assert renaming.new_stem(settings, "switch", odd, "title-id")[0] == (
         "Vol 2 The Final Cut [0100AAAA00010000][v0]"

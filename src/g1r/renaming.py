@@ -77,7 +77,7 @@ def without_tags(config: RenameConfig, name: str) -> str:
 
 
 def cleaned(config: RenameConfig, template: str, name: str) -> str:
-    """A name as the template writes it: its own cleaning (Tinfoil's: one space for every
+    """A name as the template writes it: its own cleaning (Switch's: one space for every
     run of what a file name cannot hold), else unsafe characters replaced."""
     chosen = config.templates[template]
     if chosen.clean_pattern is not None:
