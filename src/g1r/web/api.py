@@ -585,8 +585,8 @@ def build_router(
             "dlc": len(rows) - len(found),
         }
 
-    def card_figures(conn, library: Library, library_json: str, folder: FolderEntry) -> dict:
-        key = json.dumps(
+    def card_key(conn, library_json: str, folder: FolderEntry) -> str:
+        return json.dumps(
             [
                 library_json,
                 dashboard.changes(conn, folder.label),
@@ -594,10 +594,19 @@ def build_router(
                 folder_on_disk(folder) is not None,
             ]
         )
+
+    def card_figures(conn, library: Library, library_json: str, folder: FolderEntry) -> dict:
+        key = card_key(conn, library_json, folder)
         with cards_lock:
             kept = cards.get(folder.label)
         if kept is not None and kept[0] == key:
             return kept[1]
+        return fresh_card(conn, library, key, folder)[0]
+
+    def fresh_card(
+        conn, library: Library, key: str, folder: FolderEntry
+    ) -> tuple[dict, list[matching.GameRow]]:
+        """Compute a card's figures and keep them under `key`; also the set's games."""
         ranking = store.ranking_for(folder)
         converting = conversion_rows(library, folder, conn)
         waiting = frozenset(conversion.waiting(converting))
@@ -639,7 +648,19 @@ def build_router(
         }
         with cards_lock:
             cards[folder.label] = (key, figures)
-        return figures
+        return figures, games
+
+    def changed_game(conn, folder: FolderEntry, group_key: str) -> dict:
+        """One game after a choice on it. The set's games come from refreshing its Home
+        card, so the card request that follows the choice finds them computed."""
+        library = store.load()
+        _, games = fresh_card(
+            conn, library, card_key(conn, library.model_dump_json(), folder), folder
+        )
+        game = next((g for g in games if g.group.key == group_key), None)
+        if game is None:
+            raise not_found("no such game")
+        return game_dict(game, dat_names(conn), title_details(conn))
 
     @router.get("/folders")
     def list_folders(conn: Conn):
@@ -1694,33 +1715,13 @@ def build_router(
     def keep(label: str, body: KeepChoice, conn: Conn):
         folder = folder_or_404(label)
         matching.set_keep(conn, label, body.group_key, body.rel_path)
-        game = matching.find_game(
-            settings,
-            conn,
-            label,
-            store.ranking_for(folder),
-            body.group_key,
-            produces(store.load(), folder, conn),
-        )
-        if game is None:
-            raise not_found("no such game")
-        return game_dict(game, dat_names(conn), title_details(conn))
+        return changed_game(conn, folder, body.group_key)
 
     @router.put("/folders/{label}/leave")
     def leave(label: str, body: LeaveAlone, conn: Conn):
         folder = folder_or_404(label)
         matching.set_left_alone(conn, label, body.group_key, body.left)
-        game = matching.find_game(
-            settings,
-            conn,
-            label,
-            store.ranking_for(folder),
-            body.group_key,
-            produces(store.load(), folder, conn),
-        )
-        if game is None:
-            raise not_found("no such game")
-        return game_dict(game, dat_names(conn), title_details(conn))
+        return changed_game(conn, folder, body.group_key)
 
     @router.put("/folders/{label}/ranking")
     def save_ranking(label: str, body: FolderRanking):

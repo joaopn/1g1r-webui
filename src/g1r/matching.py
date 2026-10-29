@@ -427,13 +427,6 @@ def ranked_rows(game: GameRow) -> list[Row]:
     return [r for r in game.rows if r.version.role not in EXTRA_ROLES]
 
 
-def find_game(settings, conn, label, ranking, group_key, view=None) -> GameRow | None:
-    return next(
-        (g for g in game_rows(settings, conn, label, ranking, view) if g.group.key == group_key),
-        None,
-    )
-
-
 def set_keep(conn: sqlite3.Connection, label: str, group_key: str, rel_path: str | None) -> None:
     if rel_path is None:
         conn.execute(

@@ -460,6 +460,18 @@ def test_home_cards_are_kept_until_the_folder_changes(setup, monkeypatch):
     client.get("/api/folders")
     assert built == ["nes", "nes", "nes"]
 
+    # Keeping a version or leaving a game alone computes the set's games once: the card
+    # Home asks for next is the one the choice refreshed, with the choice in its figures.
+    proposals = client.get("/api/folders").json()[0]["counts"]["proposals"]
+    picked = client.put(
+        "/api/folders/nes/keep", json={"group_key": "name:Gradius", "rel_path": "Gradius (USA).zip"}
+    ).json()
+    assert picked["kept"] == "Gradius (USA).zip"
+    assert client.get("/api/folders").json()[0]["counts"]["proposals"] == proposals + 1
+    client.put("/api/folders/nes/leave", json={"group_key": "name:Gradius", "left": True})
+    assert client.get("/api/folders").json()[0]["counts"]["proposals"] == proposals
+    assert built == ["nes"] * 5
+
     # An apply or a restore running: Home polls until it ends.
     conn = db.connect(settings.paths.database_path, busy_timeout_ms=0)
     conn.execute(
