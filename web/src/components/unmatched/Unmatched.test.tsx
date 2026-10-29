@@ -24,6 +24,13 @@ const FILES: UnmatchedFile[] = [
     suggestions: [{ game_name: "Aa Harimanada (Japan)", score: 0.9 }],
   },
   {
+    rel_path: "jp/Akumajou Densetsu (Japan).zip",
+    size: 393232,
+    hash: null,
+    hasheous: { status: "not found", detail: "" },
+    suggestions: [{ game_name: "Akumajou Densetsu (Japan)", score: 1 }],
+  },
+  {
     rel_path: "mystery.zip",
     size: 4096,
     hash: null,
@@ -118,7 +125,7 @@ test("unmatched files are rows of the table, with a quick view of their own", as
   renderSection(true);
   const bar = screen.getByTestId("quick-views");
   const single = GAMES.filter((g) => g.versions.length === 1).length;
-  expect(within(bar).getByText("Unmatched")).toHaveTextContent(/^Unmatched3$/);
+  expect(within(bar).getByText("Unmatched")).toHaveTextContent(/^Unmatched4$/);
   // "One version" is for games: a file nothing identified is not one.
   expect(within(bar).getByText("One version")).toHaveTextContent(`One version${single}`);
   expect(screen.getByText("Doraemon (Japan) (Rev 1)")).toBeInTheDocument();
@@ -191,6 +198,27 @@ test("match to 1st takes the selected rows only, and skips rows without a match"
   expect(screen.queryByText(/selected/)).not.toBeInTheDocument();
 });
 
+test("match exact name takes the files whose name is their 1st match, the selected ones first", async () => {
+  const calls = renderSection(true, UNMATCHED_VIEW);
+  const buttons = screen
+    .getAllByRole("button")
+    .filter((b) => /Match exact name|to 1st/.test(b.textContent ?? ""));
+  // It comes before Match to 1st.
+  expect(buttons[0]).toHaveTextContent(/Match exact name/);
+  // Nothing selected: every file shown; "Doraemon (Japan) (Rev 1)" is only close to its 1st.
+  expect(buttons[0]).toHaveTextContent(/\(1 file\)/);
+  await userEvent.click(screen.getByRole("button", { name: "Select Doraemon (Japan) (Rev 1)" }));
+  expect(screen.getByRole("button", { name: /Match exact name/ })).toBeDisabled();
+  await userEvent.click(screen.getByRole("button", { name: /Clear selection/ }));
+  await userEvent.click(screen.getByRole("button", { name: /Match exact name/ }));
+  const put = calls.find((c) => c.url.endsWith("/assign-many"));
+  expect(JSON.parse(String(put?.init?.body))).toEqual({
+    assignments: [
+      { rel_path: "jp/Akumajou Densetsu (Japan).zip", game_name: "Akumajou Densetsu (Japan)" },
+    ],
+  });
+});
+
 test("shift-click selects a range", async () => {
   renderSection(true, UNMATCHED_VIEW);
   const rows = screen
@@ -201,8 +229,8 @@ test("shift-click selects a range", async () => {
   await user.keyboard("{Shift>}");
   await user.click(screen.getByRole("button", { name: rows[rows.length - 1] ?? "" }));
   await user.keyboard("{/Shift}");
-  expect(screen.getByText(/3 files selected/)).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: /Match 2 files to 1st/ })).toBeEnabled();
+  expect(screen.getByText(/4 files selected/)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /Match 3 files to 1st/ })).toBeEnabled();
 });
 
 test("with lookups off it still rematches against the DATs and links to the settings", async () => {
@@ -214,8 +242,8 @@ test("with lookups off it still rematches against the DATs and links to the sett
 
 test("moving every file shown reviews them all", async () => {
   const calls = renderSection(true, UNMATCHED_VIEW);
-  await userEvent.click(screen.getByRole("button", { name: /Move 3 files to discarded/ }));
-  await screen.findByRole("button", { name: "Move 3 files" });
+  await userEvent.click(screen.getByRole("button", { name: /Move 4 files to discarded/ }));
+  await screen.findByRole("button", { name: "Move 4 files" });
   const preview = calls.find((c) => c.url.endsWith("/unmatched/preview"));
   expect(JSON.parse(String(preview?.init?.body)).rel_paths).toHaveLength(FILES.length);
 });

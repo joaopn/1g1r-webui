@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Archive, Globe, ListChecks, RefreshCw, Search, Trash2, X } from "lucide-react";
+import { Archive, Equal, Globe, ListChecks, RefreshCw, Search, Trash2, X } from "lucide-react";
 import { type CSSProperties, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
@@ -108,6 +108,18 @@ export function useUnmatchedActions(label: string, meta: Meta | undefined) {
   };
 }
 
+/** The file name without its folder and its last extension. */
+function stem(relPath: string) {
+  const name = relPath.slice(relPath.lastIndexOf("/") + 1);
+  const dot = name.lastIndexOf(".");
+  return dot > 0 ? name.slice(0, dot) : name;
+}
+
+/** The files whose name, without folder and extension, is exactly their 1st match. */
+export function exactMatches(files: UnmatchedFile[]) {
+  return files.filter((f) => f.suggestions[0]?.game_name === stem(f.rel_path));
+}
+
 function firstMatches(files: UnmatchedFile[]) {
   return files.flatMap((f) =>
     f.suggestions.length > 0 ? [{ relPath: f.rel_path, game: f.suggestions[0].game_name }] : [],
@@ -117,6 +129,7 @@ function firstMatches(files: UnmatchedFile[]) {
 /**
  * Above the table in the Unmatched view: what these files are, and actions on the selected
  * rows, or on every row shown when none is selected. Match to 1st takes selected rows only.
+ * Match exact name assigns the files whose name is exactly their 1st match.
  */
 export function UnmatchedTools({
   label,
@@ -147,6 +160,7 @@ export function UnmatchedTools({
   const target = selected.length > 0 ? selected : files;
   const relPaths = target.map((f) => f.rel_path);
   const matchable = firstMatches(selected).length;
+  const exact = exactMatches(target);
   return (
     <div className="space-y-2 rounded-md border border-border bg-card px-3 py-2">
       <div className="flex flex-wrap items-center gap-2">
@@ -155,6 +169,18 @@ export function UnmatchedTools({
           a range) to match them to their 1st match; open a row with its arrow for other names or
           the DAT search. Your choices are kept across scans.
         </p>
+        <Button
+          size="sm"
+          disabled={scanning || exact.length === 0}
+          onClick={() => {
+            onMatchFirst(exact);
+            onClearSelection();
+          }}
+          title={`Assign each file ${selected.length > 0 ? "selected" : "shown"} whose name, without its extension, is exactly its 1st match`}
+        >
+          <Equal className="size-3.5" aria-hidden="true" /> Match exact name
+          {exact.length > 0 ? ` (${formatFiles(exact.length)})` : ""}
+        </Button>
         <Button
           size="sm"
           disabled={scanning || matchable === 0}
