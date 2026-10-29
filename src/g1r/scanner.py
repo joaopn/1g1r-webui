@@ -430,20 +430,21 @@ class Scanner:
             set(folder.ignored_files),
         )
         cache = FileCache(conn, label, reuse=not full)
-        found = Found(*self._members(root, files, progress, cache), cache=cache)
-        found.byte_orders = read_byte_orders(
-            self.settings, folder.platform, root, files, found.members, progress, cache
-        )
-        found.cards = read_cards(
-            self.settings,
-            folder.platform,
-            root,
-            files,
-            found.members,
-            progress,
-            cache,
-            self.open_member,
-        )
+        with cache.kept(conn):
+            found = Found(*self._members(root, files, progress, cache), cache=cache)
+            found.byte_orders = read_byte_orders(
+                self.settings, folder.platform, root, files, found.members, progress, cache
+            )
+            found.cards = read_cards(
+                self.settings,
+                folder.platform,
+                root,
+                files,
+                found.members,
+                progress,
+                cache,
+                self.open_member,
+            )
         return Inventory(library, folder, root, files, found)
 
     def waiting(self, conn, library: Library, folder: FolderEntry, root: Path | None) -> set[str]:
@@ -463,8 +464,9 @@ class Scanner:
     def _check(self, conn, label: str, progress: Progress) -> str:
         """Check files: what conversion needs, stored; identification is left as it was."""
         found_files = self._inventory(conn, label, progress, full=False)
-        progress.stage("Saving")
-        self._store_inventory(conn, label, found_files.files, found_files.found)
+        with found_files.found.cache.kept(conn):
+            progress.stage("Saving")
+            self._store_inventory(conn, label, found_files.files, found_files.found)
         found_files.found.cache.save(conn, {f.rel_path for f in found_files.files})
         waiting = self.waiting(conn, found_files.library, found_files.folder, found_files.root)
         roms = [f for f in found_files.files if f.kind in ("rom", "archive")]
@@ -481,8 +483,23 @@ class Scanner:
     ) -> str:
         """Scan: the check, then the identification of the files with nothing left to convert
         (a file waiting for a conversion is identified once it is converted). `rematch`: only
-        of the files no earlier scan or manual match identified."""
+        of the files no earlier scan or manual match identified. A scan that fails part-way
+        (an online lookup that breaks off, igir failing on a later DAT) keeps what it read,
+        so the next quick scan starts from there."""
         found_files = self._inventory(conn, label, progress, full)
+        with found_files.found.cache.kept(conn):
+            return self._identify(conn, label, rematch, progress, full, found_files)
+
+    def _identify(
+        self,
+        conn: sqlite3.Connection,
+        label: str,
+        rematch: bool,
+        progress: Progress,
+        full: bool,
+        found_files: "Inventory",
+    ) -> str:
+        """`_scan` after the files are listed: store the listing, then identify."""
         library, folder, root, files, found = (
             found_files.library,
             found_files.folder,

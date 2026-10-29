@@ -12,7 +12,8 @@ a header rule or a hashing limit reads the files again rather than trusting old 
 import hashlib
 import json
 import sqlite3
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager, suppress
 from typing import Any, Protocol
 
 from pydantic import BaseModel
@@ -43,7 +44,9 @@ def _plain(value: Any) -> Any:
 
 class FileCache:
     """Per-file results for one folder. `get` returns a stored value when the file is
-    unchanged, else computes it; `save` writes what was computed. Values are JSON."""
+    unchanged, else computes it; `save` writes what was computed. Values are JSON.
+    A result stays valid whatever happens to the scan that read it, so a scan that fails
+    keeps it too (`kept`): the next quick scan does not read those files again."""
 
     def __init__(self, conn: sqlite3.Connection | None, label: str, reuse: bool = True):
         self.label = label
@@ -75,6 +78,11 @@ class FileCache:
             "DELETE FROM file_cache WHERE folder_label = ? AND rel_path = ?",
             [(self.label, rel) for rel in gone],
         )
+        self.keep(conn)
+
+    def keep(self, conn: sqlite3.Connection) -> None:
+        """Store what was computed, leaving the other rows as they are (the listing of a
+        scan that failed may be incomplete, so nothing is dropped)."""
         conn.executemany(
             "INSERT OR REPLACE INTO file_cache VALUES (?, ?, ?, ?, ?, ?)",
             [
@@ -82,6 +90,18 @@ class FileCache:
                 for (rel, name), (size, mtime, value) in self.computed.items()
             ],
         )
+
+    @contextmanager
+    def kept(self, conn: sqlite3.Connection) -> Iterator[None]:
+        """Around a scan's reads: when they fail, what was computed is stored before the
+        failure goes on."""
+        try:
+            yield
+        except BaseException:
+            # Storing must not hide the failure that ended the scan.
+            with suppress(sqlite3.Error):
+                self.keep(conn)
+            raise
 
 
 def forget(conn: sqlite3.Connection, label: str) -> None:

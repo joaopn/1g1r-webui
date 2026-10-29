@@ -6,6 +6,8 @@ import zlib
 from http import HTTPStatus
 from pathlib import Path
 
+import pytest
+
 from g1r import fuzzy, hasheous, hashing, scanner, unmatched
 from g1r.config import FuzzyConfig
 
@@ -229,6 +231,33 @@ def test_a_lookup_error_leaves_the_file_unmatched_and_says_so(env):  # noqa: F81
     assert result["status"] == "done" and "online lookups stopped" in result["message"]
     (row,) = unmatched.rows(conn, "nes", hasheous_on=True)
     assert row["hasheous"]["status"] == hasheous.ERROR
+
+
+def test_a_scan_that_fails_keeps_what_it_hashed(env, monkeypatch):  # noqa: F811
+    settings, store, registry, conn, folder_scanner = env
+    read = []
+    real = scanner.content_hashes
+
+    def counted(settings_, platform, path, *rest):
+        read.append(path.name)
+        return real(settings_, platform, path, *rest)
+
+    def broken(url, body, headers, timeout):
+        raise RuntimeError("the lookup broke")
+
+    monkeypatch.setattr(scanner, "content_hashes", counted)
+    store.update(lambda lib: setattr(lib.lookups, "hasheous", True))
+    folder_scanner.lookup_post = broken
+    with pytest.raises(RuntimeError):
+        folder_scanner.run(conn, folder_scanner.start(conn, "nes"), "nes")
+    assert scanner.latest_scan(conn, "nes")["status"] == "failed"
+    hashed = sorted(read)
+    assert hashed
+    # The quick scan after it reads none of those files again.
+    read.clear()
+    _, result = scan(env, FakeHasheous())
+    assert result["status"] == "done"
+    assert read == []
 
 
 def test_manual_assignment_survives_rescans_and_can_be_undone(env):  # noqa: F811
