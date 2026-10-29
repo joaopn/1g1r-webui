@@ -251,3 +251,31 @@ def test_running_conversion_counts_finished_files_and_failed_ones(tmp_path):
     assert journal.running_conversion(conn, "other") is None
     conn.execute("UPDATE apply_run SET status = 'failed' WHERE id = ?", (run_id,))
     assert journal.running_conversion(conn, "f") is None
+
+
+def test_listing_moves_in_discarded_does_not_read_the_whole_journal_per_move(tmp_path):
+    """Every move checks for a later delete of its file: that check must use an index,
+    else each 1G1R decision reads the journal of every folder once per move."""
+    conn = db.connect(tmp_path / "state.db", 1000)
+    db.migrate(conn)
+
+    def steps_for(moves: int) -> int:
+        conn.execute("DELETE FROM operation")
+        run_id = journal.start_run(conn, "f", journal.APPLY, "", moves)
+        other = journal.start_run(conn, "g", journal.APPLY, "", moves)
+        conn.executemany(
+            "INSERT INTO operation (run_id, folder_label, rel_path, reason, source, "
+            "destination, size, mtime_ns, state, action) "
+            "VALUES (?, ?, ?, '1g1r', 'a', 'b', 1, 1, 'done', 'move')",
+            [(run_id, "f", f"f{i}.zip") for i in range(moves)]
+            + [(other, "g", f"g{i}.zip") for i in range(moves)],
+        )
+        counted = []
+        conn.set_progress_handler(lambda: counted.append(1), 1)
+        assert len(journal.active_discards(conn, "f")) == moves
+        conn.set_progress_handler(None, 1)
+        return len(counted)
+
+    small, large = steps_for(200), steps_for(800)
+    # Linear work grows 4 times; a scan of the journal per move grows 16 times.
+    assert large < small * 6
