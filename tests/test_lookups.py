@@ -1,4 +1,5 @@
 import hashlib
+import http.client
 import json
 import threading
 import zipfile
@@ -228,6 +229,26 @@ def test_hashes_read_in_pieces_equal_the_whole_files(env, make_settings):  # noq
 
 def test_a_lookup_error_leaves_the_file_unmatched_and_says_so(env):  # noqa: F811
     conn, result = scan(env, FakeHasheous(status=HTTPStatus.BAD_GATEWAY), hasheous=True)
+    assert result["status"] == "done" and "online lookups stopped" in result["message"]
+    (row,) = unmatched.rows(conn, "nes", hasheous_on=True)
+    assert row["hasheous"]["status"] == hasheous.ERROR
+
+
+def test_an_answer_cut_off_mid_way_stops_the_lookups_not_the_scan(env, monkeypatch):  # noqa: F811
+    class CutOff:
+        status = HTTPStatus.OK
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+        def read(self):
+            raise http.client.IncompleteRead(b"{")
+
+    monkeypatch.setattr(hasheous.urllib.request, "urlopen", lambda *a, **_: CutOff())
+    conn, result = scan(env, hasheous.http_post, hasheous=True)
     assert result["status"] == "done" and "online lookups stopped" in result["message"]
     (row,) = unmatched.rows(conn, "nes", hasheous_on=True)
     assert row["hasheous"]["status"] == hasheous.ERROR

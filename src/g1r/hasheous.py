@@ -7,6 +7,7 @@ platform's DAT (No-Intro, Redump), its name; from any other, only a name one of 
 platform's DATs lists. Other names it gives are hints for the suggestions.
 """
 
+import http.client
 import json
 import re
 import sqlite3
@@ -84,7 +85,9 @@ def http_post(url: str, body: bytes, headers: dict, timeout: float) -> tuple[int
             return response.status, response.read()
     except urllib.error.HTTPError as exc:
         return exc.code, exc.read()
-    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+    except (urllib.error.URLError, TimeoutError, OSError, http.client.HTTPException) as exc:
+        # HTTPException: a connection that breaks off mid-answer (IncompleteRead) or sends
+        # no valid HTTP; not an OSError, and it must stop the lookups, not fail the scan.
         raise LookupError_(f"Hasheous could not be reached: {exc}") from exc
 
 
