@@ -999,6 +999,9 @@ jobs:
   max_conversion_workers: 8
   # A running scan writes how far it is at most this often.
   progress_interval_seconds: 0.5
+  # While a scan or run works on a set, its Home card figures are computed again at most
+  # this often (every file it finishes changes them; Home polls every poll_interval_ms).
+  busy_card_refresh_seconds: 10
 
 apply:
   # Moves to another disk copy in chunks of this many bytes, hashing as they go.

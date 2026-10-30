@@ -449,6 +449,7 @@ class JobsConfig(_Strict):
         return self
 
     progress_interval_seconds: float = Field(ge=0)
+    busy_card_refresh_seconds: float = Field(ge=0)
 
 
 class ChdmanConfig(_Strict):

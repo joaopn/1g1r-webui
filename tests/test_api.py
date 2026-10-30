@@ -1,11 +1,14 @@
+import time
 from http import HTTPStatus
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
 
 from g1r import dashboard, db, hasheous, igir, matching, scanner
 from g1r.library import LibraryStore
+from g1r.web import api
 from g1r.web.api import suggest_label
 from g1r.web.app import create_app
 
@@ -478,6 +481,41 @@ def test_home_cards_are_kept_until_the_folder_changes(setup, monkeypatch):
         "INSERT INTO apply_run (folder_label, kind, status) VALUES ('nes', 'apply', 'running')"
     )
     assert client.get("/api/folders").json()[0]["running"]
+
+
+def test_a_busy_sets_card_is_computed_again_only_now_and_then(setup, monkeypatch):
+    client, _, settings = setup
+    scanned(client)
+    built = []
+    game_rows = matching.game_rows
+
+    def counted(*args, **kwargs):
+        built.append(args[2])
+        return game_rows(*args, **kwargs)
+
+    monkeypatch.setattr(matching, "game_rows", counted)
+    assert client.get("/api/folders").json()[0]["summary"]["unmatched"] == 1
+    assert built == ["nes"]
+
+    # A run works on the set and every file it finishes changes the set's data: Home's
+    # polls get the figures computed last, until they are old enough.
+    conn = db.connect(settings.paths.database_path, busy_timeout_ms=0)
+    run = conn.execute(
+        "INSERT INTO apply_run (folder_label, kind, status) VALUES ('nes', 'apply', 'running')"
+    ).lastrowid
+    conn.execute("DELETE FROM folder_file WHERE folder_label = 'nes' AND rel_path = 'stray.zip'")
+    card = client.get("/api/folders").json()[0]
+    assert card["running"] and card["summary"]["unmatched"] == 1 and built == ["nes"]
+    clock = [time.monotonic() + settings.jobs.busy_card_refresh_seconds]
+    monkeypatch.setattr(api, "time", SimpleNamespace(monotonic=lambda: clock[0]))
+    assert client.get("/api/folders").json()[0]["summary"]["unmatched"] == 0
+    assert built == ["nes", "nes"]
+
+    # Once the run ends, a change shows at the next poll.
+    conn.execute("UPDATE apply_run SET status = 'done' WHERE id = ?", (run,))
+    conn.execute("DELETE FROM folder_file WHERE folder_label = 'nes' AND rel_path LIKE 'Contra%'")
+    client.get("/api/folders")
+    assert built == ["nes", "nes", "nes"]
 
 
 def test_discarded_listing_and_home_warnings(setup, roms_root):

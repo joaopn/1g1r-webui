@@ -5,6 +5,7 @@ import json
 import re
 import sqlite3
 import threading
+import time
 from collections.abc import Callable
 from dataclasses import asdict
 from http import HTTPStatus
@@ -570,8 +571,12 @@ def build_router(
     # Home's figures per folder, kept with what they were computed from: the folder's and
     # the DATs' change counters, the library, the console keys and whether the folder is on
     # disk. Building them reads every file of the folder, so they are rebuilt only when one of
-    # these moved.
-    cards: dict[str, tuple[str, dict]] = {}
+    # these moved. While a scan or run works on the folder, every file it finishes moves
+    # them: they are then computed again at most every jobs.busy_card_refresh_seconds, or
+    # Home's polling recomputes the whole set each second, and that work in this process
+    # slowed a run deleting thousands of files many times over.
+    # Label: (key, figures, time.monotonic() when computed).
+    cards: dict[str, tuple[str, dict, float]] = {}
     cards_lock = threading.Lock()
 
     def update_counts(rows: list[updates.UpdateRow]) -> dict:
@@ -599,8 +604,13 @@ def build_router(
         key = card_key(conn, library_json, folder)
         with cards_lock:
             kept = cards.get(folder.label)
-        if kept is not None and kept[0] == key:
-            return kept[1]
+        if kept is not None:
+            fresh_key, figures, computed = kept
+            if fresh_key == key:
+                return figures
+            recent = time.monotonic() - computed < settings.jobs.busy_card_refresh_seconds
+            if recent and journal.busy(conn, folder.label):
+                return figures
         return fresh_card(conn, library, key, folder)[0]
 
     def fresh_card(
@@ -647,7 +657,7 @@ def build_router(
             },
         }
         with cards_lock:
-            cards[folder.label] = (key, figures)
+            cards[folder.label] = (key, figures, time.monotonic())
         return figures, games
 
     def changed_game(conn, folder: FolderEntry, group_key: str) -> dict:
