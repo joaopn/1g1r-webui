@@ -134,8 +134,9 @@ export type Scan = {
   files_total: number | null;
   /** While a step waits on igir: its command line, as a shell would show it. */
   command: string | null;
-  /** Every igir command the scan ran, in order; kept after it ends. */
-  commands: string[];
+  /** Every igir command the scan ran, in order, with the lines it printed (so far, while it
+   * runs); kept after the scan ends. */
+  commands: { command: string; output: string[] }[];
 };
 
 export type DatVersion = {

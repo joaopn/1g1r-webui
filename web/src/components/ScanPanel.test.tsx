@@ -120,27 +120,33 @@ test("while igir runs its command shows, marked, open until closed", async () =>
     finished_at: null,
     stage: "Matching checksums with igir",
     command: SECOND,
-    commands: [FIRST, SECOND],
+    commands: [
+      { command: FIRST, output: [" ✓ Parsing DATs » 1 DAT found"] },
+      { command: SECOND, output: [" ✓ Parsing DATs » 1 DAT found"] },
+    ],
   } as Scan);
   const details = screen.getByTestId("scan-command");
   expect(details).toHaveAttribute("open");
   expect(screen.getByText("igir is running")).toBeInTheDocument();
   const pre = details.querySelector("pre");
   expect(pre).toHaveTextContent("$ igir report \\ --dat /data/dats/nes/a.dat");
-  expect(pre).toHaveTextContent(/b\.dat \\ --input \/roms\/nesrunning…$/);
+  expect(pre).toHaveTextContent(/a\.dat \\ --input \/roms\/nes ✓ Parsing DATs » 1 DAT found\$/);
+  expect(pre).toHaveTextContent(
+    /b\.dat \\ --input \/roms\/nes ✓ Parsing DATs » 1 DAT foundrunning…$/,
+  );
   await userEvent.click(screen.getByText("igir is running"));
   expect(details).not.toHaveAttribute("open");
 });
 
 test("a finished scan keeps its igir commands, unmarked", () => {
-  renderPanel({ ...SCAN, commands: [FIRST] } as Scan);
+  renderPanel({ ...SCAN, commands: [{ command: FIRST, output: [] }] } as Scan);
   expect(screen.getByText("igir commands of the last scan")).toBeInTheDocument();
   expect(screen.getByTestId("scan-command")).not.toHaveTextContent("running…");
 });
 
 test("a running Check files leaves the last scan's commands", () => {
   const check = { ...SCAN, kind: "check", status: "running", stage: "Listing files" } as Scan;
-  renderPanelWith(check, { ...SCAN, commands: [FIRST] } as Scan);
+  renderPanelWith(check, { ...SCAN, commands: [{ command: FIRST, output: [] }] } as Scan);
   expect(screen.getByText("igir commands of the last scan")).toBeInTheDocument();
 });
 

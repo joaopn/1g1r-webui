@@ -17,7 +17,7 @@ import type { Scan } from "@/lib/types";
  * `scan` is the latest run of either kind (one runs at a time); `lastScan` the latest Scan.
  * `quickOnly` (Updates & DLC) offers the quick scan alone: it picks up files added by hand.
  * Below the status line, the igir commands of the running Scan, else of the last one (until
- * the next Scan starts); the one igir is running now is marked.
+ * the next Scan starts), each with what igir printed; the one igir is running now is marked.
  */
 export function ScanPanel({
   label,
@@ -62,11 +62,12 @@ export function ScanPanel({
   const commands = withCommands?.commands ?? [];
   const current = withCommands?.status === "running" ? withCommands.command : null;
   const terminal = useRef<HTMLPreElement>(null);
-  // A new command shows at the bottom: keep it in view.
+  // New lines show at the bottom: keep them in view.
+  const lineCount = commands.reduce((n, run) => n + run.output.length + 1, 0);
   useEffect(() => {
     const pre = terminal.current;
-    if (pre && commands.length > 0) pre.scrollTop = pre.scrollHeight;
-  }, [commands.length]);
+    if (pre && lineCount > 0) pre.scrollTop = pre.scrollHeight;
+  }, [lineCount]);
   // What the status line reports: a Scan on the Matching page; on the Conversion page, the
   // last run of either kind (both read the folder).
   const shown = kind === "check" ? scan : (lastScan ?? null);
@@ -177,11 +178,12 @@ export function ScanPanel({
             ref={terminal}
             className="mt-1 max-h-60 space-y-3 overflow-auto rounded-md bg-terminal px-3 py-2 font-mono text-terminal-foreground text-xs leading-relaxed"
           >
-            {commands.map((command, index) => (
+            {commands.map((run, index) => (
               // Each run writes its report to a new temporary folder: no two commands are alike.
-              <div key={command}>
+              <div key={run.command}>
                 <span className="select-none text-terminal-muted">$ </span>
-                {command}
+                {run.command}
+                {run.output.length > 0 ? <div>{run.output.join("\n")}</div> : null}
                 {current && index === commands.length - 1 ? (
                   <div className="animate-pulse select-none text-terminal-muted">running…</div>
                 ) : null}
