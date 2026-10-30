@@ -120,6 +120,10 @@ export type Notification = {
   failed: number;
 };
 
+/** A line of a terminal screen: runs of [text, style], style being a colour name and/or
+ * "faint", or "" for the terminal's own colour. */
+export type TerminalLine = [string, string][];
+
 export type Scan = {
   id: number;
   /** "check": Check files (what conversion needs, nothing hashed); "identify": a Scan. */
@@ -134,9 +138,9 @@ export type Scan = {
   files_total: number | null;
   /** While a step waits on igir: its command line, as a shell would show it. */
   command: string | null;
-  /** Every igir command the scan ran, in order, with the lines it printed (so far, while it
-   * runs); kept after the scan ends. */
-  commands: { command: string; output: string[] }[];
+  /** Every igir command the scan ran, in order, with the screen it drew (so far, while it
+   * runs: its bars included); kept after the scan ends. */
+  commands: { command: string; output: TerminalLine[] }[];
 };
 
 export type DatVersion = {

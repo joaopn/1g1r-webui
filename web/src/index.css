@@ -42,6 +42,14 @@
   --color-terminal: var(--terminal);
   --color-terminal-foreground: var(--terminal-foreground);
   --color-terminal-muted: var(--terminal-muted);
+  --color-terminal-red: var(--terminal-red);
+  --color-terminal-green: var(--terminal-green);
+  --color-terminal-yellow: var(--terminal-yellow);
+  --color-terminal-blue: var(--terminal-blue);
+  --color-terminal-magenta: var(--terminal-magenta);
+  --color-terminal-cyan: var(--terminal-cyan);
+  --color-terminal-gray: var(--terminal-gray);
+  --color-terminal-dark: var(--terminal-dark);
 }
 
 :root {
@@ -82,6 +90,15 @@
   --terminal: #0d1117;
   --terminal-foreground: #e6edf3;
   --terminal-muted: #7d8590;
+  /* igir's colours on it; "gray" is a bar's part being read, "dark" the part left. */
+  --terminal-red: #f85149;
+  --terminal-green: #3fb950;
+  --terminal-yellow: #d29922;
+  --terminal-blue: #58a6ff;
+  --terminal-magenta: #bc8cff;
+  --terminal-cyan: #39c5cf;
+  --terminal-gray: #8b949e;
+  --terminal-dark: #3d444d;
   color-scheme: light;
 }
 

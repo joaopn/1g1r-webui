@@ -2,7 +2,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { queryClient } from "@/lib/queries";
-import type { Scan } from "@/lib/types";
+import type { Scan, TerminalLine } from "@/lib/types";
 import { ScanPanel } from "./ScanPanel";
 
 const SCAN = {
@@ -113,6 +113,21 @@ test("a running scan fills the panel's background as it goes", () => {
 const FIRST = "igir report \\\n  --dat /data/dats/nes/a.dat \\\n  --input /roms/nes";
 const SECOND = "igir report \\\n  --dat /data/dats/nes/b.dat \\\n  --input /roms/nes";
 
+const DONE: TerminalLine = [
+  [" ", ""],
+  ["✓", "green"],
+  [" Parsing DATs ", ""],
+  ["»", "faint"],
+  [" 1 DAT found", ""],
+];
+const BAR: TerminalLine = [
+  ["   ", ""],
+  ["■", "cyan"],
+  ["■", "gray"],
+  ["■", "dark"],
+  [" 1/3", ""],
+];
+
 test("while igir runs its command shows, marked, open until closed", async () => {
   renderPanel({
     ...SCAN,
@@ -121,8 +136,8 @@ test("while igir runs its command shows, marked, open until closed", async () =>
     stage: "Matching checksums with igir",
     command: SECOND,
     commands: [
-      { command: FIRST, output: [" ✓ Parsing DATs » 1 DAT found"] },
-      { command: SECOND, output: [" ✓ Parsing DATs » 1 DAT found"] },
+      { command: FIRST, output: [DONE] },
+      { command: SECOND, output: [DONE, BAR] },
     ],
   } as Scan);
   const details = screen.getByTestId("scan-command");
@@ -132,8 +147,16 @@ test("while igir runs its command shows, marked, open until closed", async () =>
   expect(pre).toHaveTextContent("$ igir report \\ --dat /data/dats/nes/a.dat");
   expect(pre).toHaveTextContent(/a\.dat \\ --input \/roms\/nes ✓ Parsing DATs » 1 DAT found\$/);
   expect(pre).toHaveTextContent(
-    /b\.dat \\ --input \/roms\/nes ✓ Parsing DATs » 1 DAT foundrunning…$/,
+    /b\.dat \\ --input \/roms\/nes ✓ Parsing DATs » 1 DAT found ■■■ 1\/3running…$/,
   );
+  // A bar's parts are told apart by colour only: each keeps igir's.
+  const parts = [...(pre?.querySelectorAll("span") ?? [])].filter((s) => s.textContent === "■");
+  expect(parts.map((part) => part.className).slice(-3)).toEqual([
+    "text-terminal-cyan",
+    "text-terminal-gray",
+    "text-terminal-dark",
+  ]);
+  expect(screen.getAllByText("»")[0]).toHaveClass("opacity-60");
   await userEvent.click(screen.getByText("igir is running"));
   expect(details).not.toHaveAttribute("open");
 });

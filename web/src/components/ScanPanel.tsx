@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { formatWhen } from "@/lib/format";
 import { invalidateFolder } from "@/lib/queries";
 import { runWords, scanProgress, useStartCheck, useStartScan } from "@/lib/scan";
-import type { Scan } from "@/lib/types";
+import type { Scan, TerminalLine } from "@/lib/types";
 
 /**
  * A folder's run, in a titled box: `children` first, then how the last one went.
@@ -62,12 +62,12 @@ export function ScanPanel({
   const commands = withCommands?.commands ?? [];
   const current = withCommands?.status === "running" ? withCommands.command : null;
   const terminal = useRef<HTMLPreElement>(null);
-  // New lines show at the bottom: keep them in view.
-  const lineCount = commands.reduce((n, run) => n + run.output.length + 1, 0);
+  // Follows the bottom as igir draws, unless scrolled up to read.
+  const following = useRef(true);
   useEffect(() => {
     const pre = terminal.current;
-    if (pre && lineCount > 0) pre.scrollTop = pre.scrollHeight;
-  }, [lineCount]);
+    if (pre && following.current) pre.scrollTop = pre.scrollHeight;
+  });
   // What the status line reports: a Scan on the Matching page; on the Conversion page, the
   // last run of either kind (both read the folder).
   const shown = kind === "check" ? scan : (lastScan ?? null);
@@ -176,14 +176,18 @@ export function ScanPanel({
           </summary>
           <pre
             ref={terminal}
-            className="mt-1 max-h-60 space-y-3 overflow-auto rounded-md bg-terminal px-3 py-2 font-mono text-terminal-foreground text-xs leading-relaxed"
+            onScroll={(e) => {
+              const pre = e.currentTarget;
+              following.current = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 1;
+            }}
+            className="mt-1 max-h-96 space-y-3 overflow-auto rounded-md bg-terminal px-3 py-2 font-mono text-terminal-foreground text-xs leading-relaxed"
           >
             {commands.map((run, index) => (
               // Each run writes its report to a new temporary folder: no two commands are alike.
               <div key={run.command}>
                 <span className="select-none text-terminal-muted">$ </span>
                 {run.command}
-                {run.output.length > 0 ? <div>{run.output.join("\n")}</div> : null}
+                {run.output.length > 0 ? <Screen lines={run.output} /> : null}
                 {current && index === commands.length - 1 ? (
                   <div className="animate-pulse select-none text-terminal-muted">running…</div>
                 ) : null}
@@ -201,4 +205,45 @@ export function ScanPanel({
 function commandsOf(scan: Scan | null, lastScan: Scan | null): Scan | null {
   if (scan?.status === "running" && scan.kind === "identify") return scan;
   return lastScan;
+}
+
+/** Tailwind classes of igir's colour names (literal, so Tailwind sees them). */
+const TERMINAL_STYLES: Record<string, string> = {
+  red: "text-terminal-red",
+  green: "text-terminal-green",
+  yellow: "text-terminal-yellow",
+  blue: "text-terminal-blue",
+  magenta: "text-terminal-magenta",
+  cyan: "text-terminal-cyan",
+  gray: "text-terminal-gray",
+  dark: "text-terminal-dark",
+  faint: "opacity-60",
+};
+
+/** The screen igir drew: lines of [text, style] runs, a style being colour and/or "faint". */
+function Screen({ lines }: { lines: TerminalLine[] }) {
+  return (
+    <div>
+      {lines.map((line, row) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: rows of a screen, redrawn in place
+        <div key={row} className="min-h-[1lh]">
+          {line.map(([text, style], column) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: runs of one line, in order
+            <span key={column} className={styleClasses(style)}>
+              {text}
+            </span>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function styleClasses(style: string): string | undefined {
+  if (!style) return undefined;
+  return style
+    .split(" ")
+    .map((part) => TERMINAL_STYLES[part])
+    .filter(Boolean)
+    .join(" ");
 }
