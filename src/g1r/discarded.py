@@ -72,8 +72,12 @@ def _walk(root: Path) -> list[tuple[str, os.stat_result]]:
             if entry.is_dir(follow_symlinks=False):
                 stack.append(Path(entry.path))
             elif entry.is_file(follow_symlinks=False):
+                try:
+                    stat = entry.stat(follow_symlinks=False)
+                except FileNotFoundError:
+                    continue  # deleted or moved since it was listed (a run is working here)
                 rel = Path(entry.path).relative_to(root).as_posix()
-                found.append((rel, entry.stat(follow_symlinks=False)))
+                found.append((rel, stat))
     return found
 
 

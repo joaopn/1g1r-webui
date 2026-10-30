@@ -1,8 +1,9 @@
+import os
 import zipfile
 from http import HTTPStatus
 from pathlib import Path
 
-from g1r import db, journal
+from g1r import db, discarded, journal
 
 from .test_api import scanned, setup  # noqa: F401  (fixture)
 from .test_dvds import proposals
@@ -222,6 +223,22 @@ def test_recovery_settles_a_cut_off_empty(tmp_path):
     assert state[deleted] == "done" and state[kept] == "failed" and (gone / "b.bin").exists()
     assert conn.execute("SELECT COUNT(*) FROM folder_file").fetchone()[0] == 0
     assert journal.active_discards(conn, "f") == []
+
+
+def test_listing_discarded_skips_a_file_deleted_while_it_is_read(tmp_path, monkeypatch):
+    gone = tmp_path / "discarded"
+    gone.mkdir()
+    (gone / "kept.bin").write_bytes(b"k")
+    (gone / "deleted.bin").write_bytes(b"d")
+    listed = os.scandir
+
+    def scandir(path):
+        entries = list(listed(path))
+        (gone / "deleted.bin").unlink(missing_ok=True)  # a run deletes it meanwhile
+        return iter(entries)
+
+    monkeypatch.setattr(discarded.os, "scandir", scandir)
+    assert [rel for rel, _ in discarded._walk(gone)] == ["kept.bin"]
 
 
 # Flagged and unsupported files --------------------------------------------------------
