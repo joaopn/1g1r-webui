@@ -6,8 +6,10 @@ DAT; we only read which input file it found as which DAT game.
 
 import csv
 import os
+import shlex
 import subprocess
 import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -61,6 +63,18 @@ def time_limit(settings: Settings, size_bytes: int) -> float:
     return min(limit, config.max_timeout_seconds)
 
 
+def shown_command(program: list[str], options: list[str], env: dict[str, str]) -> str:
+    """A command as a shell would run it: `env` first, then the program (and subcommand),
+    then each option with its values on a continued line of its own."""
+    first = [*(f"{k}={shlex.quote(v)}" for k, v in env.items()), *map(shlex.quote, program)]
+    lines: list[list[str]] = [first]
+    for arg in options:
+        if arg.startswith("--") or len(lines) == 1:
+            lines.append([])
+        lines[-1].append(shlex.quote(arg))
+    return " \\\n  ".join(" ".join(line) for line in lines)
+
+
 def run_report(
     settings: Settings,
     dat_file: Path,
@@ -72,21 +86,22 @@ def run_report(
     threads: int | None = None,
     excess: bool = False,
     files: list[Path] | None = None,
+    started: Callable[[str], None] | None = None,
 ) -> list[ReportRow]:
     """`cache`: igir's cache file (`cache_path`). `merge`: igir's --merge-roms mode, for
     arcade sets. `threads`: files read at once and Node's worker pool size (None: igir's
     own). `excess`: an archive holding other files besides the game's ROMs still matches.
     `files`: only these files of `input_dir`, by exact path (igir takes an existing path as
     it is, so brackets in ROM names need no escaping; checked with igir 5.8.0). Its cache
-    is keyed by path, so a file read in a run over the whole folder is not read again."""
+    is keyed by path, so a file read in a run over the whole folder is not read again.
+    `started`: told the command (`shown_command`) just before igir starts."""
     work = settings.paths.data_dir / settings.igir.work_dir
     work.mkdir(parents=True, exist_ok=True)
     cache.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=work) as tmp:
         report = Path(tmp) / "report.csv"
-        command = [
-            settings.igir.binary,
-            "report",
+        program = [settings.igir.binary, "report"]
+        options = [
             "--dat",
             str(dat_file),
             *[arg for path in files or [input_dir] for arg in ("--input", str(path))],
@@ -98,7 +113,11 @@ def run_report(
             *(["--reader-threads", str(threads)] if threads else []),
             *(["--allow-excess-sets"] if excess else []),
         ]
-        env = {**os.environ, POOL_SIZE_ENV: str(threads)} if threads else None
+        command = [*program, *options]
+        pool = {POOL_SIZE_ENV: str(threads)} if threads else {}
+        env = {**os.environ, **pool} if pool else None
+        if started is not None:
+            started(shown_command(program, options, pool))
         try:
             result = subprocess.run(
                 command, capture_output=True, text=True, timeout=timeout, env=env

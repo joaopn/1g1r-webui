@@ -278,6 +278,45 @@ def test_scan_writes_its_progress(env):
     assert scan["status"] == "done" and scan["stage"] is None and scan["files_total"] is None
 
 
+def test_scan_shows_the_igir_command_while_it_runs(env):
+    settings, store, registry, conn, _ = env
+    seen = []
+
+    def report(settings_, dat_file, input_dir, *, started, **_):
+        started(f"igir report \\\n  --dat {dat_file}")
+        seen.append(conn.execute("SELECT command FROM scan").fetchone()[0])
+        return []
+
+    folder_scanner = scanner.Scanner(settings, store, registry, report)
+    folder_scanner.run(conn, folder_scanner.start(conn, "nes"), "nes")
+    assert len(seen) == 1 and seen[0].startswith("igir report \\\n  --dat ")
+    # The next step, and the end of the scan, clear it.
+    assert scanner.latest_scan(conn, "nes")["command"] is None
+
+
+def test_shown_command():
+    shown = igir.shown_command(
+        ["igir", "report"],
+        [
+            "--dat",
+            "/data/a b.dat",
+            "--input",
+            "/roms/x",
+            "--input",
+            "/roms/y",
+            "--allow-excess-sets",
+        ],
+        {igir.POOL_SIZE_ENV: "4"},
+    )
+    assert shown.split(" \\\n  ") == [
+        "UV_THREADPOOL_SIZE=4 igir report",
+        "--dat '/data/a b.dat'",
+        "--input /roms/x",
+        "--input /roms/y",
+        "--allow-excess-sets",
+    ]
+
+
 def test_progress_writes_at_most_every_interval(env):
     _, _, _, conn, folder_scanner = env
     scan_id = folder_scanner.start(conn, "nes")

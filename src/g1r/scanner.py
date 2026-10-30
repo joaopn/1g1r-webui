@@ -75,9 +75,10 @@ class ScanError(RuntimeError):
 
 
 class Progress:
-    """How far a running scan is: its step and, for a step that goes file by file, how many
-    files are done. Written to the scan's row at most every `interval` seconds, and always
-    when a step starts or ends. Without a connection nothing is written."""
+    """How far a running scan is: its step, for a step that goes file by file how many files
+    are done, and for a step that waits on an external program its command. Written to the
+    scan's row at most every `interval` seconds, and always when a step starts or ends or a
+    command starts. Without a connection nothing is written."""
 
     def __init__(
         self,
@@ -93,11 +94,17 @@ class Progress:
         self.name: str | None = None
         self.done: int | None = None
         self.total: int | None = None
+        self.command: str | None = None
         self.written = clock()
 
     def stage(self, name: str, total: int | None = None) -> None:
-        self.name, self.total = name, total
+        self.name, self.total, self.command = name, total, None
         self.done = None if total is None else 0
+        self._write()
+
+    def running(self, command: str) -> None:
+        """The step now waits on this command (until the next step)."""
+        self.command = command
         self._write()
 
     def each[T](self, name: str, items: Iterable[T]) -> Iterator[T]:
@@ -115,8 +122,8 @@ class Progress:
         if self.conn is None:
             return
         self.conn.execute(
-            "UPDATE scan SET stage = ?, files_done = ?, files_total = ? WHERE id = ?",
-            (self.name, self.done, self.total, self.scan_id),
+            "UPDATE scan SET stage = ?, files_done = ?, files_total = ?, command = ? WHERE id = ?",
+            (self.name, self.done, self.total, self.command, self.scan_id),
         )
 
 
@@ -406,7 +413,7 @@ class Scanner:
     def _finish(self, conn, scan_id, status, message) -> None:
         conn.execute(
             "UPDATE scan SET status = ?, message = ?, "
-            "stage = NULL, files_done = NULL, files_total = NULL, "
+            "stage = NULL, files_done = NULL, files_total = NULL, command = NULL, "
             "finished_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?",
             (status, message, scan_id),
         )
@@ -676,13 +683,22 @@ class Scanner:
             by_path: dict[str, set[str]] = {}
             for mode in modes:
                 found_now = igir.identified_files(
-                    self.report_runner(self.settings, dat_file, root, merge=mode, **run_igir)
+                    self.report_runner(
+                        self.settings,
+                        dat_file,
+                        root,
+                        merge=mode,
+                        started=progress.running,
+                        **run_igir,
+                    )
                 )
                 for path, games in found_now.items():
                     by_path.setdefault(path, set()).update(games)
         else:
             by_path = igir.identified_files(
-                self.report_runner(self.settings, dat_file, root, **run_igir)
+                self.report_runner(
+                    self.settings, dat_file, root, started=progress.running, **run_igir
+                )
             )
         if run_igir.get("excess"):
             by_path = _without_other_roms(self.settings, platform, root, dat, by_path, found)
