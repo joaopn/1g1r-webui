@@ -78,9 +78,9 @@ class ScanError(RuntimeError):
 class Progress:
     """How far a running scan is: its step, for a step that goes file by file how many files
     are done, and for a step that waits on an external program its command (and every
-    command the scan ran, kept after it ends). Written to the scan's row at most every
-    `interval` seconds, and always when a step starts or ends or a command starts. Without a
-    connection nothing is written."""
+    command the scan ran with what it printed, kept after it ends). Written to the scan's row
+    at most every `interval` seconds, and always when a step starts or ends or a command
+    starts or prints. Without a connection nothing is written."""
 
     def __init__(
         self,
@@ -97,7 +97,8 @@ class Progress:
         self.done: int | None = None
         self.total: int | None = None
         self.command: str | None = None
-        self.commands: list[str] = []
+        # {"command": ..., "output": [lines]} per command, in order.
+        self.commands: list[dict] = []
         self.written = clock()
 
     def stage(self, name: str, total: int | None = None) -> None:
@@ -108,8 +109,14 @@ class Progress:
     def running(self, command: str) -> None:
         """The step now waits on this command (until the next step)."""
         self.command = command
-        self.commands.append(command)
+        self.commands.append({"command": command, "output": []})
         self._write()
+
+    def printed(self, line: str) -> None:
+        """A line the running command printed."""
+        if self.commands:
+            self.commands[-1]["output"].append(line)
+            self._write()
 
     def each[T](self, name: str, items: Iterable[T]) -> Iterator[T]:
         """The items, counting each one done as the loop moves past it."""
@@ -701,6 +708,7 @@ class Scanner:
                         root,
                         merge=mode,
                         started=progress.running,
+                        printed=progress.printed,
                         **run_igir,
                     )
                 )
@@ -709,7 +717,12 @@ class Scanner:
         else:
             by_path = igir.identified_files(
                 self.report_runner(
-                    self.settings, dat_file, root, started=progress.running, **run_igir
+                    self.settings,
+                    dat_file,
+                    root,
+                    started=progress.running,
+                    printed=progress.printed,
+                    **run_igir,
                 )
             )
         if run_igir.get("excess"):
@@ -1325,7 +1338,8 @@ def latest_scan(
 
 
 def scan_dict(row: sqlite3.Row | None) -> dict | None:
-    """A scan row for the API, with `commands` as a list (empty when it ran none)."""
+    """A scan row for the API, with `commands` as a list of {command, output} (empty when it
+    ran none)."""
     if row is None:
         return None
     return {**dict(row), "commands": json.loads(row["commands"] or "[]")}

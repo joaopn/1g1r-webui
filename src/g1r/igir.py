@@ -9,6 +9,7 @@ import os
 import shlex
 import subprocess
 import tempfile
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -87,6 +88,7 @@ def run_report(
     excess: bool = False,
     files: list[Path] | None = None,
     started: Callable[[str], None] | None = None,
+    printed: Callable[[str], None] | None = None,
 ) -> list[ReportRow]:
     """`cache`: igir's cache file (`cache_path`). `merge`: igir's --merge-roms mode, for
     arcade sets. `threads`: files read at once and Node's worker pool size (None: igir's
@@ -94,7 +96,9 @@ def run_report(
     `files`: only these files of `input_dir`, by exact path (igir takes an existing path as
     it is, so brackets in ROM names need no escaping; checked with igir 5.8.0). Its cache
     is keyed by path, so a file read in a run over the whole folder is not read again.
-    `started`: told the command (`shown_command`) just before igir starts."""
+    `started`: told the command (`shown_command`) just before igir starts; `printed`: each
+    line igir prints, as it prints it (without a terminal: its banner, then a line per step
+    as the step ends)."""
     work = settings.paths.data_dir / settings.igir.work_dir
     work.mkdir(parents=True, exist_ok=True)
     cache.parent.mkdir(parents=True, exist_ok=True)
@@ -118,13 +122,54 @@ def run_report(
         env = {**os.environ, **pool} if pool else None
         if started is not None:
             started(shown_command(program, options, pool))
-        try:
-            result = subprocess.run(
-                command, capture_output=True, text=True, timeout=timeout, env=env
-            )
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            raise IgirError(f"could not run igir: {exc}") from exc
-        if result.returncode != 0 or not report.is_file():
-            tail = (result.stderr or result.stdout).strip().splitlines()[-1:]
-            raise IgirError(f"igir failed ({result.returncode}): {' '.join(tail)}")
+        lines, returncode = _run(command, env, timeout, printed)
+        if returncode != 0 or not report.is_file():
+            tail = [line for line in lines if line.strip()][-1:]
+            raise IgirError(f"igir failed ({returncode}): {' '.join(tail)}")
         return parse_report(report)
+
+
+def _run(
+    command: list[str],
+    env: dict[str, str] | None,
+    timeout: float,
+    printed: Callable[[str], None] | None,
+) -> tuple[list[str], int]:
+    """Runs igir, handing each line of its output (both streams) to `printed` on this thread
+    as it comes; killed after `timeout` seconds. Its lines and exit code."""
+    try:
+        process = subprocess.Popen(
+            command,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            errors="replace",
+            env=env,
+        )
+    except OSError as exc:
+        raise IgirError(f"could not run igir: {exc}") from exc
+    timed_out = threading.Event()
+
+    def stop() -> None:
+        timed_out.set()
+        process.kill()
+
+    timer = threading.Timer(timeout, stop)
+    timer.start()
+    lines = []
+    try:
+        for raw in process.stdout or []:
+            line = raw.rstrip("\n")
+            lines.append(line)
+            if printed is not None:
+                printed(line)
+        returncode = process.wait()
+    finally:
+        timer.cancel()
+        if process.poll() is None:
+            process.kill()
+            process.wait()
+    if timed_out.is_set():
+        raise IgirError(f"could not run igir: timed out after {timeout:g} seconds")
+    return lines, returncode

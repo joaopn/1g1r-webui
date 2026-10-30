@@ -1,5 +1,7 @@
+import json
 import shutil
 import subprocess
+import sys
 import zipfile
 import zlib
 from pathlib import Path
@@ -278,22 +280,27 @@ def test_scan_writes_its_progress(env):
     assert scan["status"] == "done" and scan["stage"] is None and scan["files_total"] is None
 
 
-def test_scan_shows_the_igir_command_while_it_runs(env):
+def test_scan_shows_the_igir_command_and_its_output_while_it_runs(env):
     settings, store, registry, conn, _ = env
     seen = []
 
-    def report(settings_, dat_file, input_dir, *, started, **_):
+    def report(settings_, dat_file, input_dir, *, started, printed, **_):
         started(f"igir report \\\n  --dat {dat_file}")
-        seen.append(conn.execute("SELECT command FROM scan").fetchone()[0])
+        printed(" ✓ Parsing DATs » 1 DAT found")
+        seen.append(tuple(conn.execute("SELECT command, commands FROM scan").fetchone()))
         return []
 
     folder_scanner = scanner.Scanner(settings, store, registry, report)
     folder_scanner.run(conn, folder_scanner.start(conn, "nes"), "nes")
-    assert len(seen) == 1 and seen[0].startswith("igir report \\\n  --dat ")
+    [(command, commands)] = seen
+    assert command.startswith("igir report \\\n  --dat ")
+    assert json.loads(commands) == [
+        {"command": command, "output": [" ✓ Parsing DATs » 1 DAT found"]}
+    ]
     # The next step, and the end of the scan, clear the running one; the list stays until
     # the next scan.
     scan = scanner.scan_dict(scanner.latest_scan(conn, "nes"))
-    assert scan["command"] is None and scan["commands"] == seen
+    assert scan["command"] is None and scan["commands"] == json.loads(commands)
     folder_scanner.start(conn, "nes")
     assert scanner.scan_dict(scanner.latest_scan(conn, "nes"))["commands"] == []
 
@@ -504,24 +511,65 @@ def test_each_dat_in_the_order_identifies_what_the_ones_before_it_missed(env, ro
     assert message == "3 of 3 ROM files identified; 1 by No-Intro (DAT-o-MATIC), 2 by Uploaded file"
 
 
-def test_igir_threads_set_its_readers_and_node_pool(make_settings, tmp_path, monkeypatch):
-    settings = make_settings()
-    seen = []
+FAKE_IGIR = """#!{python}
+import os, sys
+args = sys.argv[1:]
+print(" ✓ Parsing DATs » 1 DAT found", flush=True)
+print("pool", os.environ.get("UV_THREADPOOL_SIZE"), "args", " ".join(args), flush=True)
+if "--fail" in os.environ.get("FAKE_IGIR", ""):
+    print("ERROR: something broke", file=sys.stderr, flush=True)
+    sys.exit(1)
+if "--hang" in os.environ.get("FAKE_IGIR", ""):
+    import time
+    time.sleep(60)
+report = args[args.index("--report-output") + 1]
+with open(report, "w") as handle:
+    handle.write("DAT Name,Game Name,Status,ROM Files\\n")
+"""
 
-    def run(command, **options):
-        seen.append((command, options["env"]))
-        report = Path(command[command.index("--report-output") + 1])
-        report.write_text("DAT Name,Game Name,Status,ROM Files\n")
-        return subprocess.CompletedProcess(command, 0, "", "")
 
-    monkeypatch.setattr(igir.subprocess, "run", run)
-    cache = tmp_path / "c.cache"
+@pytest.fixture
+def fake_igir(make_settings, tmp_path):
+    program = tmp_path / "fake-igir"
+    program.write_text(FAKE_IGIR.format(python=sys.executable))
+    program.chmod(0o755)
+    return make_settings({"igir": {"binary": str(program)}})
+
+
+def test_igir_threads_set_its_readers_and_node_pool(fake_igir, tmp_path):
+    settings = fake_igir
     threads = settings.igir.max_threads
+    outputs = []
     for chosen in (None, threads):
+        lines = []
         igir.run_report(
-            settings, tmp_path / "x.dat", tmp_path, cache=cache, timeout=1, threads=chosen
+            settings,
+            tmp_path / "x.dat",
+            tmp_path,
+            cache=tmp_path / "c.cache",
+            timeout=30,
+            threads=chosen,
+            printed=lines.append,
         )
-    (own, own_env), (set_, set_env) = seen
-    assert "--reader-threads" not in own and own_env is None
-    assert set_[set_.index("--reader-threads") + 1] == str(threads)
-    assert set_env[igir.POOL_SIZE_ENV] == str(threads)
+        outputs.append(lines)
+    (own, set_) = outputs
+    assert own[0] == set_[0] == " ✓ Parsing DATs » 1 DAT found"
+    assert own[1].startswith("pool None ") and "--reader-threads" not in own[1]
+    assert set_[1].startswith(f"pool {threads} ")
+    assert f"--reader-threads {threads}" in set_[1]
+
+
+def test_igir_failure_and_time_limit(fake_igir, tmp_path, monkeypatch):
+    settings = fake_igir
+    run = {"cache": tmp_path / "c.cache"}
+    monkeypatch.setenv("FAKE_IGIR", "--fail")
+    lines = []
+    with pytest.raises(igir.IgirError, match=r"igir failed \(1\): ERROR: something broke"):
+        igir.run_report(
+            settings, tmp_path / "x.dat", tmp_path, timeout=30, printed=lines.append, **run
+        )
+    # Both streams reach the page.
+    assert lines[-1] == "ERROR: something broke"
+    monkeypatch.setenv("FAKE_IGIR", "--hang")
+    with pytest.raises(igir.IgirError, match="timed out"):
+        igir.run_report(settings, tmp_path / "x.dat", tmp_path, timeout=0.5, **run)
