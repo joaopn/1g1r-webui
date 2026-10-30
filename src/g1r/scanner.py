@@ -8,6 +8,7 @@ Without an active DAT the scan still takes the inventory, which is all conversio
 """
 
 import fnmatch
+import json
 import os
 import sqlite3
 import time
@@ -76,9 +77,10 @@ class ScanError(RuntimeError):
 
 class Progress:
     """How far a running scan is: its step, for a step that goes file by file how many files
-    are done, and for a step that waits on an external program its command. Written to the
-    scan's row at most every `interval` seconds, and always when a step starts or ends or a
-    command starts. Without a connection nothing is written."""
+    are done, and for a step that waits on an external program its command (and every
+    command the scan ran, kept after it ends). Written to the scan's row at most every
+    `interval` seconds, and always when a step starts or ends or a command starts. Without a
+    connection nothing is written."""
 
     def __init__(
         self,
@@ -95,6 +97,7 @@ class Progress:
         self.done: int | None = None
         self.total: int | None = None
         self.command: str | None = None
+        self.commands: list[str] = []
         self.written = clock()
 
     def stage(self, name: str, total: int | None = None) -> None:
@@ -105,6 +108,7 @@ class Progress:
     def running(self, command: str) -> None:
         """The step now waits on this command (until the next step)."""
         self.command = command
+        self.commands.append(command)
         self._write()
 
     def each[T](self, name: str, items: Iterable[T]) -> Iterator[T]:
@@ -122,8 +126,16 @@ class Progress:
         if self.conn is None:
             return
         self.conn.execute(
-            "UPDATE scan SET stage = ?, files_done = ?, files_total = ?, command = ? WHERE id = ?",
-            (self.name, self.done, self.total, self.command, self.scan_id),
+            "UPDATE scan SET stage = ?, files_done = ?, files_total = ?, command = ?, "
+            "commands = ? WHERE id = ?",
+            (
+                self.name,
+                self.done,
+                self.total,
+                self.command,
+                json.dumps(self.commands) if self.commands else None,
+                self.scan_id,
+            ),
         )
 
 
@@ -1310,6 +1322,13 @@ def latest_scan(
         "SELECT * FROM scan WHERE folder_label = ? AND kind = ? ORDER BY id DESC LIMIT 1",
         (label, kind),
     ).fetchone()
+
+
+def scan_dict(row: sqlite3.Row | None) -> dict | None:
+    """A scan row for the API, with `commands` as a list (empty when it ran none)."""
+    if row is None:
+        return None
+    return {**dict(row), "commands": json.loads(row["commands"] or "[]")}
 
 
 def folder_bytes(conn: sqlite3.Connection, label: str) -> int:

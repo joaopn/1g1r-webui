@@ -692,8 +692,8 @@ def build_router(
                 {
                     **info,
                     # The latest run of either kind (Check files or Scan), and the latest Scan.
-                    "scan": row_dict(scan),
-                    "last_scan": row_dict(last_scan),
+                    "scan": scanner.scan_dict(scan),
+                    "last_scan": scanner.scan_dict(last_scan),
                     "dat": row_dict(dat),
                     "summary": figures["summary"],
                     "dat_download": default_download(folder.platform) if dat is None else None,
@@ -1105,8 +1105,8 @@ def build_router(
             "dat": row_dict(registry.active_version(conn, library, folder.platform)),
             "dat_order": dat_order(conn, library, folder.platform),
             "dat_order_own": own_order(library, folder.platform),
-            "scan": row_dict(scanner.latest_scan(conn, label)),
-            "last_scan": row_dict(scanner.latest_scan(conn, label, scanner.IDENTIFY)),
+            "scan": scanner.scan_dict(scanner.latest_scan(conn, label)),
+            "last_scan": scanner.scan_dict(scanner.latest_scan(conn, label, scanner.IDENTIFY)),
             "summary": scanner.folder_summary(conn, label, parts_of(folder), waiting),
             "unmatched": [
                 dict(r) for r in scanner.unmatched_files(conn, label, parts_of(folder), waiting)
@@ -1863,7 +1863,7 @@ def build_router(
             request.app.state.jobs.scan(conn, label, rematch, full)
         except scanner.ScanError as exc:
             raise HTTPException(status_code=HTTPStatus.CONFLICT, detail=str(exc)) from exc
-        return row_dict(scanner.latest_scan(conn, label))
+        return scanner.scan_dict(scanner.latest_scan(conn, label))
 
     @router.post("/folders/{label}/check", status_code=HTTPStatus.ACCEPTED)
     def start_check(label: str, request: Request, conn: Conn):
@@ -1873,12 +1873,12 @@ def build_router(
             request.app.state.jobs.scan(conn, label, kind=scanner.CHECK)
         except scanner.ScanError as exc:
             raise HTTPException(status_code=HTTPStatus.CONFLICT, detail=str(exc)) from exc
-        return row_dict(scanner.latest_scan(conn, label))
+        return scanner.scan_dict(scanner.latest_scan(conn, label))
 
     @router.get("/folders/{label}/scan")
     def scan_status(label: str, conn: Conn):
         folder_or_404(label)
-        return row_dict(scanner.latest_scan(conn, label))
+        return scanner.scan_dict(scanner.latest_scan(conn, label))
 
     # Notifications -----------------------------------------------------------------
 

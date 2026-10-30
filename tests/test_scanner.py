@@ -290,8 +290,12 @@ def test_scan_shows_the_igir_command_while_it_runs(env):
     folder_scanner = scanner.Scanner(settings, store, registry, report)
     folder_scanner.run(conn, folder_scanner.start(conn, "nes"), "nes")
     assert len(seen) == 1 and seen[0].startswith("igir report \\\n  --dat ")
-    # The next step, and the end of the scan, clear it.
-    assert scanner.latest_scan(conn, "nes")["command"] is None
+    # The next step, and the end of the scan, clear the running one; the list stays until
+    # the next scan.
+    scan = scanner.scan_dict(scanner.latest_scan(conn, "nes"))
+    assert scan["command"] is None and scan["commands"] == seen
+    folder_scanner.start(conn, "nes")
+    assert scanner.scan_dict(scanner.latest_scan(conn, "nes"))["commands"] == []
 
 
 def test_shown_command():
