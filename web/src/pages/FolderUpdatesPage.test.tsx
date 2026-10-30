@@ -36,6 +36,7 @@ const DETAIL = {
     stage: null,
     files_done: null,
     files_total: null,
+    command: null,
   },
   summary: { waiting: 0 },
   others: [],

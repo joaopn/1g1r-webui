@@ -132,6 +132,8 @@ export type Scan = {
   stage: string | null;
   files_done: number | null;
   files_total: number | null;
+  /** While a step waits on igir: its command line, as a shell would show it. */
+  command: string | null;
 };
 
 export type DatVersion = {

@@ -1,5 +1,5 @@
-import { FileSearch, RefreshCw, ScanSearch } from "lucide-react";
-import { type ReactNode, useEffect, useRef } from "react";
+import { ChevronRight, FileSearch, RefreshCw, ScanSearch } from "lucide-react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Box } from "@/components/Box";
 import { ProgressFill } from "@/components/ProgressFill";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ import type { Scan } from "@/lib/types";
  * nothing left to convert; a quick scan reads only new and changed files, a full one every file.
  * `scan` is the latest run of either kind (one runs at a time); `lastScan` the latest Scan.
  * `quickOnly` (Updates & DLC) offers the quick scan alone: it picks up files added by hand.
+ * While a step waits on igir, its command is shown below the status line.
  */
 export function ScanPanel({
   label,
@@ -54,6 +55,9 @@ export function ScanPanel({
     wasRunning.current = running;
   }, [running, label]);
   const spin = running ? "size-4 animate-spin" : "size-4";
+  // Open until closed; stays closed for the next igir run while the page is open.
+  const [commandOpen, setCommandOpen] = useState(true);
+  const command = running ? scan?.command : null;
   // What the status line reports: a Scan on the Matching page; on the Conversion page, the
   // last run of either kind (both read the folder).
   const shown = kind === "check" ? scan : (lastScan ?? null);
@@ -142,6 +146,26 @@ export function ScanPanel({
           </span>
         )}
       </div>
+      {command ? (
+        <details
+          className="group"
+          open={commandOpen}
+          onToggle={(e) => setCommandOpen(e.currentTarget.open)}
+          data-testid="scan-command"
+        >
+          <summary className="flex cursor-pointer list-none items-center gap-1 text-muted-foreground">
+            <ChevronRight
+              className="size-4 shrink-0 transition-transform group-open:rotate-90"
+              aria-hidden="true"
+            />
+            Running command
+          </summary>
+          <pre className="mt-1 max-h-60 overflow-auto rounded-md bg-terminal px-3 py-2 font-mono text-terminal-foreground text-xs leading-relaxed">
+            <span className="select-none text-terminal-muted">$ </span>
+            {command}
+          </pre>
+        </details>
+      ) : null}
     </Box>
   );
 }

@@ -110,6 +110,27 @@ test("a running scan fills the panel's background as it goes", () => {
   expect(screen.getByTestId("scan-progress")).toHaveStyle({ transform: "scaleX(0.25)" });
 });
 
+test("while igir runs its command shows, open until closed", async () => {
+  const command = "igir report \\\n  --dat /data/dats/nes/a.dat \\\n  --input /roms/nes";
+  renderPanel({
+    ...SCAN,
+    status: "running",
+    finished_at: null,
+    stage: "Matching checksums with igir",
+    command,
+  } as Scan);
+  const details = screen.getByTestId("scan-command");
+  expect(details).toHaveAttribute("open");
+  expect(details.querySelector("pre")).toHaveTextContent("$ igir report \\ --dat");
+  await userEvent.click(screen.getByText("Running command"));
+  expect(details).not.toHaveAttribute("open");
+});
+
+test("a finished scan shows no command", () => {
+  renderPanel({ ...SCAN, command: "igir report" } as Scan);
+  expect(screen.queryByTestId("scan-command")).toBeNull();
+});
+
 test("a scan of unknown length pulses", () => {
   renderPanel({ ...SCAN, status: "running", finished_at: null, stage: "Listing" } as Scan);
   expect(screen.getByTestId("scan-progress")).toHaveClass("animate-pulse");

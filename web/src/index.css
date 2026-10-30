@@ -39,6 +39,9 @@
   --color-status-match: var(--status-match);
   --color-status-unscanned: var(--status-unscanned);
   --color-status-rename: var(--status-rename);
+  --color-terminal: var(--terminal);
+  --color-terminal-foreground: var(--terminal-foreground);
+  --color-terminal-muted: var(--terminal-muted);
 }
 
 :root {
@@ -75,6 +78,10 @@
   --status-match: #2a7590;
   --status-unscanned: #6b7280;
   --status-rename: #ad3c7a;
+  /* A command line (the Matching box while igir runs): dark in both themes. */
+  --terminal: #0d1117;
+  --terminal-foreground: #e6edf3;
+  --terminal-muted: #7d8590;
   color-scheme: light;
 }
 
@@ -110,6 +117,9 @@
   --status-match: #7cc4dc;
   --status-unscanned: #a3a9b5;
   --status-rename: #f0a0cb;
+  --terminal: #07090c;
+  --terminal-foreground: #e6edf3;
+  --terminal-muted: #7d8590;
   color-scheme: dark;
 }
 
