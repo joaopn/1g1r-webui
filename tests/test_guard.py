@@ -225,6 +225,37 @@ def test_recovery_settles_a_cut_off_empty(tmp_path):
     assert journal.active_discards(conn, "f") == []
 
 
+def test_emptying_deletes_in_batches_and_keeps_a_file_that_changed(tmp_path):
+    conn = db.connect(tmp_path / "state.db", 1000)
+    db.migrate(conn)
+    gone = tmp_path / "discarded"
+    names = ["1g1r/a.zip", "1g1r/b.zip", "originals/c.bin", "originals/d.bin", "e.bin"]
+    for name in names:
+        (gone / name).parent.mkdir(parents=True, exist_ok=True)
+        (gone / name).write_bytes(name.encode())
+    plan = journal.plan_empty(conn, "f", gone, discarded._walk(gone))
+    changed = gone / "originals" / "c.bin"
+    changed.write_bytes(b"changed since it was listed")
+    run_id = journal.start_run(
+        conn, "f", journal.APPLY, journal.SCOPE_EMPTY, journal.files_in(plan)
+    )
+    commits = []
+    conn.set_trace_callback(lambda sql: commits.append(sql) if sql == "COMMIT" else None)
+
+    journal.run(CONFIG, conn, run_id, "f", plan)
+
+    conn.set_trace_callback(None)
+    run = conn.execute("SELECT status, message, files_done FROM apply_run").fetchone()
+    assert run["status"] == "failed" and run["message"] == "4 files deleted; 1 failed"
+    assert run["files_done"] == len(names)
+    assert [p for p in gone.rglob("*") if p.is_file()] == [changed]
+    states = dict(conn.execute("SELECT rel_path, state FROM operation").fetchall())
+    assert states.pop("originals/c.bin") == "failed" and set(states.values()) == {"done"}
+    # Two commits per batch (started, then settled), not three per file.
+    batches = -(-len(names) // CONFIG.delete_batch_files)
+    assert len(commits) == (1 + 1) * batches
+
+
 def test_listing_discarded_skips_a_file_deleted_while_it_is_read(tmp_path, monkeypatch):
     gone = tmp_path / "discarded"
     gone.mkdir()

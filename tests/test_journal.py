@@ -21,6 +21,7 @@ CONFIG = ApplyConfig(
     work_suffix=".work",
     stop_poll_seconds=0.05,
     empty_all_confirm="DELETE ALL",
+    delete_batch_files=2,
 )
 
 

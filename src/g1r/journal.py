@@ -15,6 +15,7 @@ import threading
 import zipfile
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
@@ -808,57 +809,56 @@ def _wrapped_members(m: Move) -> list[tuple]:
 def _settle(conn, kind: str, label: str, op_id: int, m: Move, moved, warning: str = "") -> None:
     """The step is done: record it and update where the table finds the files."""
     members = _wrapped_members(m) if m.action == CONVERT else []
-    # Write lock first: runs of other folders write at the same time.
-    conn.execute("BEGIN IMMEDIATE")
-    try:
-        _set_state(conn, op_id, DONE, moved=moved, warning=warning)
-        if m.action == MOVE:
-            place = PLACE_DISCARDED if kind == APPLY else PLACE_FOLDER
+    with _transaction(conn):
+        _record_done(conn, kind, label, op_id, m, moved, members, warning)
+
+
+def _record_done(
+    conn, kind: str, label: str, op_id: int, m: Move, moved, members, warning: str = ""
+) -> None:
+    """`_settle` inside the caller's transaction."""
+    _set_state(conn, op_id, DONE, moved=moved, warning=warning)
+    if m.action == MOVE:
+        place = PLACE_DISCARDED if kind == APPLY else PLACE_FOLDER
+        conn.execute(
+            "UPDATE folder_file SET place = ? WHERE folder_label = ? AND rel_path = ?",
+            (place, label, m.rel_path),
+        )
+    elif m.action == CONVERT:
+        carry_over(conn, label, m.rel_path, m.paired_rel, moved, members, m.recipe in SAME_BYTES)
+        if m.recipe == conversion.RECIPE_DECRYPT:
+            # The output is the decrypted image: only "trimmed" still holds for it.
             conn.execute(
-                "UPDATE folder_file SET place = ? WHERE folder_label = ? AND rel_path = ?",
-                (place, label, m.rel_path),
+                "DELETE FROM file_note WHERE folder_label = ? AND rel_path = ? AND note = ?",
+                (label, m.paired_rel, cards.ENCRYPTED),
             )
-        elif m.action == CONVERT:
-            carry_over(
-                conn, label, m.rel_path, m.paired_rel, moved, members, m.recipe in SAME_BYTES
+            conn.execute(
+                "UPDATE card_info SET encrypted = 0, seed = 0 "
+                "WHERE folder_label = ? AND rel_path = ?",
+                (label, m.paired_rel),
             )
-            if m.recipe == conversion.RECIPE_DECRYPT:
-                # The output is the decrypted image: only "trimmed" still holds for it.
-                conn.execute(
-                    "DELETE FROM file_note WHERE folder_label = ? AND rel_path = ? AND note = ?",
-                    (label, m.paired_rel, cards.ENCRYPTED),
-                )
-                conn.execute(
-                    "UPDATE card_info SET encrypted = 0, seed = 0 "
-                    "WHERE folder_label = ? AND rel_path = ?",
-                    (label, m.paired_rel),
-                )
-        elif m.action == RENAME:
-            _rename_rows(conn, label, m.rel_path, m.paired_rel, moved)
-        elif m.action == DELETE and m.in_discarded:
-            # Gone from discarded/: the table stops showing it as a discarded version.
-            if m.paired_rel is not None:
-                conn.execute(
-                    "DELETE FROM folder_file WHERE folder_label = ? AND rel_path = ? AND place = ?",
-                    (label, m.paired_rel, PLACE_DISCARDED),
-                )
-        elif m.action == DELETE:
+    elif m.action == RENAME:
+        _rename_rows(conn, label, m.rel_path, m.paired_rel, moved)
+    elif m.action == DELETE and m.in_discarded:
+        # Gone from discarded/: the table stops showing it as a discarded version.
+        if m.paired_rel is not None:
             conn.execute(
                 "DELETE FROM folder_file WHERE folder_label = ? AND rel_path = ? AND place = ?",
-                (label, m.rel_path, PLACE_FOLDER),
+                (label, m.paired_rel, PLACE_DISCARDED),
             )
-        elif m.action == REMOVE:
-            _drop_output(conn, label, m.rel_path, m.paired_rel)
-        if m.undoes is not None:
-            conn.execute(
-                "UPDATE operation SET state = ?, restored_by = ?, "
-                "updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?",
-                (RESTORED, op_id, m.undoes),
-            )
-        conn.execute("COMMIT")
-    except sqlite3.Error:
-        conn.execute("ROLLBACK")
-        raise
+    elif m.action == DELETE:
+        conn.execute(
+            "DELETE FROM folder_file WHERE folder_label = ? AND rel_path = ? AND place = ?",
+            (label, m.rel_path, PLACE_FOLDER),
+        )
+    elif m.action == REMOVE:
+        _drop_output(conn, label, m.rel_path, m.paired_rel)
+    if m.undoes is not None:
+        conn.execute(
+            "UPDATE operation SET state = ?, restored_by = ?, "
+            "updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?",
+            (RESTORED, op_id, m.undoes),
+        )
 
 
 # Writes a conversion's output: (step) -> its stat and warning. Raises moves.MoveError.
@@ -961,6 +961,12 @@ def _units(plan: list[Move]) -> list[list[Move]]:
 
 def _run(config, conn, run_id: int, label: str, plan: list[Move], convert, workers, stop) -> None:
     kind = conn.execute("SELECT kind FROM apply_run WHERE id = ?", (run_id,)).fetchone()[0]
+    if plan and all(m.action == DELETE for m in plan):
+        finished, failed = _delete_in_batches(config, conn, run_id, kind, label, plan)
+        _finish_run(
+            conn, run_id, FAILED if failed else DONE, _summary(kind, plan, finished, failed)
+        )
+        return
     # The connection is shared by the workers; the files are worked on outside the lock.
     lock = threading.Lock()
     finished: list[Move] = []
@@ -1054,6 +1060,63 @@ def _run(config, conn, run_id: int, label: str, plan: list[Move], convert, worke
         FAILED if failed else DONE,
         _summary(kind, plan, finished, failed, left, warned),
     )
+
+
+def _delete_in_batches(
+    config: ApplyConfig, conn, run_id: int, kind: str, label: str, plan: list[Move]
+) -> tuple[list[Move], int]:
+    """A run that only deletes: (the steps done, how many failed). Each batch is journalled
+    as started in one commit before any of its files is touched, its files deleted, each of
+    their directories written to disk once, then settled in one commit. Start-up recovery
+    settles a cut-off batch file by file, as it does one delete: gone is done, still there
+    is failed and kept."""
+    finished: list[Move] = []
+    failed = 0
+    size = config.delete_batch_files
+    for first in range(0, len(plan), size):
+        batch = plan[first : first + size]
+        with _transaction(conn):
+            ops = [_start_step(conn, run_id, label, m, None) for m in batch]
+        errors: dict[int, str] = {}
+        deleted_in: dict[Path, list[int]] = {}
+        for i, m in enumerate(batch):
+            try:
+                _unchanged(m)
+                m.source.unlink()
+            except (moves.MoveError, OSError) as exc:
+                errors[i] = str(exc)
+            else:
+                deleted_in.setdefault(m.source.parent, []).append(i)
+        for directory, deleted in deleted_in.items():
+            try:
+                moves.fsync_dir(directory)
+            except OSError as exc:
+                errors.update(dict.fromkeys(deleted, str(exc)))
+        with _transaction(conn):
+            for i, (m, op_id) in enumerate(zip(batch, ops, strict=True)):
+                if i in errors:
+                    _set_state(conn, op_id, FAILED, errors[i])
+                else:
+                    _record_done(conn, kind, label, op_id, m, None, [])
+            conn.execute(
+                "UPDATE apply_run SET files_done = files_done + ? WHERE id = ?",
+                (len(batch), run_id),
+            )
+        failed += len(errors)
+        finished.extend(m for i, m in enumerate(batch) if i not in errors)
+    return finished, failed
+
+
+@contextmanager
+def _transaction(conn):
+    # Write lock first: runs of other folders write at the same time.
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        yield
+        conn.execute("COMMIT")
+    except BaseException:
+        conn.execute("ROLLBACK")
+        raise
 
 
 def _start_step(conn, run_id: int, label: str, m: Move, converting: int | None) -> int:

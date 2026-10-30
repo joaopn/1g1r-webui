@@ -485,6 +485,8 @@ class ApplyConfig(_Strict):
     stop_poll_seconds: float = Field(gt=0)
     # Typed to confirm emptying discarded/ of every romset at once.
     empty_all_confirm: str = Field(min_length=1)
+    # Files a delete-only run journals and settles per commit.
+    delete_batch_files: int = Field(gt=0)
 
 
 class HeaderRule(_Strict):
