@@ -357,6 +357,19 @@ class TitleDbConfig(_Strict):
     version_format: str
 
 
+class TerminalConfig(_Strict):
+    columns: int = Field(gt=0)
+    rows: int = Field(gt=0)
+    read_bytes: int = Field(gt=0)
+    env: dict[str, str]
+    colors: dict[str, str]
+    faint_on: str
+    faint_off: str
+    extended: list[str]
+    resets: list[str]
+    plain: str
+
+
 class IgirConfig(_Strict):
     binary: str
     cache_dir: str
@@ -368,6 +381,7 @@ class IgirConfig(_Strict):
     default_pool_threads: int = Field(gt=0)
     max_threads: int = Field(gt=0)
     max_input_files: int = Field(gt=0)
+    terminal: TerminalConfig
 
 
 HASHEOUS_NAME_FROM = ("rom", "game")

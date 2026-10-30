@@ -30,6 +30,7 @@ from g1r import (
     journal,
     mounts,
     nca,
+    terminal,
     titledb,
     titles,
 )
@@ -78,9 +79,9 @@ class ScanError(RuntimeError):
 class Progress:
     """How far a running scan is: its step, for a step that goes file by file how many files
     are done, and for a step that waits on an external program its command (and every
-    command the scan ran with what it printed, kept after it ends). Written to the scan's row
-    at most every `interval` seconds, and always when a step starts or ends or a command
-    starts or prints. Without a connection nothing is written."""
+    command the scan ran with the screen it drew, kept after it ends). Written to the scan's
+    row at most every `interval` seconds, and always when a step starts or ends or a command
+    starts or ends. Without a connection nothing is written."""
 
     def __init__(
         self,
@@ -97,7 +98,7 @@ class Progress:
         self.done: int | None = None
         self.total: int | None = None
         self.command: str | None = None
-        # {"command": ..., "output": [lines]} per command, in order.
+        # {"command": ..., "output": [lines of [text, style] runs]} per command, in order.
         self.commands: list[dict] = []
         self.written = clock()
 
@@ -112,11 +113,12 @@ class Progress:
         self.commands.append({"command": command, "output": []})
         self._write()
 
-    def printed(self, line: str) -> None:
-        """A line the running command printed."""
+    def drawn(self, lines: list[list[terminal.Segment]], final: bool) -> None:
+        """The screen the running command drew so far (`final`: all it drew)."""
         if self.commands:
-            self.commands[-1]["output"].append(line)
-            self._write()
+            self.commands[-1]["output"] = lines
+            if final or self.clock() - self.written >= self.interval:
+                self._write()
 
     def each[T](self, name: str, items: Iterable[T]) -> Iterator[T]:
         """The items, counting each one done as the loop moves past it."""
@@ -708,7 +710,7 @@ class Scanner:
                         root,
                         merge=mode,
                         started=progress.running,
-                        printed=progress.printed,
+                        drawn=progress.drawn,
                         **run_igir,
                     )
                 )
@@ -721,7 +723,7 @@ class Scanner:
                     dat_file,
                     root,
                     started=progress.running,
-                    printed=progress.printed,
+                    drawn=progress.drawn,
                     **run_igir,
                 )
             )
@@ -1339,10 +1341,16 @@ def latest_scan(
 
 def scan_dict(row: sqlite3.Row | None) -> dict | None:
     """A scan row for the API, with `commands` as a list of {command, output} (empty when it
-    ran none)."""
+    ran none); `output` is lines of [text, style] runs (a line kept as plain text by an
+    earlier version becomes one plain run)."""
     if row is None:
         return None
-    return {**dict(row), "commands": json.loads(row["commands"] or "[]")}
+    commands = json.loads(row["commands"] or "[]")
+    for entry in commands:
+        entry["output"] = [
+            [[line, ""]] if isinstance(line, str) else line for line in entry["output"]
+        ]
+    return {**dict(row), "commands": commands}
 
 
 def folder_bytes(conn: sqlite3.Connection, label: str) -> int:

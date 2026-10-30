@@ -259,6 +259,12 @@ def test_real_igir_report(env, roms_root):
     real.run(conn, real.start(conn, "nes"), "nes")
     rows = dict(conn.execute("SELECT rel_path, method FROM identity").fetchall())
     assert rows["Known (USA).zip"] == "dat-checksum"
+    # igir ran on a terminal: its screen, the bars gone, ends with its finished steps.
+    [run] = scanner.scan_dict(scanner.latest_scan(conn, "nes"))["commands"]
+    screen = text_of(run["output"])
+    assert any("Scanning for ROMs" in line for line in screen)
+    assert "Generating report" in screen[-1]
+    assert any("✓" in text and style == "green" for text, style in run["output"][-1])
 
 
 def test_scan_writes_its_progress(env):
@@ -284,9 +290,9 @@ def test_scan_shows_the_igir_command_and_its_output_while_it_runs(env):
     settings, store, registry, conn, _ = env
     seen = []
 
-    def report(settings_, dat_file, input_dir, *, started, printed, **_):
+    def report(settings_, dat_file, input_dir, *, started, drawn, **_):
         started(f"igir report \\\n  --dat {dat_file}")
-        printed(" ✓ Parsing DATs » 1 DAT found")
+        drawn([[[" ✓", "green"], [" Parsing DATs » 1 DAT found", ""]]], True)
         seen.append(tuple(conn.execute("SELECT command, commands FROM scan").fetchone()))
         return []
 
@@ -295,7 +301,7 @@ def test_scan_shows_the_igir_command_and_its_output_while_it_runs(env):
     [(command, commands)] = seen
     assert command.startswith("igir report \\\n  --dat ")
     assert json.loads(commands) == [
-        {"command": command, "output": [" ✓ Parsing DATs » 1 DAT found"]}
+        {"command": command, "output": [[[" ✓", "green"], [" Parsing DATs » 1 DAT found", ""]]]}
     ]
     # The next step, and the end of the scan, clear the running one; the list stays until
     # the next scan.
@@ -514,14 +520,27 @@ def test_each_dat_in_the_order_identifies_what_the_ones_before_it_missed(env, ro
 FAKE_IGIR = """#!{python}
 import os, sys
 args = sys.argv[1:]
-print(" ✓ Parsing DATs » 1 DAT found", flush=True)
-print("pool", os.environ.get("UV_THREADPOOL_SIZE"), "args", " ".join(args), flush=True)
-if "--fail" in os.environ.get("FAKE_IGIR", ""):
+mode = os.environ.get("FAKE_IGIR", "")
+out = sys.stdout
+columns = os.get_terminal_size().columns
+out.write(" ✓ Parsing DATs » 1 DAT found\\n")
+out.write(f"tty {{out.isatty()}} {{columns}} {{os.environ.get('TERM')}} ")
+out.write(f"pool {{os.environ.get('UV_THREADPOOL_SIZE')}} args {{' '.join(args)}}\\n")
+# A bar drawn, then repainted in place, then replaced by its finished line.
+out.write("\\x1b[?2026h\\x1b[1G # Scanning \\x1b[38;5;240m■■\\x1b[39m 0/2")
+out.write("\\x1b[0K\\r\\n\\x1b[?2026l")
+out.flush()
+out.write("\\x1b[?2026h\\x1b[1A\\x1b[1G # Scanning \\x1b[32m■\\x1b[38;5;240m■\\x1b[39m 1/2")
+out.write("\\x1b[0K\\r\\n\\x1b[?2026l")
+out.flush()
+if "--fail" in mode:
     print("ERROR: something broke", file=sys.stderr, flush=True)
     sys.exit(1)
-if "--hang" in os.environ.get("FAKE_IGIR", ""):
+if "--hang" in mode:
     import time
     time.sleep(60)
+out.write("\\x1b[?2026h\\x1b[1A\\x1b[1G\\x1b[0J ✓ Scanning » 2 files\\r\\n\\x1b[?2026l")
+out.flush()
 report = args[args.index("--report-output") + 1]
 with open(report, "w") as handle:
     handle.write("DAT Name,Game Name,Status,ROM Files\\n")
@@ -536,12 +555,16 @@ def fake_igir(make_settings, tmp_path):
     return make_settings({"igir": {"binary": str(program)}})
 
 
-def test_igir_threads_set_its_readers_and_node_pool(fake_igir, tmp_path):
+def text_of(lines):
+    return ["".join(text for text, _ in line) for line in lines]
+
+
+def test_igir_runs_on_a_terminal_and_its_screen_is_shown(fake_igir, tmp_path):
     settings = fake_igir
     threads = settings.igir.max_threads
-    outputs = []
+    screens = []
     for chosen in (None, threads):
-        lines = []
+        drawn = []
         igir.run_report(
             settings,
             tmp_path / "x.dat",
@@ -549,27 +572,40 @@ def test_igir_threads_set_its_readers_and_node_pool(fake_igir, tmp_path):
             cache=tmp_path / "c.cache",
             timeout=30,
             threads=chosen,
-            printed=lines.append,
+            drawn=lambda lines, final, seen=drawn: seen.append((lines, final)),
         )
-        outputs.append(lines)
-    (own, set_) = outputs
-    assert own[0] == set_[0] == " ✓ Parsing DATs » 1 DAT found"
-    assert own[1].startswith("pool None ") and "--reader-threads" not in own[1]
-    assert set_[1].startswith(f"pool {threads} ")
-    assert f"--reader-threads {threads}" in set_[1]
+        screens.append(drawn)
+    own, set_ = screens
+    config = settings.igir.terminal
+    # The last call is the end: the bar replaced by its finished line.
+    final, done = own[-1]
+    assert done and text_of(final)[-1] == " ✓ Scanning » 2 files"
+    info = text_of(final)[1]
+    assert info.startswith(f"tty True {config.columns} {config.env['TERM']} pool None ")
+    assert "--reader-threads" not in info
+    set_info = text_of(set_[-1][0])[1]
+    assert f"pool {threads} " in set_info and f"--reader-threads {threads}" in set_info
 
 
 def test_igir_failure_and_time_limit(fake_igir, tmp_path, monkeypatch):
     settings = fake_igir
     run = {"cache": tmp_path / "c.cache"}
     monkeypatch.setenv("FAKE_IGIR", "--fail")
-    lines = []
+    drawn = []
     with pytest.raises(igir.IgirError, match=r"igir failed \(1\): ERROR: something broke"):
         igir.run_report(
-            settings, tmp_path / "x.dat", tmp_path, timeout=30, printed=lines.append, **run
+            settings,
+            tmp_path / "x.dat",
+            tmp_path,
+            timeout=30,
+            drawn=lambda lines, final: drawn.append(lines),
+            **run,
         )
-    # Both streams reach the page.
-    assert lines[-1] == "ERROR: something broke"
+    # Both streams reach the page, and what was drawn before the failure stays, the bar's
+    # colours kept (done and left apart by colour only).
+    bar, error = drawn[-1][-2:]
+    assert bar == [[" # Scanning ", ""], ["■", "green"], ["■", "dark"], [" 1/2", ""]]
+    assert error == [["ERROR: something broke", ""]]
     monkeypatch.setenv("FAKE_IGIR", "--hang")
     with pytest.raises(igir.IgirError, match="timed out"):
         igir.run_report(settings, tmp_path / "x.dat", tmp_path, timeout=0.5, **run)

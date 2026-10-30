@@ -884,6 +884,42 @@ igir:
   # is given the whole folder instead (a command line has a size limit). The result is the
   # same: matched files keep their identity either way.
   max_input_files: 2000
+  # igir draws its progress bars only on a terminal: it runs on a pseudo-terminal of this
+  # size, and the page shows the screen it draws. igir cuts lines longer than columns - 10
+  # with "…" (wide enough for a bar and a long ROM path) and keeps its bars within rows - 1.
+  terminal:
+    columns: 240
+    rows: 100
+    # Read from it this many bytes at a time.
+    read_bytes: 65536
+    # igir's bars tell done, being read and left apart by colour only: colours on.
+    env:
+      TERM: xterm-256color
+      FORCE_COLOR: "3"
+    # Its colour codes (SGR parameters) and the names the page draws them with; others are
+    # drawn in the terminal's own colour. A code starting with one of `extended` (256-colour
+    # and RGB) takes the whole sequence. "2" and "22" switch faint on and off, `resets` end
+    # every style, `plain` only the colour.
+    colors:
+      "31": red
+      "32": green
+      "33": yellow
+      "34": blue
+      "35": magenta
+      "36": cyan
+      "90": gray
+      "91": red
+      "92": green
+      "93": yellow
+      "94": blue
+      "95": magenta
+      "96": cyan
+      "38;5;240": dark
+    faint_on: "2"
+    faint_off: "22"
+    extended: ["38", "48"]
+    resets: ["", "0"]
+    plain: "39"
 
 # Hashing a file's ROM data (lookups, duplicates, header and byte-order checks) reads it
 # this many bytes at a time, whatever the file's size.
