@@ -16,7 +16,8 @@ import type { Scan } from "@/lib/types";
  * nothing left to convert; a quick scan reads only new and changed files, a full one every file.
  * `scan` is the latest run of either kind (one runs at a time); `lastScan` the latest Scan.
  * `quickOnly` (Updates & DLC) offers the quick scan alone: it picks up files added by hand.
- * While a step waits on igir, its command is shown below the status line.
+ * Below the status line, the igir commands of the running Scan, else of the last one (until
+ * the next Scan starts); the one igir is running now is marked.
  */
 export function ScanPanel({
   label,
@@ -57,7 +58,15 @@ export function ScanPanel({
   const spin = running ? "size-4 animate-spin" : "size-4";
   // Open until closed; stays closed for the next igir run while the page is open.
   const [commandOpen, setCommandOpen] = useState(true);
-  const command = running ? scan?.command : null;
+  const withCommands = kind === "identify" ? commandsOf(scan, lastScan ?? null) : null;
+  const commands = withCommands?.commands ?? [];
+  const current = withCommands?.status === "running" ? withCommands.command : null;
+  const terminal = useRef<HTMLPreElement>(null);
+  // A new command shows at the bottom: keep it in view.
+  useEffect(() => {
+    const pre = terminal.current;
+    if (pre && commands.length > 0) pre.scrollTop = pre.scrollHeight;
+  }, [commands.length]);
   // What the status line reports: a Scan on the Matching page; on the Conversion page, the
   // last run of either kind (both read the folder).
   const shown = kind === "check" ? scan : (lastScan ?? null);
@@ -146,7 +155,7 @@ export function ScanPanel({
           </span>
         )}
       </div>
-      {command ? (
+      {commands.length > 0 ? (
         <details
           className="group"
           open={commandOpen}
@@ -158,14 +167,36 @@ export function ScanPanel({
               className="size-4 shrink-0 transition-transform group-open:rotate-90"
               aria-hidden="true"
             />
-            Running command
+            {current
+              ? "igir is running"
+              : withCommands?.status === "running"
+                ? "igir commands of this scan"
+                : "igir commands of the last scan"}
           </summary>
-          <pre className="mt-1 max-h-60 overflow-auto rounded-md bg-terminal px-3 py-2 font-mono text-terminal-foreground text-xs leading-relaxed">
-            <span className="select-none text-terminal-muted">$ </span>
-            {command}
+          <pre
+            ref={terminal}
+            className="mt-1 max-h-60 space-y-3 overflow-auto rounded-md bg-terminal px-3 py-2 font-mono text-terminal-foreground text-xs leading-relaxed"
+          >
+            {commands.map((command, index) => (
+              // Each run writes its report to a new temporary folder: no two commands are alike.
+              <div key={command}>
+                <span className="select-none text-terminal-muted">$ </span>
+                {command}
+                {current && index === commands.length - 1 ? (
+                  <div className="animate-pulse select-none text-terminal-muted">running…</div>
+                ) : null}
+              </div>
+            ))}
           </pre>
         </details>
       ) : null}
     </Box>
   );
+}
+
+/** The Scan whose igir commands the panel shows: the running one, else the last finished. A
+ * running Check files reads nothing with igir, so the last Scan's stay. */
+function commandsOf(scan: Scan | null, lastScan: Scan | null): Scan | null {
+  if (scan?.status === "running" && scan.kind === "identify") return scan;
+  return lastScan;
 }

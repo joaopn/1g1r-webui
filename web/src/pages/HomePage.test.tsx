@@ -19,6 +19,7 @@ const SCAN: Scan = {
   files_done: null,
   files_total: null,
   command: null,
+  commands: [],
 };
 
 const card = (label: string, platform: string, scan: Scan | null): FolderCard => ({

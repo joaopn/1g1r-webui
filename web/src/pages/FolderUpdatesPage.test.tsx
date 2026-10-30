@@ -37,6 +37,7 @@ const DETAIL = {
     files_done: null,
     files_total: null,
     command: null,
+    commands: [],
   },
   summary: { waiting: 0 },
   others: [],

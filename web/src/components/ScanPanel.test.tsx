@@ -110,24 +110,42 @@ test("a running scan fills the panel's background as it goes", () => {
   expect(screen.getByTestId("scan-progress")).toHaveStyle({ transform: "scaleX(0.25)" });
 });
 
-test("while igir runs its command shows, open until closed", async () => {
-  const command = "igir report \\\n  --dat /data/dats/nes/a.dat \\\n  --input /roms/nes";
+const FIRST = "igir report \\\n  --dat /data/dats/nes/a.dat \\\n  --input /roms/nes";
+const SECOND = "igir report \\\n  --dat /data/dats/nes/b.dat \\\n  --input /roms/nes";
+
+test("while igir runs its command shows, marked, open until closed", async () => {
   renderPanel({
     ...SCAN,
     status: "running",
     finished_at: null,
     stage: "Matching checksums with igir",
-    command,
+    command: SECOND,
+    commands: [FIRST, SECOND],
   } as Scan);
   const details = screen.getByTestId("scan-command");
   expect(details).toHaveAttribute("open");
-  expect(details.querySelector("pre")).toHaveTextContent("$ igir report \\ --dat");
-  await userEvent.click(screen.getByText("Running command"));
+  expect(screen.getByText("igir is running")).toBeInTheDocument();
+  const pre = details.querySelector("pre");
+  expect(pre).toHaveTextContent("$ igir report \\ --dat /data/dats/nes/a.dat");
+  expect(pre).toHaveTextContent(/b\.dat \\ --input \/roms\/nesrunning…$/);
+  await userEvent.click(screen.getByText("igir is running"));
   expect(details).not.toHaveAttribute("open");
 });
 
-test("a finished scan shows no command", () => {
-  renderPanel({ ...SCAN, command: "igir report" } as Scan);
+test("a finished scan keeps its igir commands, unmarked", () => {
+  renderPanel({ ...SCAN, commands: [FIRST] } as Scan);
+  expect(screen.getByText("igir commands of the last scan")).toBeInTheDocument();
+  expect(screen.getByTestId("scan-command")).not.toHaveTextContent("running…");
+});
+
+test("a running Check files leaves the last scan's commands", () => {
+  const check = { ...SCAN, kind: "check", status: "running", stage: "Listing files" } as Scan;
+  renderPanelWith(check, { ...SCAN, commands: [FIRST] } as Scan);
+  expect(screen.getByText("igir commands of the last scan")).toBeInTheDocument();
+});
+
+test("a scan that ran no igir shows no commands", () => {
+  renderPanel({ ...SCAN, commands: [] } as Scan);
   expect(screen.queryByTestId("scan-command")).toBeNull();
 });
 
