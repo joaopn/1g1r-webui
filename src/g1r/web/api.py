@@ -30,6 +30,7 @@ from g1r import (
     mounts,
     nca,
     notifications,
+    organize,
     renaming,
     scanner,
     statistics,
@@ -153,6 +154,13 @@ class UpdatesScope(BaseModel):
 
 class RenameScope(BaseModel):
     # Files to rename (or give back their names); None = every one proposed (or renamed).
+    rel_paths: list[str] | None = None
+    token: str | None = None
+    confirm: str | None = None
+
+
+class OrganizeScope(BaseModel):
+    # Files to move to their game's folders (or back); None = every one proposed (or moved).
     rel_paths: list[str] | None = None
     token: str | None = None
     confirm: str | None = None
@@ -1303,6 +1311,8 @@ def build_router(
             "rel_path": m.rel_path,
             "size": m.size,
             "destination": str(m.destination) if m.destination else None,
+            # A rename or a move to another folder of the set: its path there.
+            "new_path": m.paired_rel if m.action == journal.RENAME else None,
         }
 
     def guarded_preview(conn, label: str, plan, problems) -> dict:
@@ -1563,6 +1573,87 @@ def build_router(
             body,
             lambda: revert_plan(conn, label, body),
             "no file was renamed",
+            kind=journal.RESTORE,
+        )
+
+    # Game folders (title-ID sets, optional) ---------------------------------------------
+
+    def organize_rows(conn, label: str) -> list[organize.OrganizeRow]:
+        folder = folder_or_404(label)
+        if not title_ids(folder.platform):
+            raise not_found("this set has no game folders: its platform has no title IDs")
+        library = store.load()
+        return organize.rows(
+            settings,
+            conn,
+            label,
+            pending_of(library, folder, conn),
+            game_names(library, folder, conn),
+        )
+
+    @router.get("/folders/{label}/organize")
+    def folder_organize(label: str, conn: Conn):
+        found = organize_rows(conn, label)
+        return {
+            "rows": [asdict(r) for r in found],
+            "counts": organize.counts(found),
+            "subfolders": settings.organize.subfolders,
+        }
+
+    def organize_plan(conn, label: str, body: OrganizeScope):
+        proposed = [r for r in organize_rows(conn, label) if r.status == organize.TO_MOVE]
+        proposed = wanted_of(
+            proposed, body.rel_paths, "some of these files are not proposed any more"
+        )
+        root = folder_root(folder_or_404(label))
+        plan = journal.plan_renames(
+            conn,
+            label,
+            root,
+            [(r.rel_path, r.new_path) for r in proposed],
+            journal.SCOPE_ORGANIZE,
+        )
+        return plan, journal.preflight(plan, root, discarded.folder_root(settings, label))
+
+    def unorganize_plan(conn, label: str, body: OrganizeScope):
+        moved = [r for r in organize_rows(conn, label) if r.original_dir is not None]
+        moved = wanted_of(moved, body.rel_paths, "some of these files were not moved")
+        root = folder_root(folder_or_404(label))
+        plan = journal.plan_renames(
+            conn, label, root, organize.back(moved, conn, label), journal.SCOPE_ORGANIZE
+        )
+        return plan, journal.preflight(plan, root, discarded.folder_root(settings, label))
+
+    @router.post("/folders/{label}/organize/preview")
+    def organize_preview(label: str, body: OrganizeScope, conn: Conn):
+        return guarded_preview(conn, label, *organize_plan(conn, label, body))
+
+    @router.post("/folders/{label}/organize", status_code=HTTPStatus.ACCEPTED)
+    def organize_apply(label: str, body: OrganizeScope, request: Request, conn: Conn):
+        return start_guarded(
+            request,
+            conn,
+            label,
+            journal.SCOPE_ORGANIZE,
+            body,
+            lambda: organize_plan(conn, label, body),
+            "there is nothing to move",
+        )
+
+    @router.post("/folders/{label}/organize/revert/preview")
+    def unorganize_preview(label: str, body: OrganizeScope, conn: Conn):
+        return guarded_preview(conn, label, *unorganize_plan(conn, label, body))
+
+    @router.post("/folders/{label}/organize/revert", status_code=HTTPStatus.ACCEPTED)
+    def unorganize_apply(label: str, body: OrganizeScope, request: Request, conn: Conn):
+        return start_guarded(
+            request,
+            conn,
+            label,
+            journal.SCOPE_ORGANIZE,
+            body,
+            lambda: unorganize_plan(conn, label, body),
+            "no file was moved to a game folder",
             kind=journal.RESTORE,
         )
 

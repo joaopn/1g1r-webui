@@ -164,7 +164,7 @@ def rows(
         )
     }
     renamed = origins(conn, label)
-    base_name = _game_names(settings, identities, game_name)
+    base_name = game_names(settings, identities, game_name)
     claimed: dict[str, str] = {}
     result = []
     for f in files:
@@ -215,7 +215,7 @@ def rows(
     return result
 
 
-def _game_names(settings: Settings, identities: dict, game_name: GameName | None) -> GameName:
+def game_names(settings: Settings, identities: dict, game_name: GameName | None) -> GameName:
     """A game's name by its title ID: titledb's, else the name of the folder's base file of
     that game."""
     ids = settings.title_ids

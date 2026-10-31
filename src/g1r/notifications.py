@@ -16,6 +16,9 @@ APPLY_1G1R = "1g1r"
 # Renames to a template, and their reverts (a restore of scope rename).
 RENAME = "rename"
 RENAME_BACK = "rename-back"
+# Files moved to their game's folders, and back (a restore of scope organize).
+ORGANIZE = "organize"
+ORGANIZE_BACK = "organize-back"
 TITLES = {
     SCAN: "Scan",
     CHECK: "Check files",
@@ -28,12 +31,16 @@ TITLES = {
     journal.RESTORE: "Restore",
     RENAME: "Rename",
     RENAME_BACK: "Names given back",
+    ORGANIZE: "Game folders",
+    ORGANIZE_BACK: "Folders given back",
 }
 
 
 def _run_kind(row: sqlite3.Row) -> str:
     if row["scope"] == journal.SCOPE_RENAME:
         return RENAME_BACK if row["kind"] == journal.RESTORE else RENAME
+    if row["scope"] == journal.SCOPE_ORGANIZE:
+        return ORGANIZE_BACK if row["kind"] == journal.RESTORE else ORGANIZE
     if row["kind"] == journal.RESTORE:
         return journal.RESTORE
     if row["scope"] == journal.CONVERT:

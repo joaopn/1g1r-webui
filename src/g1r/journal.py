@@ -60,6 +60,8 @@ SCOPE_UPDATES = "updates"
 REASON_MANUAL = "manual"
 # Renames to a naming template (an apply) and their reverts (a restore), the Rename tab.
 SCOPE_RENAME = "rename"
+# Files moved into their game's folders and back (the Updates & DLC tab, title-ID sets).
+SCOPE_ORGANIZE = "organize"
 
 # Steps that write a new name for the file and must find that name free.
 WRITES = (MOVE, CONVERT, RENAME)
@@ -98,8 +100,9 @@ RENAMED = (
 # Tables without a foreign key on folder_file: an old row at the new name is dropped first.
 UNTIED = ("manual_identity", "file_cache", "keep_choice", "update_keep")
 # Rows that stay under the path they were written with: the files themselves (moved by
-# `_rename_rows`), the journal (a record), and where renamed files came from (kept apart).
-RENAME_SKIPS = ("folder_file", "operation", "rename_origin")
+# `_rename_rows`), the journal (a record), and where renamed or moved files came from (kept
+# apart).
+RENAME_SKIPS = ("folder_file", "operation", "rename_origin", "folder_origin")
 SAME_BYTES = (conversion.RECIPE_WRAP, conversion.RECIPE_UNWRAP, conversion.RECIPE_REPACK)
 
 
@@ -459,9 +462,14 @@ def plan_empty(conn: sqlite3.Connection, label: str, discarded_root: Path, files
 
 
 def plan_renames(
-    conn: sqlite3.Connection, label: str, root: Path, renames: list[tuple[str, str]]
+    conn: sqlite3.Connection,
+    label: str,
+    root: Path,
+    renames: list[tuple[str, str]],
+    scope: str = SCOPE_RENAME,
 ) -> list[Move]:
-    """Give files of the folder, as scanned, new names in it: (rel_path, new rel_path) each."""
+    """Give files of the folder, as scanned, new paths in it: (rel_path, new rel_path) each.
+    `scope`: new names (the Rename tab) or other folders (game folders)."""
     scanned = {
         r["rel_path"]: r
         for r in conn.execute(
@@ -478,7 +486,7 @@ def plan_renames(
             Move(
                 rel,
                 "",
-                SCOPE_RENAME,
+                scope,
                 root / rel,
                 root / new,
                 f["size"],
@@ -753,9 +761,17 @@ def _drop_output(conn, label: str, output: str, original: str) -> None:
     conn.execute("DELETE FROM folder_file WHERE folder_label = ? AND rel_path = ?", (label, output))
 
 
+def _directory(rel_path: str) -> str:
+    """The folder of a path in the set ('' = the set's own folder)."""
+    parent = str(PurePosixPath(rel_path).parent)
+    return "" if parent == "." else parent
+
+
 def _rename_rows(conn, label: str, old: str, new: str, moved) -> None:
-    """A file was renamed: every row of it follows it to its new name, and the name it had
-    before its first rename is kept under the new one (dropped once it has it back)."""
+    """A file was renamed or moved to another folder of the set: every row of it follows it
+    to its new path. The name it had before its first rename and the folder it was in before
+    its first move are kept under the new path, each dropped once it has it back: a revert
+    of names keeps the folder, a revert of folders keeps the name."""
     for table in UNTIED:
         conn.execute(f"DELETE FROM {table} WHERE folder_label = ? AND rel_path = ?", (label, new))
     # As a rescan does when a discarded file's path reappears in the folder.
@@ -782,7 +798,8 @@ def _rename_rows(conn, label: str, old: str, new: str, moved) -> None:
         "SELECT original FROM rename_origin WHERE folder_label = ? AND rel_path = ?",
         (label, old),
     ).fetchone()
-    original = row["original"] if row else old
+    # The original name, in the folder the file is in now.
+    original = str(PurePosixPath(new).parent / PurePosixPath(row["original"] if row else old).name)
     conn.execute(
         "DELETE FROM rename_origin WHERE folder_label = ? AND rel_path IN (?, ?)",
         (label, old, new),
@@ -791,6 +808,20 @@ def _rename_rows(conn, label: str, old: str, new: str, moved) -> None:
         conn.execute(
             "INSERT INTO rename_origin (folder_label, rel_path, original) VALUES (?, ?, ?)",
             (label, new, original),
+        )
+    row = conn.execute(
+        "SELECT original_dir FROM folder_origin WHERE folder_label = ? AND rel_path = ?",
+        (label, old),
+    ).fetchone()
+    original_dir = row["original_dir"] if row else _directory(old)
+    conn.execute(
+        "DELETE FROM folder_origin WHERE folder_label = ? AND rel_path IN (?, ?)",
+        (label, old, new),
+    )
+    if _directory(new) != original_dir:
+        conn.execute(
+            "INSERT INTO folder_origin (folder_label, rel_path, original_dir) VALUES (?, ?, ?)",
+            (label, new, original_dir),
         )
 
 
@@ -875,6 +906,10 @@ def _unchanged(m: Move) -> None:
 
 
 def _carry_out(config: ApplyConfig, convert: Convert | None, m: Move) -> Converted | None:
+    if m.action == RENAME and m.source.parent != m.destination.parent:
+        moved = moves.move(config, m.source, m.destination)
+        _prune_left(m)
+        return Converted(moved)
     if m.action in (MOVE, RENAME):
         return Converted(moves.move(config, m.source, m.destination))
     if m.action == CONVERT:
@@ -885,6 +920,19 @@ def _carry_out(config: ApplyConfig, convert: Convert | None, m: Move) -> Convert
     m.source.unlink()
     moves.fsync_dir(m.source.parent)
     return None
+
+
+def _prune_left(m: Move) -> None:
+    """A file left a folder of the set for another: the folders it emptied go too (never
+    the set's own folder)."""
+    root = m.source.parents[len(PurePosixPath(m.rel_path).parts) - 1]
+    directory = m.source.parent
+    while directory != root and _inside(directory, root):
+        try:
+            directory.rmdir()
+        except OSError:
+            return  # not empty, or already gone
+        directory = directory.parent
 
 
 def _files(n: int) -> str:
@@ -901,7 +949,14 @@ def _summary(
     if left:
         done = f"stopped: {_files(converted)} converted, {left} not converted"
         return f"{done}; {failed} failed" if failed else done
-    if plan and all(m.action == RENAME for m in plan):
+    if plan and all(m.action == RENAME and m.reason == SCOPE_ORGANIZE for m in plan):
+        moved = _files(len(finished))
+        done = (
+            f"{moved} moved to game folders"
+            if kind == APPLY
+            else f"{moved} given back their folders"
+        )
+    elif plan and all(m.action == RENAME for m in plan):
         renamed = _files(len(finished))
         done = f"{renamed} renamed" if kind == APPLY else f"{renamed} given back their names"
     elif plan and all(m.action == DELETE for m in plan):

@@ -808,6 +808,14 @@ class RenameConfig(_Strict):
         return self
 
 
+class OrganizeConfig(_Strict):
+    # titles.BASE / UPDATE / DLC -> the subfolder of the game's folder ("" = the folder).
+    subfolders: dict[str, str]
+    clean_pattern: str
+    clean_with: str
+    strip: str
+
+
 class GroupingConfig(_Strict):
     infer_from_dat_names: bool
     retool_clonelists_dir: Path
@@ -875,6 +883,7 @@ class Settings(_Strict):
     grouping: GroupingConfig
     ranking: RankingConfig
     rename: RenameConfig
+    organize: OrganizeConfig
 
     @model_validator(mode="after")
     def _rename_templates(self) -> "Settings":

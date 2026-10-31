@@ -1461,3 +1461,19 @@ rename:
   clean_keeps: [Disc, Disk, Side, Tape, Part]
   # The longest file name most filesystems take, in bytes (UTF-8).
   max_name_bytes: 255
+
+# Game folders for title-ID sets (Switch), an optional box of the Updates & DLC tab: every
+# file of a game goes to a folder named after the game, its updates and DLC to subfolders of
+# it, as RomM lays out a game of several files. It never counts toward a set being done. A
+# revert gives every file back the folder it came from (its name stays).
+organize:
+  # The subfolder of the game's folder for each kind of file; "" = the game's folder itself.
+  subfolders:
+    base: ""
+    update: update
+    dlc: dlc
+  # Runs of characters a folder name cannot hold (and whitespace) become one space; the
+  # ends of the name lose these characters (a trailing dot or space breaks Windows shares).
+  clean_pattern: '[/\\:*?"<>|\s]+'
+  clean_with: " "
+  strip: " ."
