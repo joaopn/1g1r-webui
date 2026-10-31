@@ -163,3 +163,57 @@ def test_the_content_id_check_reads_the_written_file(make_settings, tmp_path, pa
     output.write_bytes(bytes(data))
     with pytest.raises(switch_package.PackageError, match="content ID"):
         switch_package.prove(output, members, {}, settings, lambda: None)
+
+
+def patch_nca(sections: int, c) -> tuple[bytes, bytes, bytes]:
+    """An update's "NCA": one CTR section per patch subsection, each with its own counter,
+    a plain section and gaps between them; also its decrypted body and its section table."""
+    span, gap = 0x20, 0x10
+    head = bytes(i % 251 for i in range(c.ncz_header_bytes))
+    body, plain, table = bytearray(), bytearray(), bytearray()
+    for index in range(sections):
+        offset = c.ncz_header_bytes + len(body)
+        data = bytes((index + i) % 256 for i in range(span))
+        counter = index.to_bytes(8, "big") + bytes(8)
+        crypto = 1 if index == sections // 2 else 3
+        if crypto == 3:
+            iv = counter[:8] + (offset // 16).to_bytes(8, "big")
+            body += AES.new(KEY, AES.MODE_CTR, nonce=b"", initial_value=iv).encrypt(data)
+        else:
+            body += data
+        plain += data
+        table += struct.pack(c.section, offset, span, crypto, KEY, counter)
+        if index < sections - 1:
+            filler = bytes([index % 256]) * gap
+            body += filler
+            plain += filler
+    # nsz lists them by offset; the reader must not rely on it.
+    entry = struct.calcsize(c.section)
+    rows = [table[i : i + entry] for i in range(0, len(table), entry)]
+    return head + bytes(body), bytes(plain), b"".join(reversed(rows))
+
+
+def test_an_update_with_thousands_of_sections_comes_back(make_settings, tmp_path):
+    settings = make_settings()
+    c = settings.switch_package
+    data, plain, table = patch_nca(5000, c)
+    count = len(table) // struct.calcsize(c.section)
+    head = data[: c.ncz_header_bytes] + c.section_magic.encode() + struct.pack(c.count, count)
+    packed = head + table + zstandard.ZstdCompressor().compress(plain)
+    source = tmp_path / "Update.nsz"
+    source.write_bytes(pfs0(make_settings, {name_of(data, ".ncz"): packed}))
+    output = tmp_path / "Update.nsp"
+    switch_package.build(source, output, settings, lambda: None)
+    assert nsp_members(output, settings) == {name_of(data): data}
+
+
+def test_a_section_count_the_ncz_cannot_hold_is_flagged(make_settings, tmp_path, parts):
+    c, program, plain, _ = parts
+    settings = make_settings()
+    packed = bytearray(ncz(program, plain, c))
+    at = c.ncz_header_bytes + len(c.section_magic)
+    packed[at : at + struct.calcsize(c.count)] = struct.pack(c.count, len(packed))
+    source = tmp_path / "Game.nsz"
+    source.write_bytes(pfs0(make_settings, {name_of(program, ".ncz"): bytes(packed)}))
+    with pytest.raises(switch_package.PackageError, match="more sections than it has room"):
+        switch_package.plan(source, settings)

@@ -9,6 +9,7 @@ ticket, must read back as they were in the source). A package holding more than 
 game and an update) is not converted, so one NSP stays one title.
 """
 
+import bisect
 import hashlib
 import struct
 from collections.abc import Callable, Iterator
@@ -57,15 +58,23 @@ def _source_members(handle: BinaryIO, settings: Settings):
     return [(name, start + offset, size) for name, offset, size in members]
 
 
-def _ncz_sections(handle: BinaryIO, offset: int, config: SwitchPackageConfig) -> list[_Section]:
+def _ncz_sections(
+    handle: BinaryIO, offset: int, size: int, config: SwitchPackageConfig
+) -> list[_Section]:
+    """The NCZ's section table, by offset. An update's patch archive has one section per
+    patch subsection, often thousands, so the count is bounded only by the member's size."""
     handle.seek(offset + config.ncz_header_bytes)
     if handle.read(len(config.section_magic)) != config.section_magic.encode():
         raise PackageError("an NCZ without its section header")
     (count,) = struct.unpack(config.count, handle.read(struct.calcsize(config.count)))
-    if count > config.max_entries:
-        raise PackageError("an NCZ with too many sections")
-    size = struct.calcsize(config.section)
-    return [_Section(*struct.unpack(config.section, handle.read(size))) for _ in range(count)]
+    entry = struct.calcsize(config.section)
+    room = (
+        size - config.ncz_header_bytes - len(config.section_magic) - struct.calcsize(config.count)
+    )
+    if count * entry > room:
+        raise PackageError("an NCZ with more sections than it has room for")
+    sections = [_Section(*struct.unpack(config.section, handle.read(entry))) for _ in range(count)]
+    return sorted(sections, key=lambda s: s.offset)
 
 
 def plan(path: Path, settings: Settings) -> list[Member]:
@@ -76,7 +85,7 @@ def plan(path: Path, settings: Settings) -> list[Member]:
             result = []
             for name, offset, size in _source_members(handle, settings):
                 if name.lower().endswith(config.ncz_suffix):
-                    sections = _ncz_sections(handle, offset, config)
+                    sections = _ncz_sections(handle, offset, size, config)
                     out = max([config.ncz_header_bytes, *(s.offset + s.size for s in sections)])
                     stem = name[: -len(config.ncz_suffix)]
                     result.append(Member(stem + config.nca_suffix, offset, size, out, True))
@@ -130,20 +139,37 @@ def _decompressed(handle: BinaryIO, member: Member, config: SwitchPackageConfig)
             yield chunk
 
 
-def _encrypt(sections: list[_Section], at: int, data: bytes, config) -> bytes:
+class _Sections:
+    """An NCZ's sections by offset, found by binary search."""
+
+    def __init__(self, sections: list[_Section]):
+        self.sections = sections
+        self.starts = [s.offset for s in sections]
+
+    def at(self, pos: int) -> tuple[_Section | None, int | None]:
+        """The section holding `pos`, else None and where the next section starts (None
+        when no section follows)."""
+        index = bisect.bisect_right(self.starts, pos) - 1
+        if index >= 0 and pos < self.sections[index].offset + self.sections[index].size:
+            return self.sections[index], None
+        following = index + 1
+        return None, self.starts[following] if following < len(self.starts) else None
+
+
+def _encrypt(sections: _Sections, at: int, data: bytes, config) -> bytes:
     """`data` at NCA offset `at`, its parts in CTR sections encrypted again."""
     out = bytearray()
     pos = at
-    while pos < at + len(data):
-        section = next((s for s in sections if s.offset <= pos < s.offset + s.size), None)
+    end = at + len(data)
+    while pos < end:
+        section, following = sections.at(pos)
         if section is None:
             # Up to the next section (or the end) the data is as it is.
-            starts = [s.offset for s in sections if s.offset > pos]
-            stop = min([at + len(data), *starts])
+            stop = end if following is None else min(end, following)
             out += data[pos - at : stop - at]
             pos = stop
             continue
-        stop = min(at + len(data), section.offset + section.size)
+        stop = min(end, section.offset + section.size)
         part = data[pos - at : stop - at]
         if section.crypto in config.ctr_crypto_types:
             block = AES.block_size
@@ -188,7 +214,7 @@ def build(source: Path, output: Path, settings: Settings, check: Callable[[], No
                 handle.seek(m.offset)
                 if m.ncz:
                     head = handle.read(config.ncz_header_bytes)
-                    sections = _ncz_sections(handle, m.offset, config)
+                    sections = _Sections(_ncz_sections(handle, m.offset, m.size, config))
                     out.write(head)
                     written = len(head)
                     for chunk in _decompressed(handle, m, config):

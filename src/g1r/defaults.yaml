@@ -1313,7 +1313,6 @@ switch_package:
   ncz_suffix: .ncz
   nca_suffix: .nca
   cnmt_suffix: .cnmt.nca
-  max_entries: 4096
   # The written PFS0's header is padded to a multiple of this.
   pfs0_align: 0x10
   # A content ID is this many hex digits of the SHA-256.

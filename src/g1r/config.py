@@ -730,7 +730,6 @@ class SwitchPackageConfig(_Strict):
     ncz_suffix: str
     nca_suffix: str
     cnmt_suffix: str
-    max_entries: int = Field(gt=0)
     pfs0_align: int = Field(gt=0)
     content_id_digits: int = Field(gt=0)
     chunk_bytes: int = Field(gt=0)
