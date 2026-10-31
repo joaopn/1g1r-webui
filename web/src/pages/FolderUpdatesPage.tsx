@@ -9,6 +9,7 @@ import { useRestore } from "@/components/apply/useRestore";
 import { ScanPanel } from "@/components/ScanPanel";
 import { StatCard } from "@/components/StatCard";
 import { Button } from "@/components/ui/button";
+import { GameFolders } from "@/components/updates/GameFolders";
 import { SwitchKeys } from "@/components/updates/SwitchKeys";
 import { UpdatesTable } from "@/components/updates/UpdatesTable";
 import { ApiError, api, json } from "@/lib/api";
@@ -113,6 +114,7 @@ export function FolderUpdatesPage() {
           </p>
         ) : null}
       </ScanPanel>
+      <GameFolders label={label} meta={meta.data} />
       <RunPanel label={label} meta={meta.data} />
       {updates.error ? (
         <p className="text-status-bad">{errorText(updates.error)}</p>

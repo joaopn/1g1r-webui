@@ -135,6 +135,43 @@ afterEach(() => {
   queryClient.clear();
 });
 
+const ORGANIZE = {
+  rows: [
+    {
+      rel_path: "update 2.nsp",
+      size: 10,
+      game: "Super Game",
+      role: "update",
+      status: "move",
+      new_path: "Super Game/update/update 2.nsp",
+      reason: "",
+      original_dir: null,
+    },
+    {
+      rel_path: "Super Game/Super Game.nsp",
+      size: 10,
+      game: "Super Game",
+      role: "base",
+      status: "in place",
+      new_path: null,
+      reason: "",
+      original_dir: "",
+    },
+    {
+      rel_path: "update 1.nsp",
+      size: 10,
+      game: "Super Game",
+      role: "update",
+      status: "skipped",
+      new_path: null,
+      reason: "proposed for discarded/",
+      original_dir: null,
+    },
+  ],
+  counts: { files: 3, proposed: 1, in_place: 1, skipped: 1, moved: 1 },
+  subfolders: { base: "", update: "update", dlc: "dlc" },
+};
+
 function stubApi(seen: (url: string, init?: RequestInit) => void) {
   vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
     seen(url, init);
@@ -142,13 +179,15 @@ function stubApi(seen: (url: string, init?: RequestInit) => void) {
       ? META
       : url.endsWith("/folders")
         ? []
-        : url.includes("/updates")
-          ? UPDATES
-          : url.endsWith("/run")
-            ? null
-            : url.endsWith("/keys")
-              ? { boot9: false, seeddb: null, prod_keys: null }
-              : DETAIL;
+        : url.endsWith("/organize")
+          ? ORGANIZE
+          : url.includes("/updates")
+            ? UPDATES
+            : url.endsWith("/run")
+              ? null
+              : url.endsWith("/keys")
+                ? { boot9: false, seeddb: null, prod_keys: null }
+                : DETAIL;
     return new Response(JSON.stringify(body), { headers: { "Content-Type": "application/json" } });
   });
 }
@@ -236,4 +275,20 @@ test("a quick scan from the tab picks up an update added by hand", async () => {
   expect(within(box).queryByRole("button", { name: /Full scan/ })).toBeNull();
   await userEvent.click(within(box).getByRole("button", { name: /Quick scan/ }));
   await vi.waitFor(() => expect(posts).toEqual(["/api/folders/switch/scan"]));
+});
+
+test("the optional game folders box moves files and reverts them", async () => {
+  stubApi(() => undefined);
+  renderPage();
+  const box = await screen.findByRole("region", { name: "Game folders (optional)" });
+  await vi.waitFor(() =>
+    expect(within(box).getByTestId("game-folders-counts")).toHaveTextContent(
+      "1 to move · 1 in place · 1 skipped",
+    ),
+  );
+  expect(box).toHaveTextContent("updates in update/, DLC in dlc/");
+  expect(box).toHaveTextContent("Not needed for the set to be done.");
+  expect(within(box).getByRole("button", { name: "Move (1 file)" })).toBeEnabled();
+  expect(within(box).getByRole("button", { name: "Revert (1 file)" })).toBeEnabled();
+  expect(within(box).getByText("proposed for discarded/")).toBeInTheDocument();
 });

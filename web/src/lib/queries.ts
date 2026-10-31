@@ -12,6 +12,7 @@ import type {
   Meta,
   Missing,
   Notification,
+  Organize,
   Renames,
   Run,
   SettingsData,
@@ -36,6 +37,7 @@ export const keys = {
   discarded: (label: string) => ["discarded", label] as const,
   updates: (label: string) => ["updates", label] as const,
   renames: (label: string) => ["renames", label] as const,
+  organize: (label: string) => ["organize", label] as const,
   run: (label: string) => ["run", label] as const,
   settings: ["settings"] as const,
   dats: ["dats"] as const,
@@ -103,6 +105,13 @@ export const useUpdates = (label: string, enabled: boolean) =>
     enabled,
   });
 
+export const useOrganize = (label: string, enabled: boolean) =>
+  useQuery({
+    queryKey: keys.organize(label),
+    queryFn: () => api<Organize>(`/folders/${label}/organize`),
+    enabled,
+  });
+
 export const useRenames = (label: string) =>
   useQuery({
     queryKey: keys.renames(label),
@@ -151,6 +160,7 @@ export function invalidateFolder(label: string) {
     queryClient.invalidateQueries({ queryKey: keys.discarded(label) }),
     queryClient.invalidateQueries({ queryKey: keys.updates(label) }),
     queryClient.invalidateQueries({ queryKey: keys.renames(label) }),
+    queryClient.invalidateQueries({ queryKey: keys.organize(label) }),
     queryClient.invalidateQueries({ queryKey: keys.run(label) }),
     queryClient.invalidateQueries({ queryKey: keys.folders }),
     queryClient.invalidateQueries({ queryKey: keys.notifications }),

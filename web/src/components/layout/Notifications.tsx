@@ -36,6 +36,8 @@ const PAGES: Record<Notification["kind"], SectionId> = {
   restore: "discarded",
   rename: "rename",
   "rename-back": "rename",
+  organize: "updates",
+  "organize-back": "updates",
 };
 
 function progressText(item: Notification): string {

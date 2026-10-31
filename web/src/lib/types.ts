@@ -106,7 +106,9 @@ export type Notification = {
     | "empty"
     | "restore"
     | "rename"
-    | "rename-back";
+    | "rename-back"
+    | "organize"
+    | "organize-back";
   title: string;
   folder_label: string;
   status: "running" | "done" | "failed";
@@ -407,7 +409,13 @@ export type ConvertPreview = {
 export type GuardedPreview = {
   token: string;
   /** destination null: the file is deleted. */
-  files: { rel_path: string; size: number; destination: string | null }[];
+  files: {
+    rel_path: string;
+    size: number;
+    destination: string | null;
+    /** A rename or a move to another folder of the set: its path there. */
+    new_path?: string | null;
+  }[];
   irreversible: number;
   bytes: number;
   problems: { rel_path: string; problem: string }[];
@@ -740,6 +748,27 @@ export type RenameCounts = {
   named: number;
   skipped: number;
   renamed: number;
+};
+
+/** A file of a title-ID set and where its game's folder puts it (Updates & DLC tab). */
+export type OrganizeRow = {
+  rel_path: string;
+  size: number;
+  /** The game's folder name, when known. */
+  game: string | null;
+  role: "base" | "update" | "dlc" | null;
+  status: "move" | "in place" | "skipped";
+  new_path: string | null;
+  reason: string;
+  /** The folder it was in before its first move ("" = the set's folder), when moved. */
+  original_dir: string | null;
+};
+
+export type Organize = {
+  rows: OrganizeRow[];
+  counts: { files: number; proposed: number; in_place: number; skipped: number; moved: number };
+  /** The subfolder of a game's folder for each kind of file ("" = the folder itself). */
+  subfolders: Record<"base" | "update" | "dlc", string>;
 };
 
 export type Renames = {

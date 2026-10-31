@@ -34,6 +34,7 @@ export function GuardedDialog({
   open,
   onOpenChange,
   renames = false,
+  paths = false,
   note,
 }: {
   label: string;
@@ -51,6 +52,8 @@ export function GuardedDialog({
   onOpenChange: (open: boolean) => void;
   /** The files get new names in their folder: each shows its new name, not "discarded". */
   renames?: boolean;
+  /** With `renames`, the files move to other folders of the set: each shows its new path. */
+  paths?: boolean;
   /** Said under the plan's size, once planned. */
   note?: ReactNode;
 }) {
@@ -149,7 +152,7 @@ export function GuardedDialog({
                             aria-hidden="true"
                           />
                           <span className="truncate" title={f.destination}>
-                            {f.destination.split("/").pop()}
+                            {paths && f.new_path ? f.new_path : f.destination.split("/").pop()}
                           </span>
                         </>
                       ) : f.destination ? (

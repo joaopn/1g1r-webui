@@ -41,9 +41,13 @@ export function RunPanel({
       ? run.kind === "restore"
         ? "Giving names back"
         : "Rename"
-      : run.kind === "restore"
-        ? "Restore"
-        : (SCOPE_VERBS[run.scope] ?? "Apply");
+      : run.scope === "organize"
+        ? run.kind === "restore"
+          ? "Giving folders back"
+          : "Game folders"
+        : run.kind === "restore"
+          ? "Restore"
+          : (SCOPE_VERBS[run.scope] ?? "Apply");
   const unconverted =
     !running && run.kind === "apply" && run.scope === "convert"
       ? run.failed.filter((f) => f.action === "convert").map((f) => f.rel_path)
