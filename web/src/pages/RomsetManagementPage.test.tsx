@@ -14,6 +14,7 @@ const SET = {
   location: "/roms/nes",
   discarded_to: "/roms/discarded/nes/",
   hidden: false,
+  auto_check: false,
   rename_template: "keep",
   rename_templates: ["keep", "dat", "clean"],
   discarded: { files: 2, bytes: 2048 },

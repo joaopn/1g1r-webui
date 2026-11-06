@@ -15,6 +15,7 @@ function stubSettings(changes: Record<string, unknown> = {}) {
         parallel_scans: { value: 4, default: 4, max: 16 },
         parallel_conversions: { value: 2, default: 2, max: 8 },
         page_size: { value: 50, default: 50, max: 1000 },
+        auto_check_minutes: { value: 1440, default: 1440, max: 525600 },
         igir_threads: { value: null, default_readers: 6, default_pool: 4, max: 64 },
         effective_yaml: "",
         library_file: "/data/library.yaml",
@@ -109,4 +110,18 @@ test("rows per page show the saved number, save a chosen one and go back to the 
   await userEvent.click(within(section).getByRole("button", { name: "Use the default" }));
   await vi.waitFor(() => expect(sent).toHaveLength(2));
   expect(sent[1]).toEqual(["/api/settings/page-size", { value: null }]);
+});
+
+test("the auto-check interval is in minutes, once a day by default", async () => {
+  const sent = stubSettings();
+  queryClient.clear();
+  renderPage();
+  const input = await screen.findByLabelText("Auto-check minutes");
+  expect(input).toHaveValue(1440);
+  const section = input.closest("section") as HTMLElement;
+  expect(section).toHaveTextContent("Default 1440 (once a day), at most 525600.");
+  await userEvent.clear(input);
+  await userEvent.type(input, "60");
+  await userEvent.click(within(section).getByRole("button", { name: "Save auto-check minutes" }));
+  await vi.waitFor(() => expect(sent).toEqual([["/api/settings/auto-check", { value: 60 }]]));
 });

@@ -34,6 +34,7 @@ const card = (label: string, platform: string, scan: Scan | null): FolderCard =>
   discarded_to: `/roms/discarded/${label}/`,
   delete_originals: false,
   hidden: false,
+  auto_check: false,
   ignored_patterns: [],
   ignored_patterns_default: true,
   ignored_files: [],
@@ -602,5 +603,34 @@ test("the due, enabled card button is the first-run tour's target", async () => 
   expect(screen.getByRole("button", { name: "Scan blocked" })).not.toHaveAttribute("data-tour");
   expect(screen.getByRole("button", { name: "Check files of done" })).not.toHaveAttribute(
     "data-tour",
+  );
+});
+
+test("each card has an auto-check badge on its title line that switches the set", async () => {
+  const calls = renderPage([
+    card("gb", "gb", SCAN),
+    { ...card("nes", "nes", SCAN), auto_check: true },
+  ]);
+  const off = await screen.findByRole("button", { name: "Auto-check gb" });
+  expect(off).toHaveAttribute("aria-pressed", "false");
+  expect(screen.getByRole("button", { name: "Auto-check nes" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  // On the title line, above the link that covers the card.
+  expect(off.parentElement).toContainElement(screen.getByRole("link", { name: "Game Boy" }));
+  expect(off).toHaveClass("relative", "z-10");
+  // Icon only on the narrow cards; the label and tooltip still say what it is.
+  expect(off).not.toHaveTextContent("Auto-check");
+  await userEvent.click(off);
+  await waitFor(() =>
+    expect(
+      calls.some(
+        (c) =>
+          c.url.endsWith("/folders/gb/auto-check") &&
+          c.init?.method === "PUT" &&
+          c.init.body === JSON.stringify({ auto_check: true }),
+      ),
+    ).toBe(true),
   );
 });

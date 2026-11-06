@@ -19,6 +19,7 @@ const FOLDER: FolderInfo = {
   discarded_to: "/roms/discarded/nes/",
   delete_originals: false,
   hidden: false,
+  auto_check: false,
   ignored_patterns: ["*.txt"],
   ignored_patterns_default: true,
   ignored_files: ["old.bin"],

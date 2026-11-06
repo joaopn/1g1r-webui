@@ -3,6 +3,7 @@ import { Download, Info, RefreshCw, TriangleAlert } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { AutoCheckBadge } from "@/components/AutoCheckBadge";
 import { StopButton } from "@/components/apply/RunPanel";
 import { CheckFiles } from "@/components/CheckFiles";
 import { PlatformIcon } from "@/components/PlatformIcon";
@@ -585,6 +586,13 @@ export function HomePage() {
                     </Link>
                   </h2>
                   <span className="shrink-0 text-muted-foreground text-sm">{folder.label}</span>
+                  {/* Above the title link's overlay. */}
+                  <AutoCheckBadge
+                    label={folder.label}
+                    on={folder.auto_check}
+                    compact
+                    className="relative z-10 ml-auto"
+                  />
                 </div>
                 <p className="mt-1 truncate text-muted-foreground text-xs">
                   {folder.location ?? `mount ${folder.mount} unavailable`}

@@ -19,6 +19,7 @@ const DETAIL = {
   discarded_to: "/roms/discarded/switch/",
   delete_originals: false,
   hidden: false,
+  auto_check: false,
   ignored_patterns: [],
   ignored_patterns_default: true,
   ignored_files: [],

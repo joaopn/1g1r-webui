@@ -218,6 +218,8 @@ export type FolderInfo = {
   delete_originals: boolean;
   /** Hidden from the sidebar and Home; still a set (Settings → Folders). */
   hidden: boolean;
+  /** Checked for new files by the app on its own (Settings → Advanced sets how often). */
+  auto_check: boolean;
   /** Filename patterns the set ignores, whether they are the configured default, and files
    * ignored by their path in the set. */
   ignored_patterns: string[];
@@ -505,6 +507,8 @@ export type SettingsData = {
   parallel_conversions: { value: number; default: number; max: number };
   /** Rows per page of every table. */
   page_size: { value: number; default: number; max: number };
+  /** Minutes between automatic checks of the sets with auto-check on. */
+  auto_check_minutes: { value: number; default: number; max: number };
   /** Threads per igir run; null: igir's own (its default readers and pool). */
   igir_threads: {
     value: number | null;

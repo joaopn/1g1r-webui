@@ -18,6 +18,7 @@ const DETAIL = {
   discarded_to: "/roms/discarded/nes/",
   delete_originals: false,
   hidden: false,
+  auto_check: false,
   ignored_patterns: ["*.txt", "*.png"],
   ignored_patterns_default: false,
   ignored_files: ["sub/scan.jpg"],

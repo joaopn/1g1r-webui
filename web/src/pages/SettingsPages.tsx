@@ -751,6 +751,7 @@ export function AdvancedSettingsPage() {
   const conversions = data.data.parallel_conversions;
   const threads = data.data.igir_threads;
   const rows = data.data.page_size;
+  const autoCheck = data.data.auto_check_minutes;
   return (
     <Page
       title="Advanced"
@@ -804,6 +805,19 @@ export function AdvancedSettingsPage() {
       >
         How many rows a table shows before the next page (games on the Matching table). Default{" "}
         {rows.default}, at most {rows.max}.
+      </NumberSetting>
+      <NumberSetting
+        title="Auto-check interval"
+        label="Auto-check minutes"
+        path="/settings/auto-check"
+        saved="Auto-check interval saved"
+        value={autoCheck.value}
+        current={autoCheck.value}
+        isDefault={autoCheck.value === autoCheck.default}
+        max={autoCheck.max}
+      >
+        Sets with the Auto-check badge on get a Check files run when their last check or scan is
+        this many minutes old. Default {autoCheck.default} (once a day), at most {autoCheck.max}.
       </NumberSetting>
       <NumberSetting
         title="igir threads per scan"

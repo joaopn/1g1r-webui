@@ -312,6 +312,7 @@ export const FOLDER_CARD: FolderCard = {
   progress: { processed: 0, to_process: 0, to_match: 0, to_convert: 0 },
   delete_originals: false,
   hidden: false,
+  auto_check: false,
   ignored_patterns: [],
   ignored_patterns_default: true,
   ignored_files: [],

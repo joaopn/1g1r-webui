@@ -18,6 +18,7 @@ const FOLDER: FolderInfo = {
   discarded_to: "/roms/discarded/nes/",
   delete_originals: false,
   hidden: false,
+  auto_check: false,
   ignored_patterns: [],
   ignored_patterns_default: true,
   ignored_files: [],
@@ -170,4 +171,27 @@ test("other sets have no Updates tab", () => {
     </QueryClientProvider>,
   );
   expect(screen.queryByRole("link", { name: "Updates & DLC" })).toBeNull();
+});
+
+test("the auto-check badge sits on the title line and switches the set's auto-check", async () => {
+  const sent: unknown[] = [];
+  vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+    if (init?.method === "PUT") sent.push([url, JSON.parse(String(init.body))]);
+    return new Response(JSON.stringify({}), { status: 200 });
+  });
+  queryClient.clear();
+  render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>
+        <FolderHeader folder={{ ...FOLDER, auto_check: true }} meta={META} section="matching" />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+  const badge = screen.getByRole("button", { name: "Auto-check nes" });
+  expect(badge).toHaveAttribute("aria-pressed", "true");
+  expect(badge.parentElement).toContainElement(screen.getByRole("heading", { level: 1 }));
+  await userEvent.click(badge);
+  await vi.waitFor(() =>
+    expect(sent).toEqual([["/api/folders/nes/auto-check", { auto_check: false }]]),
+  );
 });

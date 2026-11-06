@@ -1,5 +1,6 @@
 import { CircleCheck } from "lucide-react";
 import { Link } from "react-router-dom";
+import { AutoCheckBadge } from "@/components/AutoCheckBadge";
 import { CheckFiles } from "@/components/CheckFiles";
 import { PlatformIcon } from "@/components/PlatformIcon";
 import {
@@ -16,8 +17,8 @@ import { cn } from "@/lib/utils";
 // Tailwind needs the class names written out: every tab, or all but Updates.
 const TAB_COLUMNS = { every: "grid-cols-6", fewer: "grid-cols-5" };
 
-/** The set's name with its Check files button and location, then its pages as tabs across the
- * full width; a page with nothing left to do (from the set's Home `card`) has a green check. */
+/** The set's name with its Check files button and its auto-check badge (right), its location,
+ * then its pages as tabs across the full width; a page with nothing left to do (from the set's Home `card`) has a green check. */
 export function FolderHeader({
   folder,
   meta,
@@ -48,6 +49,7 @@ export function FolderHeader({
               blocked={card?.converting ? "A conversion is running" : undefined}
             />
           </span>
+          <AutoCheckBadge label={folder.label} on={folder.auto_check} className="ml-auto" />
         </div>
         <p className="text-muted-foreground text-sm">
           <code className="text-xs">
