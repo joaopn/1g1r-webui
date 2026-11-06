@@ -120,6 +120,11 @@ class Progress:
             if final or self.clock() - self.written >= self.interval:
                 self._write()
 
+    def changed(self, count: int) -> None:
+        """How many ROM files the run's listing found new, changed or gone."""
+        if self.conn is not None:
+            self.conn.execute("UPDATE scan SET changes = ? WHERE id = ?", (count, self.scan_id))
+
     def each[T](self, name: str, items: Iterable[T]) -> Iterator[T]:
         """The items, counting each one done as the loop moves past it."""
         items = list(items)
@@ -494,12 +499,14 @@ class Scanner:
         found_files = self._inventory(conn, label, progress, full=False)
         with found_files.found.cache.kept(conn):
             progress.stage("Saving")
-            self._store_inventory(conn, label, found_files.files, found_files.found)
+            changes = self._store_inventory(conn, label, found_files.files, found_files.found)
+            progress.changed(changes)
         found_files.found.cache.save(conn, {f.rel_path for f in found_files.files})
         waiting = self.waiting(conn, found_files.library, found_files.folder, found_files.root)
         roms = [f for f in found_files.files if f.kind in ("rom", "archive")]
         left = sum(1 for f in roms if f.rel_path in waiting)
-        return f"{len(roms)} ROM files checked; {left} to convert"
+        news = f"{changes} new, changed or gone" if changes else "nothing new"
+        return f"{len(roms)} ROM files checked, {news}; {left} to convert"
 
     def _scan(
         self,
@@ -535,7 +542,7 @@ class Scanner:
             found_files.files,
             found_files.found,
         )
-        self._store_inventory(conn, label, files, found)
+        progress.changed(self._store_inventory(conn, label, files, found))
         found.cache.save(conn, {f.rel_path for f in files})
         waiting = self.waiting(conn, library, folder, root)
         candidates = [f for f in files if f.kind in ("rom", "archive")]
@@ -1100,9 +1107,10 @@ class Scanner:
             members += [(f.rel_path, archives.Member(*m)) for m in value["members"]]
         return members, problems
 
-    def _store_inventory(self, conn, label, files, found: "Found") -> None:
+    def _store_inventory(self, conn, label, files, found: "Found") -> int:
         """The folder's files and what a check read. A file unchanged since the last run keeps
-        its identification; a changed, new or vanished one loses it (the cascade)."""
+        its identification; a changed, new or vanished one loses it (the cascade). Returns how
+        many ROM files (and archives) are new, changed or gone."""
         listed = {f.rel_path: (f.size, f.mtime_ns, f.kind) for f in files}
         # Taking the write lock first: a transaction that reads before it writes cannot wait
         # for another scan's write and fails with "database is locked".
@@ -1184,6 +1192,10 @@ class Scanner:
         except sqlite3.Error:
             conn.execute("ROLLBACK")
             raise
+        roms = ("rom", "archive")
+        new = {f.rel_path for f in files if f.kind in roms and f.rel_path not in kept}
+        gone = {r["rel_path"] for r in stored if r["kind"] in roms and r["rel_path"] not in listed}
+        return len(new | gone)
 
     def _store_identity(self, conn, label, files, found: "Found") -> None:
         """What identification found for `files` (those with nothing left to convert),

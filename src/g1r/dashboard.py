@@ -39,13 +39,15 @@ def needs(
     scanned: sqlite3.Row | None,
     dat: sqlite3.Row | None,
     converted_at: str | None,
+    unscanned: int = 0,
 ) -> str | None:
-    """What the set waits for (Home's "Needing scanning" badge, one for both): a check
+    """What the set waits for (Home's "Needs scanning" badge, one for both): a check
     (`scanner.CHECK`) before any run or after a failed one; a scan (`scanner.IDENTIFY`) when
-    it was never scanned, the last scan failed, the active DAT changed since, or a conversion
-    ended after the scan began (its outputs are identified by a scan). None while a run is
-    under way, or when nothing is due. `last`: the latest run of either kind; `scanned`: the
-    latest scan."""
+    it was never scanned, the last scan failed, the active DAT changed since, a conversion
+    ended after the scan began (its outputs are identified by a scan), or a check listed ROM
+    files no scan has read yet (`unscanned`: new or changed ones). None while a run is under
+    way, or when nothing is due. `last`: the latest run of either kind; `scanned`: the latest
+    scan."""
     if last is None:
         return scanner.CHECK
     if last["status"] == "running":
@@ -55,6 +57,8 @@ def needs(
     if scanned is None or scanned["status"] == "failed" or _dat_changed(scanned, dat):
         return scanner.IDENTIFY
     if converted_at is not None and converted_at >= scanned["started_at"]:
+        return scanner.IDENTIFY
+    if unscanned:
         return scanner.IDENTIFY
     return None
 

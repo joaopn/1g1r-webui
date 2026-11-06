@@ -694,7 +694,11 @@ def build_router(
             dat = registry.active_version(conn, library, folder.platform)
             last_scan = scanner.latest_scan(conn, folder.label, scanner.IDENTIFY)
             needed = dashboard.needs(
-                scan, last_scan, dat, journal.last_conversion_end(conn, folder.label)
+                scan,
+                last_scan,
+                dat,
+                journal.last_conversion_end(conn, folder.label),
+                figures["summary"]["unscanned"],
             )
             result.append(
                 {

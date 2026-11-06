@@ -29,7 +29,7 @@ def test_a_check_reads_what_conversion_needs_and_hashes_nothing(env, monkeypatch
     folder_scanner = scanner.Scanner(settings, store, registry, never)
     check = run(folder_scanner, conn, scanner.CHECK)
     assert (check["kind"], check["status"]) == ("check", "done")
-    assert check["message"] == "3 ROM files checked; 0 to convert"
+    assert check["message"] == "3 ROM files checked, 3 new, changed or gone; 0 to convert"
     assert conn.execute("SELECT COUNT(*) FROM archive_member").fetchone()[0] == 3
     assert identities(conn) == {}
 
@@ -81,7 +81,7 @@ def test_check_files_from_the_api(setup, roms_root):  # noqa: F811
     check = finished(client, "nes")
     assert (check["kind"], check["status"]) == ("check", "done")
     # odd.nes waits to be zipped; the Conversion page needs nothing more.
-    assert check["message"] == "7 ROM files checked; 1 to convert"
+    assert check["message"] == "7 ROM files checked, 7 new, changed or gone; 1 to convert"
     wrap = [r for r in client.get("/api/folders/nes/conversion").json()["rows"] if r["output"]]
     assert [r["rel_path"] for r in wrap] == ["odd.nes"]
     card = client.get("/api/folders").json()[0]
@@ -102,3 +102,30 @@ def test_check_files_from_the_api(setup, roms_root):  # noqa: F811
     finished(client, "nes")
     summary = client.get("/api/folders/nes").json()["summary"]
     assert (summary["unmatched"], summary["unscanned"]) == (1, 0)
+
+
+def test_files_a_check_finds_make_the_whole_set_need_a_scan(setup, roms_root):  # noqa: F811
+    """Check files is how the set learns of new files: once it lists ROM files no scan has
+    read, the set needs a Scan (every tab and Home), and a check that finds nothing says so."""
+    client, _, _ = setup
+    scanned(client)
+
+    def card():
+        return client.get("/api/folders").json()[0]
+
+    assert card()["needs"] is None
+    client.post("/api/folders/nes/check")
+    assert finished(client, "nes")["changes"] == 0
+    assert (card()["needs"], card()["scan"]["changes"]) == (None, 0)
+    assert "nothing new" in card()["scan"]["message"]
+    write_zip(roms_root / "NES Set" / "Added (USA).zip", "Added (USA).nes", b"added")
+    client.post("/api/folders/nes/check")
+    assert finished(client, "nes")["changes"] == 1
+    assert (card()["needs"], card()["needs_scan"]) == ("identify", True)
+    # Checked again before scanning: nothing new, but the added file still waits for a scan.
+    client.post("/api/folders/nes/check")
+    assert finished(client, "nes")["changes"] == 0
+    assert card()["needs"] == "identify"
+    client.post("/api/folders/nes/scan")
+    finished(client, "nes")
+    assert card()["needs"] is None
