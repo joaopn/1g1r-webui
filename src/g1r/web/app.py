@@ -15,7 +15,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from g1r import db, hasheous, journal, scanner
+from g1r import autocheck, db, hasheous, journal, scanner
 from g1r.config import Settings, load_settings
 from g1r.dat_registry import DatRegistry, Fetch
 from g1r.jobs import Jobs
@@ -50,7 +50,10 @@ def create_app(
         conn.close()
         store.load()  # fail fast on an invalid library.yaml
         app.state.jobs = Jobs(settings, folder_scanner)
+        checker = autocheck.AutoCheck(store, app.state.jobs)
+        checker.start()
         yield
+        checker.stop()
         app.state.jobs.shutdown()
 
     def get_db() -> Iterator[sqlite3.Connection]:

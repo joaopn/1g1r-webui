@@ -1038,6 +1038,14 @@ jobs:
   # While a scan or run works on a set, its Home card figures are computed again at most
   # this often (every file it finishes changes them; Home polls every poll_interval_ms).
   busy_card_refresh_seconds: 10
+  # Auto-check: every set with its auto-check badge on gets a Check files run once its last
+  # run (check or scan) is this many minutes old, unless set in Settings -> Advanced, up to
+  # max_minutes. Sets that are hidden, busy or not on disk are skipped until the next look.
+  auto_check:
+    minutes: 1440
+    max_minutes: 525600
+    # How often the app looks for sets due a check.
+    poll_seconds: 60
 
 apply:
   # Moves to another disk copy in chunks of this many bytes, hashing as they go.

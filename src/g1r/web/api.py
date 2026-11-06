@@ -96,6 +96,10 @@ class Hidden(BaseModel):
     hidden: bool
 
 
+class AutoCheckSwitch(BaseModel):
+    auto_check: bool
+
+
 class ApplyScope(BaseModel):
     # One game, or the whole folder when None.
     group_key: str | None = None
@@ -342,6 +346,8 @@ def build_router(
             "discarded_to": f"{settings.paths.discarded_root}/{folder.label}/",
             "delete_originals": folder.delete_originals,
             "hidden": folder.hidden,
+            # Checked for new files on its own (Settings -> Advanced sets how often).
+            "auto_check": folder.auto_check,
             "ignored_patterns": store.ignored_patterns(folder),
             "ignored_patterns_default": folder.ignored_patterns is None,
             "ignored_files": folder.ignored_files,
@@ -995,6 +1001,14 @@ def build_router(
     def hide_folder(label: str, body: Hidden):
         folder_or_404(label)
         library = store.update(lambda lib: setattr(lib.folder(label), "hidden", body.hidden))
+        return folder_info(library, library.folder(label))
+
+    @router.put("/folders/{label}/auto-check")
+    def save_auto_check(label: str, body: AutoCheckSwitch):
+        folder_or_404(label)
+        library = store.update(
+            lambda lib: setattr(lib.folder(label), "auto_check", body.auto_check)
+        )
         return folder_info(library, library.folder(label))
 
     # Sets from a folder of platform folders ------------------------------------------
@@ -2055,6 +2069,11 @@ def build_router(
                 "default": settings.ui.page_size,
                 "max": settings.ui.max_page_size,
             },
+            "auto_check_minutes": {
+                "value": store.auto_check_minutes(library),
+                "default": settings.jobs.auto_check.minutes,
+                "max": settings.jobs.auto_check.max_minutes,
+            },
             "igir_threads": {
                 "value": store.igir_threads(library),
                 "default_readers": settings.igir.default_reader_threads,
@@ -2119,6 +2138,13 @@ def build_router(
         if body.value is not None and body.value > settings.ui.max_page_size:
             raise bad_request(f"at most {settings.ui.max_page_size} rows per page")
         store.update(lambda lib: setattr(lib, "page_size", body.value))
+        return get_settings()
+
+    @router.put("/settings/auto-check")
+    def save_auto_check_minutes(body: JobLimit):
+        if body.value is not None and body.value > settings.jobs.auto_check.max_minutes:
+            raise bad_request(f"at most {settings.jobs.auto_check.max_minutes} minutes")
+        store.update(lambda lib: setattr(lib, "auto_check_minutes", body.value))
         return get_settings()
 
     @router.put("/settings/igir-threads")

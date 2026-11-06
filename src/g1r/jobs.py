@@ -51,11 +51,13 @@ class Jobs:
         rematch: bool = False,
         full: bool = False,
         kind: str = IDENTIFY,
+        auto: bool = False,
     ) -> int:
-        """A Scan, or with kind CHECK a Check files run; both wait in the same queue."""
+        """A Scan, or with kind CHECK a Check files run; both wait in the same queue. `auto`:
+        started by the app on its own (auto-check)."""
         # Queued and submitted in one order, so the scan first in line always has a thread.
         with self.starting:
-            scan_id = self.scanner.start(conn, label, kind)
+            scan_id = self.scanner.start(conn, label, kind, auto)
             with self.gate:
                 self.queued.append(scan_id)
             self.scans.submit(self._run_scan, scan_id, label, rematch, full, kind)

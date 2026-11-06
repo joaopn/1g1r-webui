@@ -93,8 +93,12 @@ def _run_item(conn: sqlite3.Connection, row: sqlite3.Row) -> dict:
 
 def feed(conn: sqlite3.Connection, limit: int) -> list[dict]:
     """The `limit` latest scans and runs not cleared, newest start first."""
+    # An auto-check that found nothing new is not news.
     scans = conn.execute(
-        "SELECT * FROM scan WHERE dismissed = 0 ORDER BY id DESC LIMIT ?", (limit,)
+        "SELECT * FROM scan WHERE dismissed = 0"
+        " AND NOT (auto = 1 AND status = 'done' AND changes IS 0)"
+        " ORDER BY id DESC LIMIT ?",
+        (limit,),
     ).fetchall()
     runs = conn.execute(
         "SELECT * FROM apply_run WHERE dismissed = 0 ORDER BY id DESC LIMIT ?", (limit,)

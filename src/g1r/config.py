@@ -446,6 +446,18 @@ class ArchivesConfig(_Strict):
     list_timeout_seconds: float = Field(gt=0)
 
 
+class AutoCheckConfig(_Strict):
+    minutes: int = Field(gt=0)
+    max_minutes: int = Field(gt=0)
+    poll_seconds: float = Field(gt=0)
+
+    @model_validator(mode="after")
+    def _default_within_max(self):
+        if self.minutes > self.max_minutes:
+            raise ValueError("jobs.auto_check.minutes is above jobs.auto_check.max_minutes")
+        return self
+
+
 class JobsConfig(_Strict):
     scan_workers: int = Field(gt=0)
     max_scan_workers: int = Field(gt=0)
@@ -464,6 +476,7 @@ class JobsConfig(_Strict):
 
     progress_interval_seconds: float = Field(ge=0)
     busy_card_refresh_seconds: float = Field(ge=0)
+    auto_check: AutoCheckConfig
 
 
 class ChdmanConfig(_Strict):

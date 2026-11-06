@@ -40,6 +40,8 @@ class FolderEntry(BaseModel):
     ignored_files: list[str] = Field(default_factory=list)
     # The naming template of the Rename tab (None: the one renaming gives every set).
     rename_template: str | None = None
+    # Checked for new files on its own, every auto-check interval.
+    auto_check: bool = False
 
 
 class ActiveDat(BaseModel):
@@ -109,6 +111,8 @@ class Library(BaseModel):
     page_size: int | None = None
     # Threads per igir run (None: igir's own).
     igir_threads: int | None = None
+    # Minutes between automatic checks of the sets with auto-check on (None: the default).
+    auto_check_minutes: int | None = None
     # Renaming for every set without a template of its own (None: the configured default).
     rename_mode: RenameMode | None = None
     folders: list[FolderEntry] = Field(default_factory=list)
@@ -238,6 +242,11 @@ class LibraryStore:
         ui = self.settings.ui
         chosen = library.page_size
         return chosen if chosen is not None and chosen <= ui.max_page_size else ui.page_size
+
+    def auto_check_minutes(self, library: Library) -> int:
+        auto = self.settings.jobs.auto_check
+        chosen = library.auto_check_minutes
+        return chosen if chosen is not None and chosen <= auto.max_minutes else auto.minutes
 
     def igir_threads(self, library: Library) -> int | None:
         chosen = library.igir_threads

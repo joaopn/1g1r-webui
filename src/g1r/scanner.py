@@ -395,13 +395,16 @@ class Scanner:
         self.read_rvz = read_rvz
         self.open_member = open_member
 
-    def start(self, conn: sqlite3.Connection, label: str, kind: str = IDENTIFY) -> int:
+    def start(
+        self, conn: sqlite3.Connection, label: str, kind: str = IDENTIFY, auto: bool = False
+    ) -> int:
+        """Record a run; `auto` when the app started it on its own (auto-check)."""
         reason = journal.busy(conn, label)
         if reason:
             raise ScanError(reason)
         return conn.execute(
-            "INSERT INTO scan (folder_label, status, kind) VALUES (?, 'running', ?)",
-            (label, kind),
+            "INSERT INTO scan (folder_label, status, kind, auto) VALUES (?, 'running', ?, ?)",
+            (label, kind, int(auto)),
         ).lastrowid
 
     def run(
