@@ -134,6 +134,9 @@ export type Scan = {
   started_at: string;
   finished_at: string | null;
   message: string | null;
+  /** ROM files the run's listing found new, changed or gone (0: nothing new); null before
+   * the listing ends, and for runs recorded before it was counted. */
+  changes: number | null;
   /** While running: the step it is on (null until it starts) and that step's file count. */
   stage: string | null;
   files_done: number | null;

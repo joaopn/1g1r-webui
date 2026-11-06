@@ -1,5 +1,8 @@
+import { QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
+import { queryClient } from "@/lib/queries";
 import type { FolderCard, FolderInfo, FolderWarning } from "@/lib/types";
 import { META } from "@/test/fixtures";
 import { FolderHeader } from "./FolderHeader";
@@ -25,9 +28,11 @@ const FOLDER: FolderInfo = {
 
 test("the set's pages are tabs, the current one marked", () => {
   render(
-    <MemoryRouter>
-      <FolderHeader folder={FOLDER} meta={META} section="matching" />
-    </MemoryRouter>,
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>
+        <FolderHeader folder={FOLDER} meta={META} section="matching" />
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
   const tabs = screen.getByRole("navigation", { name: "Set pages" });
   const links = Array.from(tabs.querySelectorAll("a"));
@@ -46,6 +51,24 @@ test("the set's pages are tabs, the current one marked", () => {
   expect(screen.getByText("/roms/nes")).toBeInTheDocument();
 });
 
+test("Check files sits next to the set's name and checks the folder", async () => {
+  const posted: string[] = [];
+  vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+    if (init?.method === "POST") posted.push(url);
+    return new Response(JSON.stringify({}), { status: 200 });
+  });
+  queryClient.clear();
+  render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>
+        <FolderHeader folder={FOLDER} meta={META} section="rename" />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Check files of nes" }));
+  expect(posted).toEqual(["/api/folders/nes/check"]);
+});
+
 test("a page with nothing left to do has a green check on its tab", () => {
   // Only what the checks read.
   const card = (to_convert: number, to_process: number, needs: FolderCard["needs"]) =>
@@ -57,9 +80,11 @@ test("a page with nothing left to do has a green check on its tab", () => {
     }) as FolderCard;
   const checked = (c: FolderCard) => {
     const { unmount } = render(
-      <MemoryRouter>
-        <FolderHeader folder={FOLDER} meta={META} section="matching" card={c} />
-      </MemoryRouter>,
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <FolderHeader folder={FOLDER} meta={META} section="matching" card={c} />
+        </MemoryRouter>
+      </QueryClientProvider>,
     );
     const tabs = screen.getByRole("navigation", { name: "Set pages" });
     const done = Array.from(tabs.querySelectorAll("a"))
@@ -98,14 +123,16 @@ test("a Switch set has an Updates & DLC tab, checked when nothing is to discard"
     }) as FolderCard;
   const tabs = (c: FolderCard) => {
     const { unmount } = render(
-      <MemoryRouter>
-        <FolderHeader
-          folder={{ ...FOLDER, title_ids: true }}
-          meta={META}
-          section="updates"
-          card={c}
-        />
-      </MemoryRouter>,
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <FolderHeader
+            folder={{ ...FOLDER, title_ids: true }}
+            meta={META}
+            section="updates"
+            card={c}
+          />
+        </MemoryRouter>
+      </QueryClientProvider>,
     );
     const links = Array.from(
       screen.getByRole("navigation", { name: "Set pages" }).querySelectorAll("a"),
@@ -136,9 +163,11 @@ test("a Switch set has an Updates & DLC tab, checked when nothing is to discard"
 
 test("other sets have no Updates tab", () => {
   render(
-    <MemoryRouter>
-      <FolderHeader folder={FOLDER} meta={META} section="matching" />
-    </MemoryRouter>,
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>
+        <FolderHeader folder={FOLDER} meta={META} section="matching" />
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
   expect(screen.queryByRole("link", { name: "Updates & DLC" })).toBeNull();
 });

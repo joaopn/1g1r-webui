@@ -11,6 +11,7 @@ const SCAN = {
   folder_label: "nes",
   status: "done",
   message: "2 of 3 ROM files identified",
+  changes: null,
   started_at: "2026-10-19T09:00:00Z",
   finished_at: "2026-10-19T09:01:00Z",
   stage: null,
@@ -70,25 +71,19 @@ test("a folder never scanned has one button", () => {
   expect(screen.queryByRole("button", { name: /Full scan/ })).not.toBeInTheDocument();
 });
 
-test("on the Conversion page the panel checks the files, with no full variant", async () => {
-  const posted: string[] = [];
-  vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
-    if (init?.method === "POST") posted.push(url);
-    return new Response(JSON.stringify({}), { status: 200 });
-  });
+test("on the Conversion page the panel reports the last check and has no run button", () => {
   queryClient.clear();
   const check = { ...SCAN, kind: "check", message: "5 ROM files checked; 1 to convert" } as Scan;
   render(
     <QueryClientProvider client={queryClient}>
-      <ScanPanel label="nes" kind="check" scan={check} title="Check files">
+      <ScanPanel label="nes" kind="check" scan={check} title="Target format">
         Target
       </ScanPanel>
     </QueryClientProvider>,
   );
   expect(screen.getByText(/^Checked .*: 5 ROM files checked; 1 to convert\.$/)).toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: /Full scan/ })).not.toBeInTheDocument();
-  await userEvent.click(screen.getByRole("button", { name: /Check files/ }));
-  expect(posted).toEqual(["/api/folders/nes/check"]);
+  // Check files sits in the set's header.
+  expect(screen.queryByRole("button")).not.toBeInTheDocument();
 });
 
 test("on the Matching page a check is not reported as the last scan", () => {

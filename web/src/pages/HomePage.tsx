@@ -1,9 +1,10 @@
 import { useMutation } from "@tanstack/react-query";
-import { Download, FileSearch, Info, RefreshCw, TriangleAlert } from "lucide-react";
+import { Download, Info, RefreshCw, TriangleAlert } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { StopButton } from "@/components/apply/RunPanel";
+import { CheckFiles } from "@/components/CheckFiles";
 import { PlatformIcon } from "@/components/PlatformIcon";
 import { ProgressFill } from "@/components/ProgressFill";
 import { type ChipTone, QuickViewBar } from "@/components/QuickViewBar";
@@ -14,7 +15,7 @@ import { useStopConversion, waitingText } from "@/lib/conversion";
 import { formatBytes, formatCount, formatFiles, formatWhen } from "@/lib/format";
 import { foldersByName } from "@/lib/platforms";
 import { invalidateFolder, useFolders, useMeta } from "@/lib/queries";
-import { runWords, scanProgress, useStartCheck, useStartScan } from "@/lib/scan";
+import { runWords, scanProgress, useStartScan } from "@/lib/scan";
 import {
   folderState,
   needsConversion,
@@ -291,7 +292,6 @@ function EmptyBox({ folder, children }: { folder: FolderCard; children: ReactNod
 
 function CardActions({ folder }: { folder: FolderCard }) {
   const scan = useStartScan(folder.label);
-  const check = useStartCheck(folder.label);
   const stop = useStopConversion(folder.label);
   const download = useMutation({
     mutationFn: (source: string) =>
@@ -305,17 +305,22 @@ function CardActions({ folder }: { folder: FolderCard }) {
     onError: (err) => toast.error(err instanceof ApiError ? err.message : String(err)),
   });
   const running = folder.scan?.status === "running";
-  // The run that is due: Check files first (it needs no DAT), then Scan.
-  const checking = folder.needs === "check";
+  // Check files looks for what is new; once a set has files no Scan has read (or never had a
+  // Scan), the button is Scan.
+  const scanning = folder.needs === "identify";
   // A Scan waits for every file to be in the target format (converted or discarded first).
-  const guard = checking
-    ? undefined
-    : (datGuard(folder) ??
+  const guard = scanning
+    ? (datGuard(folder) ??
       (folder.progress.to_convert > 0
         ? "Convert or discard first (Conversion tab): scanning waits until every file is in the target format"
-        : undefined));
-  const blocked =
-    Boolean(guard) || running || Boolean(folder.converting) || scan.isPending || check.isPending;
+        : undefined))
+    : undefined;
+  const blocked = Boolean(guard) || running || Boolean(folder.converting) || scan.isPending;
+  const tour = {
+    "data-tour": folder.needs_scan && !blocked ? "scan" : undefined,
+    "data-tour-set": folder.label,
+    "data-tour-step": folder.needs ?? undefined,
+  };
   return (
     <div className="relative flex flex-wrap items-center gap-2 px-4 pb-4">
       {folder.dat_download ? (
@@ -329,31 +334,33 @@ function CardActions({ folder }: { folder: FolderCard }) {
           {download.isPending ? "Downloading DAT…" : "Download DAT"}
         </Button>
       ) : null}
-      <Button
-        size="sm"
-        variant="outline"
-        aria-label={`${checking ? "Check files of" : "Scan"} ${folder.label}`}
-        title={
-          guard ??
-          (folder.converting
-            ? "A conversion is running"
-            : checking
-              ? "List the folder and read what conversion needs; nothing is hashed"
-              : "Identify the files with nothing left to convert")
-        }
-        disabled={blocked}
-        data-tour={folder.needs_scan && !blocked ? "scan" : undefined}
-        data-tour-set={folder.label}
-        data-tour-step={folder.needs ?? undefined}
-        onClick={() => (checking ? check.mutate() : scan.mutate({}))}
-      >
-        {checking ? (
-          <FileSearch className={running ? "size-4 animate-spin" : "size-4"} aria-hidden="true" />
-        ) : (
+      {scanning ? (
+        <Button
+          size="sm"
+          variant="outline"
+          aria-label={`Scan ${folder.label}`}
+          title={
+            guard ??
+            (folder.converting
+              ? "A conversion is running"
+              : "Read and identify the files no scan has read yet")
+          }
+          disabled={blocked}
+          {...tour}
+          onClick={() => scan.mutate({})}
+        >
           <RefreshCw className={running ? "size-4 animate-spin" : "size-4"} aria-hidden="true" />
-        )}
-        {checking ? "Check files" : "Scan"}
-      </Button>
+          Scan
+        </Button>
+      ) : (
+        <CheckFiles
+          label={folder.label}
+          scan={folder.scan}
+          size="sm"
+          blocked={folder.converting ? "A conversion is running" : undefined}
+          {...tour}
+        />
+      )}
       {folder.converting ? (
         <StopButton
           label={folder.label}

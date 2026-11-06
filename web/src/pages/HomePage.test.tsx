@@ -15,6 +15,7 @@ const SCAN: Scan = {
   started_at: "2026-10-18T10:00:00Z",
   finished_at: "2026-10-18T10:01:00Z",
   message: "done",
+  changes: null,
   stage: null,
   files_done: null,
   files_total: null,
@@ -99,7 +100,7 @@ test("a running scan fills the card by file count and its button waits", async (
     "Reading archives: 25 / 100 files",
   );
   expect(screen.getByTestId("scan-progress")).toHaveStyle({ transform: "scaleX(0.25)" });
-  expect(screen.getByRole("button", { name: "Scan nes" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Check files of nes" })).toBeDisabled();
 });
 
 test("Simplified has no scan line: a running scan leads the warnings block", async () => {
@@ -124,7 +125,7 @@ test("a running conversion fills the card by steps finished, with the files fail
   );
   expect(screen.getByTestId("conversion-progress")).toHaveStyle({ transform: "scaleX(0.75)" });
   expect(screen.queryByTestId("scan-progress")).toBeNull();
-  expect(screen.getByRole("button", { name: "Scan psx" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Check files of psx" })).toBeDisabled();
 });
 
 test("a conversion waiting for another set's says which on the card", async () => {
@@ -184,7 +185,7 @@ test("a step without a file count pulses the whole card", async () => {
 });
 
 test("the scan button starts the set's scan", async () => {
-  const calls = renderPage([card("gb", "gb", SCAN)]);
+  const calls = renderPage([{ ...card("gb", "gb", SCAN), needs: "identify", needs_scan: true }]);
   await userEvent.click(await screen.findByRole("button", { name: "Scan gb" }));
   expect(calls.some((c) => c.url.endsWith("/folders/gb/scan") && c.init?.method === "POST")).toBe(
     true,
@@ -265,6 +266,22 @@ test("the card's button runs what is due: Check files first, then Scan", async (
   expect(posted).toEqual(["/api/folders/new/check", "/api/folders/checked/scan"]);
 });
 
+test("a set with nothing due offers Check files, and says when the last check found nothing", async () => {
+  const calls = renderPage([
+    card("scanned", "gb", SCAN),
+    card("quiet", "gb", { ...CHECKED, changes: 0 }),
+    { ...card("found", "gb", { ...CHECKED, changes: 2 }), needs: "identify", needs_scan: true },
+  ]);
+  await userEvent.click(await screen.findByRole("button", { name: "Check files of scanned" }));
+  const posted = calls.filter((c) => c.init?.method === "POST").map((c) => c.url);
+  expect(posted).toEqual(["/api/folders/scanned/check"]);
+  expect(screen.queryByTestId("nothing-new-scanned")).toBeNull();
+  expect(screen.getByTestId("nothing-new-quiet")).toHaveTextContent("Nothing new");
+  // A check that found files no scan has read: the button is Scan.
+  expect(screen.getByRole("button", { name: "Scan found" })).toBeEnabled();
+  expect(screen.queryByRole("button", { name: "Check files of found" })).toBeNull();
+});
+
 test("a check is named as one on the card", async () => {
   localStorage.setItem("g1r.home.detail.v1", JSON.stringify("extended"));
   renderPage([{ ...filled(checked("gb", "gb")) }]);
@@ -273,7 +290,7 @@ test("a check is named as one on the card", async () => {
 
 test("with a DAT there is no download button", async () => {
   renderPage([card("gb", "gb", SCAN)]);
-  expect(await screen.findByRole("button", { name: "Scan gb" })).toBeEnabled();
+  expect(await screen.findByRole("button", { name: "Check files of gb" })).toBeEnabled();
   expect(screen.queryByRole("button", { name: "Download DAT" })).toBeNull();
 });
 
@@ -583,5 +600,7 @@ test("the due, enabled card button is the first-run tour's target", async () => 
   expect(check).toHaveAttribute("data-tour", "scan");
   expect(check).toHaveAttribute("data-tour-step", "check");
   expect(screen.getByRole("button", { name: "Scan blocked" })).not.toHaveAttribute("data-tour");
-  expect(screen.getByRole("button", { name: "Scan done" })).not.toHaveAttribute("data-tour");
+  expect(screen.getByRole("button", { name: "Check files of done" })).not.toHaveAttribute(
+    "data-tour",
+  );
 });

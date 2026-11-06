@@ -1,5 +1,6 @@
 import { CircleCheck } from "lucide-react";
 import { Link } from "react-router-dom";
+import { CheckFiles } from "@/components/CheckFiles";
 import { PlatformIcon } from "@/components/PlatformIcon";
 import {
   folderState,
@@ -15,8 +16,8 @@ import { cn } from "@/lib/utils";
 // Tailwind needs the class names written out: every tab, or all but Updates.
 const TAB_COLUMNS = { every: "grid-cols-6", fewer: "grid-cols-5" };
 
-/** The set's name and location, then its pages as tabs across the full width; a page with
- * nothing left to do (from the set's Home `card`) has a green check. */
+/** The set's name with its Check files button and location, then its pages as tabs across the
+ * full width; a page with nothing left to do (from the set's Home `card`) has a green check. */
 export function FolderHeader({
   folder,
   meta,
@@ -39,6 +40,14 @@ export function FolderHeader({
             {platform?.name ?? folder.platform}
           </h1>
           <span className="text-lg text-muted-foreground">· {folder.label}</span>
+          <span className="ml-2">
+            <CheckFiles
+              label={folder.label}
+              scan={card?.scan}
+              size="sm"
+              blocked={card?.converting ? "A conversion is running" : undefined}
+            />
+          </span>
         </div>
         <p className="text-muted-foreground text-sm">
           <code className="text-xs">

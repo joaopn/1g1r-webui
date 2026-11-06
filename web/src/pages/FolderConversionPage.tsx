@@ -49,7 +49,7 @@ export function FolderConversionPage() {
     <div className="space-y-6">
       <FolderHeader folder={f} meta={meta.data} section="conversion" card={card} />
 
-      <ScanPanel label={label} kind="check" scan={f.scan} title="Check files">
+      <ScanPanel label={label} kind="check" scan={f.scan} title="Target format">
         <span className="font-medium">Target</span> {target?.label}{" "}
         <span className="text-muted-foreground">
           · every other file is converted to it, or discarded · set for every {platformName} folder

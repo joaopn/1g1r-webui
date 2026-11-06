@@ -33,6 +33,7 @@ const DETAIL = {
     started_at: "2026-10-25T10:00:00Z",
     finished_at: "2026-10-25T10:01:00Z",
     message: "5 of 6 files identified by title ID",
+    changes: null,
     stage: null,
     files_done: null,
     files_total: null,

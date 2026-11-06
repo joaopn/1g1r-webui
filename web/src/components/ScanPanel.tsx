@@ -1,19 +1,20 @@
-import { ChevronRight, FileSearch, RefreshCw, ScanSearch } from "lucide-react";
+import { ChevronRight, RefreshCw, ScanSearch } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Box } from "@/components/Box";
 import { ProgressFill } from "@/components/ProgressFill";
 import { Button } from "@/components/ui/button";
 import { formatWhen } from "@/lib/format";
 import { invalidateFolder } from "@/lib/queries";
-import { runWords, scanProgress, useStartCheck, useStartScan } from "@/lib/scan";
+import { runWords, scanProgress, useStartScan } from "@/lib/scan";
 import type { Scan, TerminalLine } from "@/lib/types";
 
 /**
  * A folder's run, in a titled box: `children` first, then how the last one went.
  *
- * `check` (Conversion page): Check files lists the folder and reads what conversion needs,
- * hashing nothing. `identify` (Matching page): a Scan does that, then identifies the files with
- * nothing left to convert; a quick scan reads only new and changed files, a full one every file.
+ * `check` (Conversion page): no run button (Check files sits in the set's header); the status
+ * line reports the last run of either kind. `identify` (Matching page): a Scan lists the folder
+ * as Check files does, then identifies the files with nothing left to convert; a quick scan
+ * reads only new and changed files, a full one every file.
  * `scan` is the latest run of either kind (one runs at a time); `lastScan` the latest Scan.
  * `quickOnly` (Updates & DLC) offers the quick scan alone: it picks up files added by hand.
  * Below the status line, the igir commands of the running Scan, else of the last one (until
@@ -43,10 +44,9 @@ export function ScanPanel({
   children: ReactNode;
 }) {
   const start = useStartScan(label);
-  const check = useStartCheck(label);
   const progress = scanProgress(scan);
   const running = scan?.status === "running";
-  const busy = running || start.isPending || check.isPending;
+  const busy = running || start.isPending;
   // A Scan waits for the conversion; Check files never does.
   const off = busy || (kind === "identify" && Boolean(blocked));
   // When a run ends, every table of the folder is stale.
@@ -86,16 +86,7 @@ export function ScanPanel({
       actions={
         <>
           {actions}
-          {kind === "check" ? (
-            <Button
-              onClick={() => check.mutate()}
-              disabled={busy}
-              title="List the folder and read what conversion needs (archive listings, headers); nothing is hashed"
-            >
-              <FileSearch className={spin} aria-hidden="true" />
-              Check files
-            </Button>
-          ) : lastScan ? (
+          {kind === "check" ? null : lastScan ? (
             <>
               {quickOnly ? null : (
                 <Button
