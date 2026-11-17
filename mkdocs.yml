@@ -1,0 +1,22 @@
+site_name: 1g1r-webui
+repo_url: https://github.com/joaopn/1g1r-webui
+theme:
+  name: material
+  logo: assets/logo.svg
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle: { icon: material/brightness-7, name: Dark mode }
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle: { icon: material/brightness-4, name: Light mode }
+nav:
+  - Home: index.md
+  - User guide:
+      - Getting started: user-guide/getting-started.md
+      - Conversion: user-guide/conversion.md
+      - Matching & 1G1R: user-guide/matching-and-1g1r.md
+      - Renaming: user-guide/renaming.md
+      - DATs: user-guide/dats.md
+      - Discarded: user-guide/discarded.md
+      - 3DS and Switch: user-guide/3ds-and-switch.md
