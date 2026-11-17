@@ -1,43 +1,109 @@
-# 1g1r-webui
+<div align="center">
 
-A web UI for organizing ROMSET collections and creating one-game-one-rom (1G1R) collections.
+<img src="docs/assets/logo.svg" alt="1g1r-webui" width="96">
+
+<h3>1g1r-webui</h3>
+
+Clean up your ROM folders in the browser: convert every file to one format per platform, identify it against No-Intro and Redump, and keep one version of each game.<br>
+Every step is shown before it runs, and nothing is deleted unless you ask.
+
+[Getting started](docs/user-guide/getting-started.md) ·
+[Conversion](docs/user-guide/conversion.md) ·
+[Matching & 1G1R](docs/user-guide/matching-and-1g1r.md) ·
+[Renaming](docs/user-guide/renaming.md) ·
+[DATs](docs/user-guide/dats.md) ·
+[Discarded](docs/user-guide/discarded.md)
+
+</div>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/home-dark.png">
+  <img src="docs/assets/home.png" alt="Home: one card per romset, with what it still needs">
+</picture>
 
 ## What it does
 
-- Identifies files by checksum against the platform's DAT
-- Converts losslessly to the platform's target format (zip, CHD, RVZ or the bare file)
-- Groups the versions of each game and ranks them by region, language and revision for 1G1R
+- **Convert**: one lossless format per platform (zip, CHD, RVZ, NSP, decrypted 3DS). Each output is verified before the original is moved away.
+- **Identify**: checksums against No-Intro, Redump, TOSEC and FBNeo DATs, several per platform, in the order you choose. [Hasheous](https://hasheous.org) can look up the rest (off by default).
+- **1G1R** (one game, one ROM): keeps one version per game, picked by region, language and revision. When the ranking cannot decide, you pick.
+- **Rename** (optional): to DAT names or clean titles. Revert is always possible.
+- **Undo**: removed files go to a `discarded/` folder and come back with one click.
 
+## Install
 
-## Running
-
-```sh
-git clone <this repo> && cd 1g1r-webui
-ROMS=/path/to/roms docker compose up -d --build    # http://localhost:8077
-```
-
-`ROMS` is the folder holding your ROMs; it is mounted at `/roms` in the container. Instead of passing it each time, put it in a `.env` file next to `compose.yaml`:
+You need Docker with Compose.
 
 ```sh
-ROMS=/path/to/roms
-PORT=8077        # optional, the host port
-PUID=1000        # optional, the user and group owning your ROM files
-PGID=1000
+git clone https://github.com/joaopn/1g1r-webui && cd 1g1r-webui
+ROMS=/path/to/roms docker compose up -d --build
 ```
 
-To add another ROM folder (another disk), add a line under `volumes:` in `compose.yaml`, mounted under `/mnt/<name>`:
+Open http://localhost:8077.
+
+`ROMS` is the folder holding your ROMs, ideally one folder per platform:
+
+```
+roms/
+├── gba/
+├── nes/
+├── psx/
+└── discarded/    created by the app
+```
+
+To keep settings, put them in a `.env` file next to `compose.yaml`:
+
+| Variable | Default | |
+|---|---|---|
+| `ROMS` | (required) | your ROM folder |
+| `PORT` | `8077` | port of the web UI |
+| `PUID`, `PGID` | `1000` | user and group that own your ROM files |
+
+ROMs on another disk: add a line under `volumes:` in `compose.yaml`, mounted under `/mnt/<name>`:
 
 ```yaml
       - /mnt/disk2/roms:/mnt/disk2
 ```
 
-The app keeps its database, DATs, caches and console keys in `data/` in the clone. Keys are entered in the web UI.
+The database, DATs and caches are kept in `data/` inside the clone.
 
-The app ships no ROMs and no console keys. Use dumps and keys from hardware you own.
+**Update:** `git pull && docker compose up -d --build`
 
-## Platforms
+## How it works
 
-Files are read bare or inside `.zip`/`.7z`. Every file is converted to its platform's target format (a `.7z` becomes a `.zip`); files that cannot be converted are listed for moving to `discarded/`. Scanning (igir, Hasheous) and 1G1R wait until every file is in the target format.
+A guided tour points to each step on first start.
+
+**1. Add your folders.** **Add romsets** in the sidebar: one platform folder, or a folder of platform folders matched automatically.
+
+<img src="docs/assets/automatch.png" alt="Automatch folders" width="720">
+
+**2. Get the DATs.** **Settings → Platform DATs**. Most are one click.
+
+<img src="docs/assets/platform-dats.png" alt="Platform DATs" width="720">
+
+**3. Convert.** On the set's **Conversion** tab: **Check files**, review, **Convert**.
+
+<img src="docs/assets/conversion.png" alt="Conversion tab" width="720">
+
+**4. Match and 1G1R.** On the **Matching & 1G1R** tab: **Scan**, check the proposed versions, **Apply 1G1R**.
+
+<img src="docs/assets/matching-versions.png" alt="Matching & 1G1R tab" width="720">
+
+**5. Rename** (optional, off by default). Pick a naming template on the **Rename** tab.
+
+<img src="docs/assets/rename.png" alt="Rename tab" width="720">
+
+Changed your mind? The **Discarded** tab restores any file.
+
+<img src="docs/assets/discarded.png" alt="Discarded tab" width="720">
+
+More in the [user guide](docs/user-guide/getting-started.md).
+
+## Supported platforms
+
+Files can be bare or inside `.zip`/`.7z`. Anything not in the target format is converted first; what cannot be converted can be moved to `discarded/`. Targets can be changed per platform in Settings.
+
+<details>
+<summary>37 platforms</summary>
 
 | Platform | Formats | Target | DAT |
 |---|---|---|---|
@@ -79,19 +145,13 @@ Files are read bare or inside `.zip`/`.7z`. Every file is converted to its platf
 | WonderSwan | `ws` | zip | No-Intro |
 | WonderSwan Color | `wsc` | zip | No-Intro |
 
-The target can be changed per platform in Settings.
+</details>
 
-- Non-Redump: No-Intro's DATs of discs Redump does not list (prototypes, betas, unlicensed). DAT-o-MATIC serves them to a browser only: the Non-Redump button in Settings → Platform DATs opens the page, then the file is uploaded there.
-- PSN (PSP): No-Intro's DAT of digital-only releases, downloaded from the libretro-database mirror. Games kept as an EBOOT.PBP folder are not supported.
-- SuperGrafx (PC Engine): No-Intro's DAT of the HuCards that need the SuperGrafx, which its PC Engine DAT leaves out, downloaded from the libretro-database mirror.
-- New 3DS (3DS): No-Intro's DAT of the cards that need a New 3DS (Xenoblade Chronicles 3D, Fire Emblem Warriors), which its 3DS DAT leaves out, downloaded from the libretro-database mirror.
+Notes on some DATs and platforms: [DATs](docs/user-guide/dats.md), [3DS and Switch](docs/user-guide/3ds-and-switch.md).
 
-- 3DS: encrypted images are decrypted with your own console's keys (`boot9.bin`, `seeddb.bin`), added in the UI. No keys are included. A decrypted image is kept only if it matches the hashes its partitions carry; no DAT is needed.
-- Switch: no public DAT exists, so files are identified by the title ID and version inside each file. 1G1R keeps every update and DLC; older updates can be discarded on the Updates tab. With your own `prod.keys` (added in the UI, none included), versions are also read from files without a `cnmt.xml`. NSZ is converted to NSP; each NCA is checked against its content ID. XCI and XCZ (game card images) are not supported.
+The app ships no ROMs and no console keys. Use dumps and keys from hardware you own.
 
-## Backend
-
-The work is done by existing tools and databases. 
+## Built on
 
 | | Used for |
 |---|---|
@@ -101,10 +161,9 @@ The work is done by existing tools and databases.
 | 7-Zip 25.01 | unpacking archives |
 | [Retool](https://github.com/unexpectedpanda/retool) 2.4.9 clone lists | grouping versions of a game |
 | [pyctr](https://github.com/ihaveamac/pyctr) | 3DS decryption |
-| No-Intro, Redump, FBNeo, TOSEC DATs | identification (downloaded from libretro-database, redump.info, FBNeo, tosecdev.org, or uploaded) |
+| No-Intro, Redump, FBNeo, TOSEC DATs | identification |
 | [Hasheous](https://hasheous.org) | optional lookup for files the DATs do not know |
 
-
-## Licence
+## License
 
 AGPL-3.0.
