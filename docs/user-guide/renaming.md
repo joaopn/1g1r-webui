@@ -21,3 +21,5 @@ Only identified files are renamed. The original name is kept, so **Revert** alwa
 ![Rename](../assets/rename.png)
 
 ![Review](../assets/rename-review.png)
+
+How it works: [Renaming](../architecture/renaming.md)

@@ -43,3 +43,5 @@ Container settings are in `compose.yaml` or a `.env` next to it; everything else
 | Auto-check | badge on the set's title line, or its Home card |
 
 View choices (Simplified/Extended, Home badges, sidebar, table columns, the tour) stay in each browser.
+
+How it works: [Architecture](../architecture/index.md)

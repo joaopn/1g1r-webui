@@ -45,3 +45,5 @@ Home shows what each set needs. **Check files** looks for new files; when it fin
 Progress and results also show under the bell.
 
 ![Notifications](../assets/notifications.png)
+
+How it works: [Architecture](../architecture/index.md), [Romsets](../architecture/romsets.md)

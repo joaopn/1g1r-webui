@@ -28,3 +28,5 @@ Versions of a game are ranked by region, language and revision. Ties stay undeci
 Files no DAT knows. Each row shows the closest DAT names. **Match exact name** takes the 1st match when it equals the file name. Select rows and **Match to 1st**, open a row to pick another name, or **Rematch unmatched** after adding a DAT. [Hasheous](https://hasheous.org) can be switched on in **Settings → Online lookups**.
 
 ![Unmatched](../assets/unmatched.png)
+
+How it works: [Matching & 1G1R](../architecture/matching-and-1g1r.md)

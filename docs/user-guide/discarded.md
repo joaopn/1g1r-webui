@@ -10,3 +10,5 @@ Nothing is deleted unless you ask. Discarded files go to `discarded/<set>/` in t
 **Restore** puts a file back. **Empty discarded/** deletes for good, behind a typed confirmation.
 
 ![Discarded](../assets/discarded.png)
+
+How it works: [Discarded and undo](../architecture/discarded-and-undo.md)

@@ -20,3 +20,5 @@ Runs can be stopped. Finished files are kept; the file in progress is removed.
 ![Running](../assets/conversion-running.png)
 
 Files that cannot be converted can be moved to `discarded/` from the same tab. The target is set per platform in **Settings → Romset management**.
+
+How it works: [Conversion](../architecture/conversion.md)

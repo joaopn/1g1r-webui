@@ -15,3 +15,5 @@ How much of each DAT a set covers.
 - Figures are kept until **Refresh**. A set changed since is marked "changed".
 - **Delete all discarded** empties `discarded/` of every listed set, after a review and typing `DELETE ALL`.
 - **DAT info** (collapsed) lists the sources and what counts.
+
+How it works: [Statistics](../architecture/statistics.md)
