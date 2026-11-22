@@ -1,3 +1,8 @@
+---
+title: "3DS and Switch"
+parent: User guide
+nav_order: 7
+---
 # 3DS and Switch
 
 - 3DS: encrypted images are decrypted with your own console's keys (`boot9.bin`, `seeddb.bin`), added in the UI. No keys are included. A decrypted image is kept only if it matches the hashes its partitions carry; no DAT is needed.

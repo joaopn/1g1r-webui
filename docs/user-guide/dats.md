@@ -1,3 +1,8 @@
+---
+title: DATs
+parent: User guide
+nav_order: 5
+---
 # DATs
 
 **Settings → Platform DATs**: download, upload or pin DAT versions per platform.

@@ -1,3 +1,8 @@
+---
+title: Getting started
+parent: User guide
+nav_order: 1
+---
 # Getting started
 
 ## Install

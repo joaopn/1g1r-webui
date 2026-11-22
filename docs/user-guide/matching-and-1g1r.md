@@ -1,3 +1,8 @@
+---
+title: "Matching & 1G1R"
+parent: User guide
+nav_order: 3
+---
 # Matching & 1G1R
 
 ## Scan

@@ -1,3 +1,8 @@
+---
+title: Renaming
+parent: User guide
+nav_order: 4
+---
 # Renaming
 
 Off by default. Turn it on in **Settings → Romset management**, for every set or per set.
