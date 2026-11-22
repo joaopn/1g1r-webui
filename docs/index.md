@@ -4,14 +4,13 @@ nav_order: 1
 ---
 # <img src="assets/logo.svg" alt="" width="56" height="56" style="vertical-align:middle; margin-right:.5rem"> 1g1r-webui
 
-Clean up your ROM folders in the browser: convert every file to one format per platform, identify it against No-Intro and Redump, and keep one version of each game.
-Every step is shown before it runs, and nothing is deleted unless you ask.
+Convert, identify and 1G1R your ROM folders in the browser. Nothing is deleted unless you ask.
 
-- **[Convert](user-guide/conversion.md)**: one lossless format per platform (zip, CHD, RVZ, NSP, decrypted 3DS). Each output is verified before the original is moved away.
-- **[Identify](user-guide/matching-and-1g1r.md)**: checksums against No-Intro, Redump, TOSEC and FBNeo DATs, several per platform, in the order you choose. [Hasheous](https://hasheous.org) can look up the rest (off by default).
-- **[1G1R](user-guide/matching-and-1g1r.md)** (one game, one ROM): keeps one version per game, picked by region, language and revision. When the ranking cannot decide, you pick.
-- **[Rename](user-guide/renaming.md)** (optional): to DAT names or clean titles. Revert is always possible.
-- **[Undo](user-guide/discarded.md)**: removed files go to a `discarded/` folder and come back with one click.
+- **[Convert](user-guide/conversion.md)**: one lossless format per platform, verified before the original moves.
+- **[Identify](user-guide/matching-and-1g1r.md)**: DAT checksums, with [Hasheous](https://hasheous.org) as an option.
+- **[1G1R](user-guide/matching-and-1g1r.md)**: one version per game, by region, language and revision.
+- **[Rename](user-guide/renaming.md)** (optional): DAT names or clean titles, always revertible.
+- **[Undo](user-guide/discarded.md)**: removed files go to `discarded/` and come back with one click.
 
 <picture><source media="(prefers-color-scheme: dark)" srcset="assets/home-dark.png"><img src="assets/home.png" alt="Home: one card per romset, with what it still needs" style="display:block; width:100%; height:auto; border:1px solid rgba(127,127,127,.35); border-radius:8px"></picture>
 
